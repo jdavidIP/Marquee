@@ -1,10 +1,12 @@
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
 using Marquee.Infrastructure.Persistence;
+using Marquee.Infrastructure.Redis;
 using Marquee.Infrastructure.Tmdb;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace Marquee.Infrastructure;
 
@@ -23,6 +25,16 @@ public static class DependencyInjection
 
         services.AddDbContext<MarqueeDbContext>(opt =>
             opt.UseNpgsql(configuration.GetConnectionString("Postgres")));
+
+        // --- Redis: the hot path for clap counting (Iteration 2). ---
+        services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
+        var redisOpts = configuration.GetSection(RedisOptions.SectionName).Get<RedisOptions>() ?? new RedisOptions();
+        var redisConfig = ConfigurationOptions.Parse(redisOpts.ConnectionString);
+        // Keep retrying instead of throwing at startup if Redis isn't up yet (health checks land in Iteration 6).
+        redisConfig.AbortOnConnectFail = false;
+        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConfig));
+        services.AddSingleton<IClapCounters, RedisClapCounters>();
+        services.AddSingleton<IPremiereCache, RedisPremiereCache>();
 
         var tmdbOpts = configuration.GetSection(TmdbOptions.SectionName).Get<TmdbOptions>() ?? new TmdbOptions();
         if (string.IsNullOrWhiteSpace(tmdbOpts.ApiKey))
