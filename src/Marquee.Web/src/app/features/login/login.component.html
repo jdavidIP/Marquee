@@ -1,0 +1,36 @@
+<section class="auth">
+  <h1>{{ mode() === 'login' ? 'Sign in to Marquee' : 'Create your account' }}</h1>
+  <p class="sub">Four times a day a Premiere appears. Clap together to open it.</p>
+
+  <form (ngSubmit)="submit()" #f="ngForm">
+    <label>
+      <span>{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
+      <input name="username" [(ngModel)]="username" required autocomplete="username" />
+    </label>
+
+    @if (mode() === 'register') {
+      <label>
+        <span>Email</span>
+        <input name="email" type="email" [(ngModel)]="email" required autocomplete="email" />
+      </label>
+    }
+
+    <label>
+      <span>Password</span>
+      <input name="password" type="password" [(ngModel)]="password" required minlength="8"
+             autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}" />
+    </label>
+
+    @if (error()) {
+      <p class="err">{{ error() }}</p>
+    }
+
+    <button class="primary" type="submit" [disabled]="busy() || f.invalid">
+      {{ busy() ? 'Please wait…' : (mode() === 'login' ? 'Sign in' : 'Register') }}
+    </button>
+  </form>
+
+  <button class="switch link" (click)="toggle()">
+    {{ mode() === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in' }}
+  </button>
+</section>

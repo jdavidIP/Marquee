@@ -1,0 +1,27 @@
+<h1>Your library</h1>
+
+@if (loading()) {
+  <p class="muted">Loading…</p>
+} @else if (error()) {
+  <p class="err">{{ error() }}</p>
+} @else if (entries().length === 0) {
+  <p class="muted">No movies yet. Clap open a Premiere to start your collection.</p>
+} @else {
+  <div class="grid">
+    @for (entry of entries(); track entry.movieId) {
+      <article class="card">
+        @if (entry.movie.posterUrl) {
+          <img class="poster" [src]="entry.movie.posterUrl" [alt]="entry.movie.title" />
+        } @else {
+          <div class="poster placeholder">{{ entry.movie.title }}</div>
+        }
+        <div class="body">
+          <h2>{{ entry.movie.title }}</h2>
+          @if (entry.movie.releaseYear) { <p class="year">{{ entry.movie.releaseYear }}</p> }
+          <p class="rating">★ {{ entry.movie.voteAverage | number: '1.1-1' }}</p>
+          <span class="emblem" [class.none]="!entry.emblemTier">{{ emblemLabel(entry.emblemTier) }}</span>
+        </div>
+      </article>
+    }
+  </div>
+}

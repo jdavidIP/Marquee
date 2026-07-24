@@ -1,0 +1,97 @@
+using System.Text;
+using Marquee.Api;
+using Marquee.Api.Auth;
+using Marquee.Domain.Entities;
+using Marquee.Domain.Enums;
+using Marquee.Infrastructure;
+using Marquee.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+
+var builder = WebApplication.CreateBuilder(args);
+
+const string CorsPolicy = "MarqueeSpa";
+
+// --- Options ---
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
+    throw new InvalidOperationException("Jwt:Key must be configured and at least 32 characters.");
+
+// --- Infrastructure + API services ---
+builder.Services.AddMarqueeInfrastructure(builder.Configuration);
+builder.Services.AddMarqueeApiServices();
+
+// --- Auth ---
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
+        };
+    });
+
+builder.Services.AddAuthorization(options => options.AddMarqueePolicies());
+
+// --- Web ---
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddOpenApi();
+builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => policy
+    .WithOrigins("http://localhost:4200")
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
+
+var app = builder.Build();
+
+// --- Migrate + seed (dev convenience) ---
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+    await db.Database.MigrateAsync();
+    await SeedAdminAsync(scope.ServiceProvider, app.Configuration, app.Logger);
+}
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+app.UseCors(CorsPolicy);
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+
+// Seeds a single admin so Premieres can be created out of the box in dev.
+static async Task SeedAdminAsync(IServiceProvider sp, IConfiguration config, ILogger logger)
+{
+    var db = sp.GetRequiredService<MarqueeDbContext>();
+    var hasher = sp.GetRequiredService<IPasswordHasherService>();
+
+    var username = config["Admin:Username"] ?? "admin";
+    var email = (config["Admin:Email"] ?? "admin@marquee.local").ToLowerInvariant();
+    var password = config["Admin:Password"] ?? "admin12345";
+
+    if (await db.Users.AnyAsync(u => u.Role == UserRole.Admin))
+        return;
+
+    var admin = new User { Username = username, Email = email, Role = UserRole.Admin };
+    admin.PasswordHash = hasher.Hash(admin, password);
+    db.Users.Add(admin);
+    await db.SaveChangesAsync();
+    logger.LogInformation("Seeded admin user '{Username}' (password from config or default).", username);
+}
+
+// Exposed so the integration test project can drive the API with WebApplicationFactory.
+public partial class Program;

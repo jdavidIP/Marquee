@@ -1,0 +1,23 @@
+# Iteration 1 — postgres only. Redis / RabbitMQ are added in later iterations
+# (see MARQUEE_PLAN.md iterations 2 and 4). The naive vertical slice counts
+# claps directly in Postgres on purpose so iteration 2 can break it under load.
+services:
+  postgres:
+    image: postgres:16
+    container_name: marquee-postgres
+    environment:
+      POSTGRES_USER: marquee
+      POSTGRES_PASSWORD: marquee
+      POSTGRES_DB: marquee
+    ports:
+      - "5432:5432"
+    volumes:
+      - marquee-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marquee -d marquee"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  marquee-pgdata:

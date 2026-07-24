@@ -1,0 +1,51 @@
+h1 { font-size: 1.6rem; margin: 0 0 20px; }
+.muted { color: var(--muted); }
+.err { color: var(--accent); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  display: block;
+}
+
+.poster.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.body { padding: 14px; }
+h2 { font-size: 1rem; margin: 0 0 4px; }
+.year { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
+.rating { color: var(--gold); font-size: 0.85rem; margin: 0 0 10px; }
+
+.emblem {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--gold-dim);
+  color: var(--gold);
+  font-weight: 700;
+}
+.emblem.none { background: var(--panel-2); color: var(--muted); }

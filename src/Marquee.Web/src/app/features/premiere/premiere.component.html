@@ -1,0 +1,59 @@
+@if (loading()) {
+  <p class="status">Loading the Premiere…</p>
+} @else if (!premiere()) {
+  <section class="empty">
+    <h1>No Premiere is running</h1>
+    <p class="sub">Premieres appear four times a day. Check back soon.</p>
+    @if (auth.isAdmin()) {
+      <button class="primary" (click)="createPremiere()" [disabled]="creating()">
+        {{ creating() ? 'Creating…' : 'Create a Premiere (admin)' }}
+      </button>
+    }
+    @if (error()) { <p class="err">{{ error() }}</p> }
+  </section>
+} @else if (isOpen()) {
+  <!-- Reveal -->
+  <section class="reveal">
+    <p class="kicker">The Premiere opened{{ premiere()!.status === 'AutoOpened' ? ' on the timer' : '' }}</p>
+    @if (premiere()!.movie; as movie) {
+      <div class="movie">
+        @if (movie.posterUrl) {
+          <img class="poster" [src]="movie.posterUrl" [alt]="movie.title" />
+        }
+        <div class="meta">
+          <h1>{{ movie.title }}</h1>
+          @if (movie.releaseYear) { <p class="year">{{ movie.releaseYear }}</p> }
+          <p class="rating">★ {{ movie.voteAverage | number: '1.1-1' }} · {{ movie.voteCount | number }} votes</p>
+          <p class="overview">{{ movie.overview }}</p>
+          <p class="added">Added to your library — you contributed {{ premiere()!.myClaps }} clap{{ premiere()!.myClaps === 1 ? '' : 's' }}.</p>
+          <a routerLink="/library" class="primary asLink">See your library</a>
+        </div>
+      </div>
+    }
+  </section>
+} @else {
+  <!-- Active: clap to open -->
+  <section class="active">
+    <p class="kicker">A Premiere is live</p>
+    <h1>Clap to open it</h1>
+
+    <div class="bar">
+      <div class="fill" [style.width.%]="progressPct()"></div>
+    </div>
+    <p class="counts">
+      <strong>{{ premiere()!.totalClaps | number }}</strong> / {{ premiere()!.threshold | number }} claps
+      <span class="pct">({{ progressPct() }}%)</span>
+    </p>
+
+    <button class="clap" (click)="clap()" [disabled]="clapping() || capReached()">
+      👏 Clap
+    </button>
+
+    <p class="mine">
+      You: {{ premiere()!.myClaps }} / {{ premiere()!.registeredClapCap }} claps
+      @if (capReached()) { <span class="capped">· you've reached your cap</span> }
+    </p>
+
+    @if (error()) { <p class="err">{{ error() }}</p> }
+  </section>
+}

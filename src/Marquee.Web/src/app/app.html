@@ -1,0 +1,17 @@
+<header class="topbar">
+  <div class="brand">Marquee</div>
+  @if (auth.isLoggedIn()) {
+    <nav class="nav">
+      <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
+      <a routerLink="/library" routerLinkActive="active">Library</a>
+    </nav>
+    <div class="account">
+      <span class="who">{{ auth.user()?.username }}</span>
+      <button class="link" (click)="logout()">Sign out</button>
+    </div>
+  }
+</header>
+
+<main class="content">
+  <router-outlet />
+</main>
