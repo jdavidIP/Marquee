@@ -1,6 +1,5 @@
-# Iteration 1 — postgres only. Redis / RabbitMQ are added in later iterations
-# (see MARQUEE_PLAN.md iterations 2 and 4). The naive vertical slice counts
-# claps directly in Postgres on purpose so iteration 2 can break it under load.
+# Local orchestration. Postgres is the durable record; Redis is the hot path for clap counting
+# (added in Iteration 2 — MARQUEE_PLAN.md). RabbitMQ arrives in Iteration 4.
 services:
   postgres:
     image: postgres:16
@@ -19,5 +18,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7
+    container_name: marquee-redis
+    # appendonly so the hot counters survive a restart within an active Premiere window.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - marquee-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   marquee-pgdata:
+  marquee-redisdata:

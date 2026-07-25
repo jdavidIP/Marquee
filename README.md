@@ -5,23 +5,30 @@ times a day a **Premiere** appears containing a hidden movie; it opens only when
 **clap** for it before its 60-minute timer runs out. See [`CLAUDE.md`](./CLAUDE.md) for the full
 domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iteration build plan.
 
-> **Status: Iteration 1 complete** — a naive, single-instance vertical slice. Clap counting is a
-> deliberately racy read-modify-write in Postgres; iteration 2 breaks it under load and replaces it
-> with atomic Redis counters. Do not "fix" the counting before then.
+> **Status: Iteration 2 complete** — clap counting has moved to atomic Redis `INCR` with an
+> exactly-once open (distributed lock + DB conditional update). The naive Postgres read-modify-write
+> counter was first broken under load on purpose; see
+> [`docs/concurrency-findings.md`](./docs/concurrency-findings.md) for the before/after numbers and
+> [`tests/Marquee.LoadTests`](./tests/Marquee.LoadTests) for the load script.
 
 ## Architecture
 
 ```
 src/
   Marquee.Domain/          Entities, enums, and the pure §4 formulas (threshold, cap, emblem)
-  Marquee.Infrastructure/  EF Core + Postgres, TMDB client, DI wiring
+  Marquee.Infrastructure/  EF Core + Postgres, Redis clap counters, TMDB client, DI wiring
   Marquee.Api/             ASP.NET Core Web API — JWT auth, premieres, clap, library
   Marquee.Worker/          Background service (used from iteration 4)
   Marquee.Web/             Angular 20 SPA (standalone components + signals)
 tests/
   Marquee.UnitTests/       xUnit tests for the domain formulas (§4 worked examples)
   Marquee.IntegrationTests/ Testcontainers-based tests (fleshed out in iteration 6)
+  Marquee.LoadTests/       clap-storm load scripts (Node + k6) for the Iteration 2 concurrency work
 ```
+
+Clap counting is the hot path and lives in Redis: an atomic Lua script does the cap check plus the
+per-user and total `INCR` in one step, and the open fires exactly once behind a distributed lock and
+a DB conditional update. Postgres is the durable record, written once when a Premiere opens.
 
 The threshold, cap, and emblem formulas live in `Marquee.Domain` as pure, dependency-free functions
 and are unit-tested without a database, Redis, or HTTP.
@@ -30,12 +37,12 @@ and are unit-tested without a database, Redis, or HTTP.
 
 - .NET 9 SDK
 - Node 20+/24+ (Angular CLI 20)
-- Docker Desktop (for Postgres)
+- Docker Desktop (for Postgres and Redis)
 - `dotnet-ef` global tool: `dotnet tool install --global dotnet-ef --version 9.*`
 
 ## Running it
 
-**1. Start Postgres**
+**1. Start Postgres + Redis**
 
 ```bash
 docker compose up -d
@@ -76,7 +83,10 @@ production. See [`.env.example`](./.env.example).
 ## Testing
 
 ```bash
-dotnet test tests/Marquee.UnitTests   # domain formula tests
+dotnet test tests/Marquee.UnitTests            # domain formula tests
+
+# concurrency load test (API + docker infra must be running)
+cd tests/Marquee.LoadTests && node clap-storm.mjs
 ```
 
 ## Iteration 1 acceptance criteria — met
@@ -84,6 +94,13 @@ dotnet test tests/Marquee.UnitTests   # domain formula tests
 - A user can register, log in, clap, and see the movie land in their library ✔
 - Domain formula unit tests pass, including the small-user-base edge case ✔
 - An admin can manually create a Premiere (no scheduler yet — iteration 3) ✔
+
+## Iteration 2 acceptance criteria — met
+
+- Re-run the load script: final count matches claps sent exactly (no lost updates) ✔
+- The open event fires exactly once under concurrent load, no duplicate fan-out ✔
+- No participant can exceed their cap, even under concurrent requests ✔
+- Findings document committed ([`docs/concurrency-findings.md`](./docs/concurrency-findings.md)) ✔
 
 ## Key endpoints
 

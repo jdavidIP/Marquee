@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: .NET build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore Marquee.sln
+
+      - name: Build
+        run: dotnet build Marquee.sln --no-restore --configuration Release
+
+      # Marquee.IntegrationTests is still an empty Testcontainers scaffold (Iteration 6) — nothing
+      # to run there yet. Only Marquee.UnitTests (the pure §4 domain formula tests) runs in CI.
+      - name: Unit tests
+        run: dotnet test tests/Marquee.UnitTests/Marquee.UnitTests.csproj --no-build --configuration Release --logger "trx;LogFileName=unit-tests.trx"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: tests/Marquee.UnitTests/TestResults/*.trx
+
+  angular:
+    name: Angular build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Marquee.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: src/Marquee.Web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npx ng build
