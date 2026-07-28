@@ -1,4 +1,5 @@
 using Marquee.Api.Realtime;
+using Marquee.Domain;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
@@ -50,8 +51,13 @@ public sealed class PremiereScheduleService(
         var duration = TimeSpan.FromMinutes(_schedule.DurationMinutes);
         var (dayStartUtc, dayEndUtc) = LocalDayBoundsUtc(localDate);
 
+        // Scoped to global — the only scope PremiereFactory generates into today (CLAUDE.md §5).
+        // Filtering here keeps this in step with the rest of the lifecycle, which is already
+        // scope-namespaced end to end (Redis keys, SignalR groups), so a future scope doesn't
+        // silently count against global's daily quota.
         var existing = await db.Premieres
-            .CountAsync(p => p.ScheduledFor >= dayStartUtc && p.ScheduledFor < dayEndUtc, ct);
+            .CountAsync(p => p.ScopeId == Scopes.Global &&
+                              p.ScheduledFor >= dayStartUtc && p.ScheduledFor < dayEndUtc, ct);
         if (existing >= _schedule.PremieresPerDay)
         {
             logger.LogInformation("{Date} already has {Count} Premieres — nothing to generate.", localDate, existing);
