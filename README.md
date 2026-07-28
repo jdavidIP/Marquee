@@ -5,10 +5,12 @@ times a day a **Premiere** appears containing a hidden movie; it opens only when
 **clap** for it before its 60-minute timer runs out. See [`CLAUDE.md`](./CLAUDE.md) for the full
 domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iteration build plan.
 
-> **Status: Iteration 3 complete** — Premieres now run themselves. A Quartz scheduler draws the day's
-> four Premiere times, activates each at its moment, and auto-opens any that run out their 60 minutes;
-> SignalR pushes throttled clap counts and the reveal to everyone watching. Iteration 2's concurrency
-> work (atomic Redis counting, exactly-once open) is recorded in
+> **Status: Iteration 4 complete** — the expensive part of an open is off the request path. The API
+> marks a Premiere opened and publishes `PremiereOpened` through a transactional outbox, then returns;
+> `Marquee.Worker` consumes it, writes every contribution, emblem and library row, and signals the
+> reveal back through the queue for SignalR to broadcast. Consumers are idempotent, retries back off
+> exponentially, and poison messages are dead-lettered. Design notes in
+> [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md); Iteration 2's concurrency work in
 > [`docs/concurrency-findings.md`](./docs/concurrency-findings.md).
 
 ## Architecture
@@ -16,15 +18,16 @@ domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iter
 ```
 src/
   Marquee.Domain/          Entities, enums, and the pure §4 formulas (threshold, cap, emblem, schedule)
-  Marquee.Infrastructure/  EF Core + Postgres, Redis clap counters, TMDB client, DI wiring
+  Marquee.Infrastructure/  EF Core + Postgres, Redis clap counters, TMDB client, message contracts,
+                           MassTransit/RabbitMQ wiring, DI
   Marquee.Api/             ASP.NET Core Web API — JWT auth, premieres, clap, library,
-                           SignalR hub + broadcast loop, Quartz scheduler jobs
-  Marquee.Worker/          Background service (used from iteration 4)
+                           SignalR hub + broadcast loop, Quartz scheduler jobs, outbox publisher
+  Marquee.Worker/          Queue consumer — the open-time fan-out (contributions, emblems, library)
   Marquee.Web/             Angular 20 SPA (standalone components + signals)
 tests/
   Marquee.UnitTests/       xUnit tests for the domain formulas (§4 worked examples)
   Marquee.IntegrationTests/ Testcontainers-based tests (fleshed out in iteration 6)
-  Marquee.LoadTests/       clap-storm load scripts (Node + k6) and the iteration 3 realtime check
+  Marquee.LoadTests/       clap-storm load scripts (Node + k6), the realtime check, the queue check
 ```
 
 Clap counting is the hot path and lives in Redis: an atomic Lua script does the cap check plus the
@@ -38,8 +41,22 @@ rate. The reveal is the exception — it is sent immediately, once, by whichever
 exactly-once open. SignalR group names are derived from `scopeId` + `premiereId`, never a single
 hardcoded global broadcast (CLAUDE.md §5).
 
+Opening a Premiere is split across two processes. The API does the small, bounded part — the
+exactly-once status change and the final count — and publishes a `PremiereOpened` event carrying the
+clap snapshot; `Marquee.Worker` does the part that grows with the audience: a `Contribution` and a
+`LibraryEntry` per participant. The status change and the event are written **in one transaction**
+(the outbox pattern), so a crash between them cannot lose the event, and RabbitMQ being down delays
+the reveal without breaking the open. Full reasoning in
+[`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md).
+
 The threshold, cap, emblem, and daily-schedule formulas live in `Marquee.Domain` as pure,
 dependency-free functions and are unit-tested without a database, Redis, or HTTP.
+
+### Queue: RabbitMQ + MassTransit 8
+
+MassTransit is pinned to the **8.x** line on purpose: version 9 moved to a commercial-gated licence,
+while 8.x is Apache-2.0. The outbox and inbox APIs used here are identical across both, so this is a
+licensing choice rather than a capability one.
 
 ### Scheduling: Quartz.NET
 
@@ -58,15 +75,16 @@ those rows and is idempotent, so a restart simply picks up on the next tick.
 
 - .NET 9 SDK
 - Node 20+/24+ (Angular CLI 20)
-- Docker Desktop (for Postgres and Redis)
+- Docker Desktop (for Postgres, Redis and RabbitMQ)
 - `dotnet-ef` global tool: `dotnet tool install --global dotnet-ef --version 9.*`
 
 ## Running it
 
-**1. Start Postgres + Redis**
+**1. Start Postgres + Redis + RabbitMQ**
 
 ```bash
 docker compose up -d
+# RabbitMQ management UI: http://localhost:15672  (marquee / marquee)
 ```
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
@@ -79,7 +97,17 @@ dotnet run
 
 The seeded admin (dev only) is `admin` / `admin12345` — override via the `Admin:*` config keys.
 
-**3. Run the Angular app**
+**3. Run the worker** — without it, Premieres still open but nobody's library is filled
+
+```bash
+cd src/Marquee.Worker
+dotnet run
+```
+
+The API owns the schema, so start it at least once before the worker. Events published while the
+worker is down wait in the queue and are processed when it returns.
+
+**4. Run the Angular app**
 
 ```bash
 cd src/Marquee.Web
@@ -97,23 +125,32 @@ service:
 Tmdb__ApiKey=your-tmdb-v3-key
 ```
 
-**Without a key**, the app falls back to `StubTmdbClient` — a small fixed pool of real films — so the
+**Without a key**, the app falls back to `StubTmdbClient` — a fixed pool of 12 real films — so the
 whole flow (including premiere creation) runs offline. The stub logs a warning and is not for
 production. See [`.env.example`](./.env.example).
+
+Because §4.6 forbids a movie ever repeating, the stub pool is also a hard ceiling of **12 Premieres
+ever** for a given database. That is plenty for a demo but runs out quickly under repeated load
+testing; set a real `Tmdb__ApiKey`, or clear `premieres`/`movies` in the dev database, before a long
+test session.
 
 ## Testing
 
 ```bash
 dotnet test tests/Marquee.UnitTests            # domain formula + schedule tests
 
-# API + docker infra must be running for both of these
+# API + docker infra must be running for all of these
 cd tests/Marquee.LoadTests
 node clap-storm.mjs        # iteration 2 — concurrency: lost updates, double open, cap enforcement
 node realtime-check.mjs    # iteration 3 — two watchers, throttling, reveal, timer auto-open
+node queue-check.mjs       # iteration 4 — fan-out, crash recovery, replay, dead-lettering
 ```
 
 `realtime-check.mjs` exits non-zero if any check fails, and includes a ~1 minute wait while it proves
 a Premiere auto-opens on its timer. Set `SKIP_AUTOOPEN=1` to skip that part.
+
+`queue-check.mjs` needs the worker running too, and its crash check deliberately kills the worker —
+it waits for something to restart it. Set `SKIP_CRASH=1` to skip that part.
 
 ## Iteration 1 acceptance criteria — met
 
@@ -134,6 +171,15 @@ a Premiere auto-opens on its timer. Set `SKIP_AUTOOPEN=1` to skip that part.
 - A Premiere that hits its timer auto-opens and reveals correctly (`AutoOpened`, §4.5) ✔
 - 4 Premieres generate daily within §4.4, with the 2-hour minimum gap respected ✔
 
+## Iteration 4 acceptance criteria — met
+
+- Kill the worker mid-processing and restart it: no duplicate library entries, no lost contributors ✔
+- Publish the same event twice manually: the outcome is identical to publishing once ✔
+- A deliberately poisoned message lands in the DLQ instead of blocking the queue ✔
+
+Verified by `tests/Marquee.LoadTests/queue-check.mjs` against a running stack; see
+[`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md) for the recorded run.
+
 ## Key endpoints
 
 | Method | Route | Auth | Purpose |
@@ -145,7 +191,7 @@ a Premiere auto-opens on its timer. Set `SKIP_AUTOOPEN=1` to skip that part.
 | GET | `/api/premieres/active` | optional | The live Premiere (movie hidden until open) |
 | GET | `/api/premieres/next` | optional | The next Premiere the scheduler has lined up |
 | GET | `/api/premieres/{id}` | optional | One Premiere (initial load; counts then arrive over the hub) |
-| POST | `/api/premieres/{id}/clap` | user | Clap; opens synchronously on threshold |
+| POST | `/api/premieres/{id}/clap` | user | Clap; the threshold-crossing clap opens the Premiere and queues the fan-out |
 | GET | `/api/library` | user | The signed-in user's movies |
 
 ### Real-time hub

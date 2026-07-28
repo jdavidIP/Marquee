@@ -1,5 +1,5 @@
 # Local orchestration. Postgres is the durable record; Redis is the hot path for clap counting
-# (added in Iteration 2 — MARQUEE_PLAN.md). RabbitMQ arrives in Iteration 4.
+# (Iteration 2); RabbitMQ carries the open-time fan-out off the request path (Iteration 4).
 services:
   postgres:
     image: postgres:16
@@ -33,6 +33,24 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: marquee-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: marquee
+      RABBITMQ_DEFAULT_PASS: marquee
+    ports:
+      - "5672:5672"    # AMQP — the API publishes here, the worker consumes
+      - "15672:15672"  # management UI: queue depth, the _error DLQ, message rates
+    volumes:
+      - marquee-rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
 volumes:
   marquee-pgdata:
   marquee-redisdata:
+  marquee-rabbitdata:

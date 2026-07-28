@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!-- EF Core, MassTransit and the Postgres provider all arrive via Marquee.Infrastructure. -->
+
   </ItemGroup>
 
   <ItemGroup>

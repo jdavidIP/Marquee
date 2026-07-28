@@ -9,6 +9,17 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!--
+      Declared explicitly, and deliberately NOT private. Without these, the only thing pulling EF
+      Core up to the top of the 9.* range in this project is the Design package — which is
+      PrivateAssets=all, so it does not flow to referencing projects. The result is a project that
+      *compiles* against the newest EF Core but hands its consumers Npgsql's lower floor, and the
+      mismatch only surfaces at runtime as "Could not load file or assembly
+      Microsoft.EntityFrameworkCore.Relational". Stating them here is what makes one EF Core version
+      flow to Marquee.Api, Marquee.Worker, and the test projects.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="9.*" />
@@ -16,6 +27,14 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.*" />
     <PackageReference Include="StackExchange.Redis" Version="2.*" />
+    <!--
+      Queue (Iteration 4). Pinned to the 8.x line deliberately: MassTransit 9 moved to a
+      commercial-gated licence, 8.x is Apache-2.0. The outbox/inbox API used here is identical
+      in both, so this is a licensing choice, not a capability one.
+    -->
+    <PackageReference Include="MassTransit" Version="8.*" />
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.*" />
+    <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.*" />
   </ItemGroup>
 
   <PropertyGroup>
