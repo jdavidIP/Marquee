@@ -16,6 +16,11 @@ export class PremiereService {
     return this.http.get<PremiereDto>(`${environment.apiBase}/premieres/${id}`);
   }
 
+  /** The next Premiere the scheduler has lined up, for the "come back at…" state. */
+  getNext(): Observable<PremiereDto> {
+    return this.http.get<PremiereDto>(`${environment.apiBase}/premieres/next`);
+  }
+
   clap(id: string): Observable<ClapResponse> {
     return this.http.post<ClapResponse>(`${environment.apiBase}/premieres/${id}/clap`, {});
   }

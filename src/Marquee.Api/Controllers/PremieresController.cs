@@ -18,7 +18,15 @@ public class PremieresController(IPremiereService premieres) : ControllerBase
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    /// <summary>One Premiere by id. Used for the polled count on the Premiere page.</summary>
+    /// <summary>The next Premiere the scheduler has lined up, so the page can say when to come back.</summary>
+    [HttpGet("next")]
+    public async Task<ActionResult<PremiereDto>> Next(CancellationToken ct)
+    {
+        var dto = await premieres.GetNextScheduledAsync(ct);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    /// <summary>One Premiere by id. Live counts arrive over SignalR; this is the initial load.</summary>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PremiereDto>> Get(Guid id, CancellationToken ct)
     {
@@ -26,7 +34,10 @@ public class PremieresController(IPremiereService premieres) : ControllerBase
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    /// <summary>Admin-only manual Premiere creation (no scheduler yet — iteration 3).</summary>
+    /// <summary>
+    /// Admin-only manual Premiere creation. The scheduler generates the day's four (§4.4); this is
+    /// the on-demand trigger, and unlike a scheduled one it activates immediately.
+    /// </summary>
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost]
     public async Task<ActionResult<PremiereDto>> Create(CreatePremiereRequest request, CancellationToken ct)

@@ -1,4 +1,7 @@
-.status, .sub { color: var(--muted); }
+.status,
+.sub {
+  color: var(--muted);
+}
 
 .kicker {
   text-transform: uppercase;
@@ -8,36 +11,150 @@
   margin: 0 0 6px;
 }
 
-h1 { margin: 0 0 20px; font-size: 1.8rem; }
+h1 {
+  margin: 0 0 20px;
+  font-size: 1.8rem;
+}
 
-.empty, .active, .reveal {
+.empty,
+.stage-wrap {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 32px;
 }
 
-.active { text-align: center; }
+.stage-wrap {
+  text-align: center;
+}
 
-/* Progress bar — width driven purely by progress = claps / threshold. */
-.bar {
-  height: 16px;
+/* Connection dot — the only thing on the page that reflects the socket rather than the count. */
+.live {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: middle;
+  transition: background 0.3s ease;
+}
+.live.on {
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+}
+
+/* ---------------------------------------------------------------------------
+   The marquee. Everything here is driven by the component's single progress
+   value: the bulbs get a `lit` class, the curtain panels get a transform.
+   Nothing about the marquee is stored as its own piece of state.
+   --------------------------------------------------------------------------- */
+
+.marquee {
+  max-width: 460px;
+  margin: 0 auto 28px;
+  padding: 12px;
+  border: 2px solid var(--gold-dim);
+  border-radius: 14px;
   background: var(--panel-2);
-  border-radius: 999px;
+}
+
+.bulbs {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 4px;
+}
+.bulbs.top {
+  margin-bottom: 10px;
+}
+.bulbs.bottom {
+  margin-top: 10px;
+}
+
+.bulb {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  opacity: 0.45;
+  transition:
+    background 0.35s ease,
+    opacity 0.35s ease,
+    box-shadow 0.35s ease;
+}
+.bulb.lit {
+  background: var(--gold);
+  opacity: 1;
+  box-shadow: 0 0 8px var(--gold);
+}
+
+.stage {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  max-height: 420px;
+  margin: 0 auto;
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  margin: 8px 0 12px;
+  background: #0a0810;
 }
 
-.fill {
+.behind {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.behind .poster {
+  width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
-  transition: width 0.4s ease;
+  object-fit: cover;
 }
 
-.counts { color: var(--muted); margin: 0 0 24px; }
-.counts strong { color: var(--ink); font-size: 1.2rem; }
-.pct { margin-left: 6px; }
+.mystery {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--gold-dim);
+}
+
+/* Two panels meeting in the middle; each slides off its own side as progress grows. */
+.curtain {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background:
+    repeating-linear-gradient(90deg, #7c1230 0 10px, #5d0c24 10px 20px),
+    linear-gradient(180deg, #8d1637, #4b0a1d);
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+.curtain.left {
+  left: 0;
+  border-right: 1px solid #3d0817;
+}
+.curtain.right {
+  right: 0;
+}
+
+.counts {
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.counts strong {
+  color: var(--ink);
+  font-size: 1.2rem;
+}
+.pct {
+  margin-left: 6px;
+}
+
+.contributors {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 22px;
+}
 
 .clap {
   background: var(--gold);
@@ -49,11 +166,27 @@ h1 { margin: 0 0 20px; font-size: 1.8rem; }
   font-weight: 800;
   transition: transform 0.05s ease;
 }
-.clap:active { transform: scale(0.96); }
-.clap:disabled { opacity: 0.5; cursor: default; }
+.clap:active {
+  transform: scale(0.96);
+}
+.clap:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
-.mine { margin: 18px 0 0; color: var(--muted); font-size: 0.9rem; }
-.capped { color: var(--accent); }
+.mine {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.capped {
+  color: var(--accent);
+}
+.expiry {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 
 .primary {
   background: var(--gold);
@@ -64,20 +197,43 @@ h1 { margin: 0 0 20px; font-size: 1.8rem; }
   font-weight: 700;
   margin-top: 14px;
 }
-.asLink { display: inline-block; text-decoration: none; }
+.asLink {
+  display: inline-block;
+  text-decoration: none;
+}
 
-.err { color: var(--accent); }
+.err {
+  color: var(--accent);
+}
 
 /* Reveal */
-.movie { display: flex; gap: 24px; }
-.poster { width: 200px; border-radius: 12px; border: 1px solid var(--border); }
-.meta h1 { margin: 0 0 4px; }
-.year { color: var(--muted); margin: 0 0 10px; }
-.rating { color: var(--gold); margin: 0 0 14px; }
-.overview { line-height: 1.5; color: var(--ink); }
-.added { color: var(--ok); margin: 16px 0 0; }
+.movie {
+  max-width: 520px;
+  margin: 0 auto;
+}
+.movie h1 {
+  margin: 0 0 4px;
+}
+.year {
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.rating {
+  color: var(--gold);
+  margin: 0 0 14px;
+}
+.overview {
+  line-height: 1.5;
+  color: var(--ink);
+}
+.added {
+  color: var(--ok);
+  margin: 16px 0 0;
+}
 
-@media (max-width: 620px) {
-  .movie { flex-direction: column; }
-  .poster { width: 160px; }
+@media (prefers-reduced-motion: reduce) {
+  .curtain,
+  .bulb {
+    transition: none;
+  }
 }

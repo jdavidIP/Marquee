@@ -3,7 +3,15 @@
 } @else if (!premiere()) {
   <section class="empty">
     <h1>No Premiere is running</h1>
-    <p class="sub">Premieres appear four times a day. Check back soon.</p>
+    @if (nextPremiere(); as next) {
+      <p class="sub">
+        The next one opens at
+        <strong>{{ next.scheduledFor | date: 'shortTime' }}</strong>
+        on {{ next.scheduledFor | date: 'mediumDate' }}.
+      </p>
+    } @else {
+      <p class="sub">Premieres appear four times a day. Check back soon.</p>
+    }
     @if (auth.isAdmin()) {
       <button class="primary" (click)="createPremiere()" [disabled]="creating()">
         {{ creating() ? 'Creating…' : 'Create a Premiere (admin)' }}
@@ -11,49 +19,98 @@
     }
     @if (error()) { <p class="err">{{ error() }}</p> }
   </section>
-} @else if (isOpen()) {
-  <!-- Reveal -->
-  <section class="reveal">
-    <p class="kicker">The Premiere opened{{ premiere()!.status === 'AutoOpened' ? ' on the timer' : '' }}</p>
-    @if (premiere()!.movie; as movie) {
-      <div class="movie">
-        @if (movie.posterUrl) {
-          <img class="poster" [src]="movie.posterUrl" [alt]="movie.title" />
+} @else {
+  <section class="stage-wrap" [class.revealed]="isOpen()">
+    <p class="kicker">
+      @if (isOpen()) {
+        The Premiere opened{{ premiere()!.status === 'AutoOpened' ? ' on the timer' : '' }}
+      } @else {
+        A Premiere is live
+      }
+      <span class="live" [class.on]="realtime.connected()" [title]="realtime.connected() ? 'Live' : 'Reconnecting…'"></span>
+    </p>
+
+    <!-- The marquee. Bulbs and curtain are both drawn from progress() — one value, two views. -->
+    <div class="marquee">
+      <div class="bulbs top">
+        @for (lit of bulbs(); track $index) {
+          <span class="bulb" [class.lit]="lit"></span>
         }
-        <div class="meta">
+      </div>
+
+      <div class="stage">
+        <div class="behind">
+          @if (premiere()!.movie; as movie) {
+            @if (movie.posterUrl) {
+              <img class="poster" [src]="movie.posterUrl" [alt]="movie.title" />
+            } @else {
+              <span class="mystery">{{ movie.title }}</span>
+            }
+          } @else {
+            <span class="mystery">?</span>
+          }
+        </div>
+        <div class="curtain left" [style.transform]="'translateX(-' + curtainTravelPct() + '%)'"></div>
+        <div class="curtain right" [style.transform]="'translateX(' + curtainTravelPct() + '%)'"></div>
+      </div>
+
+      <div class="bulbs bottom">
+        @for (lit of bulbs(); track $index) {
+          <span class="bulb" [class.lit]="lit"></span>
+        }
+      </div>
+    </div>
+
+    @if (isOpen()) {
+      <!-- Reveal -->
+      @if (premiere()!.movie; as movie) {
+        <div class="movie">
           <h1>{{ movie.title }}</h1>
           @if (movie.releaseYear) { <p class="year">{{ movie.releaseYear }}</p> }
           <p class="rating">★ {{ movie.voteAverage | number: '1.1-1' }} · {{ movie.voteCount | number }} votes</p>
           <p class="overview">{{ movie.overview }}</p>
-          <p class="added">Added to your library — you contributed {{ premiere()!.myClaps }} clap{{ premiere()!.myClaps === 1 ? '' : 's' }}.</p>
-          <a routerLink="/library" class="primary asLink">See your library</a>
+          <p class="counts">
+            Opened with <strong>{{ premiere()!.totalClaps | number }}</strong> claps from
+            {{ premiere()!.contributors | number }}
+            {{ premiere()!.contributors === 1 ? 'person' : 'people' }}.
+          </p>
+          @if (premiere()!.myClaps > 0) {
+            <p class="added">
+              Added to your library — you contributed {{ premiere()!.myClaps }}
+              clap{{ premiere()!.myClaps === 1 ? '' : 's' }}.
+            </p>
+            <a routerLink="/library" class="primary asLink">See your library</a>
+          }
         </div>
-      </div>
+      }
+    } @else {
+      <!-- Active: clap to open -->
+      <h1>Clap to open it</h1>
+
+      <p class="counts">
+        <strong>{{ premiere()!.totalClaps | number }}</strong> / {{ premiere()!.threshold | number }} claps
+        <span class="pct">({{ progressPct() }}%)</span>
+      </p>
+      <p class="contributors">
+        {{ premiere()!.contributors | number }}
+        {{ premiere()!.contributors === 1 ? 'person is' : 'people are' }} clapping
+      </p>
+
+      @if (auth.isLoggedIn()) {
+        <button class="clap" (click)="clap()" [disabled]="clapping() || capReached()">👏 Clap</button>
+        <p class="mine">
+          You: {{ premiere()!.myClaps }} / {{ premiere()!.registeredClapCap }} claps
+          @if (capReached()) { <span class="capped">· you've reached your cap</span> }
+        </p>
+      } @else {
+        <a routerLink="/login" class="primary asLink">Log in to clap</a>
+      }
+
+      @if (premiere()!.expiresAt; as expiresAt) {
+        <p class="expiry">Opens for everyone at {{ expiresAt | date: 'shortTime' }} whatever happens.</p>
+      }
+
+      @if (error()) { <p class="err">{{ error() }}</p> }
     }
-  </section>
-} @else {
-  <!-- Active: clap to open -->
-  <section class="active">
-    <p class="kicker">A Premiere is live</p>
-    <h1>Clap to open it</h1>
-
-    <div class="bar">
-      <div class="fill" [style.width.%]="progressPct()"></div>
-    </div>
-    <p class="counts">
-      <strong>{{ premiere()!.totalClaps | number }}</strong> / {{ premiere()!.threshold | number }} claps
-      <span class="pct">({{ progressPct() }}%)</span>
-    </p>
-
-    <button class="clap" (click)="clap()" [disabled]="clapping() || capReached()">
-      👏 Clap
-    </button>
-
-    <p class="mine">
-      You: {{ premiere()!.myClaps }} / {{ premiere()!.registeredClapCap }} claps
-      @if (capReached()) { <span class="capped">· you've reached your cap</span> }
-    </p>
-
-    @if (error()) { <p class="err">{{ error() }}</p> }
   </section>
 }

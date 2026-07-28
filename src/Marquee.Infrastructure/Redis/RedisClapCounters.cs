@@ -91,6 +91,9 @@ end";
         return result;
     }
 
+    public async Task<long> GetContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct) =>
+        await _db.SetLengthAsync(RedisKeys.Contributors(scopeId, premiereId));
+
     public async Task<IReadOnlyDictionary<Guid, int>> GetContributorClapsAsync(
         string scopeId, Guid premiereId, IReadOnlyCollection<Guid> userIds, CancellationToken ct)
     {

@@ -1,18 +1,19 @@
 # Marquee load tests
 
-Load scripts for Iteration 2 (MARQUEE_PLAN.md) — used to break the naive clap counter under
-concurrency, then to prove the Redis-backed counter is exact and the open fires exactly once.
+Scripts that exercise the API the way real traffic would — no test hooks, no back doors, same public
+endpoints a browser hits.
 
-The recorded before/after numbers live in [`../../docs/concurrency-findings.md`](../../docs/concurrency-findings.md).
+Iteration 2's before/after numbers live in
+[`../../docs/concurrency-findings.md`](../../docs/concurrency-findings.md).
 
 ## Scripts
 
 | File | Runner | Use |
 |---|---|---|
-| `clap-storm.mjs` | Node 18+ (no deps) | The runnable driver. Two labelled scenarios (lost updates, double open) with a full tally. This is what produced the numbers in the findings doc. |
+| `clap-storm.mjs` | Node 18+ (no deps) | **Iteration 2.** Four labelled scenarios (lost updates, double open, contended open, cap enforcement) with a full tally. This is what produced the numbers in the findings doc. |
 | `clap-storm.js` | [k6](https://k6.io) | The canonical load test per CLAUDE.md §2. Single contended burst; emits `claps_opened_true`, `claps_accepted`, `claps_5xx` metrics. |
-
-Both hit the same public API and the same clap endpoint — no test hooks, no back doors.
+| `realtime-check.mjs` | Node 22+ (no deps) | **Iteration 3.** Asserts the acceptance criteria that need a running system: two watchers see the count move, broadcasts are throttled, the reveal arrives exactly once, and a Premiere auto-opens on its timer. Exits non-zero on failure. |
+| `signalr-client.mjs` | – | A ~90-line SignalR JSON-protocol client over the native `WebSocket`, so the realtime check stays dependency-free like the rest of this folder. |
 
 ## Prerequisites
 
@@ -22,19 +23,26 @@ Both hit the same public API and the same clap endpoint — no test hooks, no ba
 ## Running
 
 ```bash
-# Node driver (recommended here — zero install)
 cd tests/Marquee.LoadTests
-node clap-storm.mjs
 
-# or k6
-k6 run clap-storm.js
+# Iteration 2 — concurrency (zero install)
+node clap-storm.mjs
+k6 run clap-storm.js        # or the canonical k6 version
+
+# Iteration 3 — real-time and scheduling
+node realtime-check.mjs
+SKIP_AUTOOPEN=1 node realtime-check.mjs   # skip the ~1 minute timer wait
 ```
 
-Environment overrides (both scripts): `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS`.
+Environment overrides: `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS` (all scripts), plus `HUB_URL`
+and `SCOPE_ID` for the realtime check.
 
 ```bash
 USERS=500 API_BASE=http://localhost:5080/api node clap-storm.mjs
 ```
+
+Run the realtime check against a quiet system — the scheduler activating one of the day's Premieres
+mid-run is harmless, but it makes the output harder to read.
 
 ## Verifying the authoritative result
 

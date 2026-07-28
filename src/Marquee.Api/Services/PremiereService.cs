@@ -1,8 +1,9 @@
 using Marquee.Api.Dtos;
+using Marquee.Api.Realtime;
+using Marquee.Domain;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
-using Marquee.Domain.Rules;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
 using Marquee.Infrastructure.Tmdb;
@@ -16,6 +17,7 @@ public interface IPremiereService
     Task<PremiereDto> CreateAsync(CreatePremiereRequest request, CancellationToken ct);
     Task<PremiereDto?> GetAsync(Guid premiereId, Guid? viewerId, CancellationToken ct);
     Task<PremiereDto?> GetActiveAsync(Guid? viewerId, CancellationToken ct);
+    Task<PremiereDto?> GetNextScheduledAsync(CancellationToken ct);
     Task<ClapResult> ClapAsync(Guid premiereId, Guid userId, CancellationToken ct);
 }
 
@@ -23,84 +25,30 @@ public enum ClapOutcome { Ok, PremiereNotFound, NotActive, CapReached }
 
 public sealed record ClapResult(ClapOutcome Outcome, ClapResponse? Response);
 
-public sealed class NoMovieAvailableException(string message) : Exception(message);
-
 public sealed class PremiereService(
     MarqueeDbContext db,
-    ITmdbClient tmdb,
+    IPremiereFactory factory,
+    IPremiereOpener opener,
     IClapCounters counters,
     IPremiereCache cache,
-    IRandomSource rng,
-    IOptions<MarqueeRulesOptions> rules,
-    IOptions<RedisOptions> redisOptions,
-    IOptions<TmdbOptions> tmdbOptions,
-    ILogger<PremiereService> logger) : IPremiereService
+    IClapBroadcastQueue broadcasts,
+    IOptions<MarqueeScheduleOptions> schedule,
+    IOptions<TmdbOptions> tmdbOptions) : IPremiereService
 {
-    private const string GlobalScope = "global";
-    private readonly MarqueeRulesOptions _rules = rules.Value;
-    private readonly RedisOptions _redis = redisOptions.Value;
+    private readonly MarqueeScheduleOptions _schedule = schedule.Value;
     private readonly TmdbOptions _tmdb = tmdbOptions.Value;
 
+    /// <summary>
+    /// Admin manual trigger. Unlike a scheduled Premiere this activates immediately — it exists so a
+    /// Premiere can be run on demand without waiting for the day's schedule.
+    /// </summary>
     public async Task<PremiereDto> CreateAsync(CreatePremiereRequest request, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
-        var scheduledForRaw = request.ScheduledForUtc ?? now;
-        // Postgres timestamptz requires UTC-kind DateTimes; JSON-bound values may arrive Unspecified.
-        var scheduledFor = scheduledForRaw.Kind == DateTimeKind.Utc
-            ? scheduledForRaw
-            : DateTime.SpecifyKind(scheduledForRaw.ToUniversalTime(), DateTimeKind.Utc);
-        var duration = TimeSpan.FromMinutes(request.DurationMinutes is > 0 ? request.DurationMinutes.Value : 60);
+        var scheduledFor = request.ScheduledForUtc ?? DateTime.UtcNow;
+        var minutes = request.DurationMinutes is > 0 ? request.DurationMinutes.Value : _schedule.DurationMinutes;
 
-        // --- Movie selection at creation time (§4.6), never during the clap flow. ---
-        var usedTmdbIds = await db.Movies.Select(m => m.TmdbId).ToListAsync(ct);
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds.ToHashSet(), ct)
-            ?? throw new NoMovieAvailableException("TMDB returned no fresh movie for a new Premiere.");
-
-        var movie = new Movie
-        {
-            TmdbId = chosen.TmdbId,
-            Title = chosen.Title,
-            PosterPath = chosen.PosterPath,
-            ReleaseYear = chosen.ReleaseYear,
-            Overview = chosen.Overview,
-            VoteAverage = chosen.VoteAverage,
-            VoteCount = chosen.VoteCount,
-            CachedAt = now
-        };
-        db.Movies.Add(movie);
-
-        // --- Threshold + caps, computed once from the current registered user base (§4.1, §4.2). ---
-        var totalUsers = await db.Users.CountAsync(ct);
-        var localTime = TimeOnly.FromDateTime(scheduledFor.ToLocalTime());
-        var isPeak = ThresholdCalculator.IsPeak(localTime, _rules);
-        var threshold = ThresholdCalculator.Draw(totalUsers, isPeak, _rules, rng);
-        var caps = ClapCapCalculator.Compute(totalUsers, threshold, _rules);
-
-        // v1 has no scheduler, so a created Premiere activates immediately (iteration 3 adds scheduling).
-        var premiere = new Premiere
-        {
-            ScopeId = GlobalScope,
-            ScheduledFor = scheduledFor,
-            OpensAt = now,
-            ExpiresAt = now.Add(duration),
-            Threshold = threshold,
-            RegisteredClapCap = caps.RegisteredCap,
-            AnonymousClapCap = caps.AnonymousCap,
-            Status = PremiereStatus.Active,
-            Movie = movie,
-            TotalClaps = 0
-        };
-        db.Premieres.Add(premiere);
-        await db.SaveChangesAsync(ct);
-
-        // Warm the hot-path cache so the first clap never has to read Postgres for the rules.
-        await cache.SetAsync(ToMeta(premiere), ct);
-
-        logger.LogInformation(
-            "Created Premiere {PremiereId}: threshold {Threshold}, registeredCap {RegCap}, anonCap {AnonCap}, users {Users}, peak {Peak}",
-            premiere.Id, threshold, caps.RegisteredCap, caps.AnonymousCap, totalUsers, isPeak);
-
-        return ToDto(premiere, movie, totalClaps: 0, myClaps: 0);
+        var premiere = await factory.CreateAsync(scheduledFor, activateNow: true, TimeSpan.FromMinutes(minutes), ct);
+        return premiere.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdb);
     }
 
     public async Task<PremiereDto?> GetAsync(Guid premiereId, Guid? viewerId, CancellationToken ct)
@@ -112,8 +60,8 @@ public sealed class PremiereService(
         if (premiere is null)
             return null;
 
-        var (total, myClaps) = await LiveCountsAsync(premiere, viewerId, ct);
-        return ToDto(premiere, premiere.Movie, total, myClaps);
+        var counts = await LiveCountsAsync(premiere, viewerId, ct);
+        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb);
     }
 
     public async Task<PremiereDto?> GetActiveAsync(Guid? viewerId, CancellationToken ct)
@@ -121,14 +69,30 @@ public sealed class PremiereService(
         var premiere = await db.Premieres
             .Include(p => p.Movie)
             .AsNoTracking()
-            .Where(p => p.ScopeId == GlobalScope && p.Status == PremiereStatus.Active)
+            .Where(p => p.ScopeId == Scopes.Global && p.Status == PremiereStatus.Active)
             .OrderByDescending(p => p.OpensAt)
             .FirstOrDefaultAsync(ct);
         if (premiere is null)
             return null;
 
-        var (total, myClaps) = await LiveCountsAsync(premiere, viewerId, ct);
-        return ToDto(premiere, premiere.Movie, total, myClaps);
+        var counts = await LiveCountsAsync(premiere, viewerId, ct);
+        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb);
+    }
+
+    /// <summary>
+    /// The next Premiere the scheduler has lined up, so the page can say when to come back instead of
+    /// just "nothing is running". The movie stays hidden — a Scheduled Premiere is not terminal.
+    /// </summary>
+    public async Task<PremiereDto?> GetNextScheduledAsync(CancellationToken ct)
+    {
+        var premiere = await db.Premieres
+            .Include(p => p.Movie)
+            .AsNoTracking()
+            .Where(p => p.ScopeId == Scopes.Global && p.Status == PremiereStatus.Scheduled)
+            .OrderBy(p => p.ScheduledFor)
+            .FirstOrDefaultAsync(ct);
+
+        return premiere?.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdb);
     }
 
     /// <summary>
@@ -136,6 +100,9 @@ public sealed class PremiereService(
     /// increments the per-user and total counters together, so there is no read-modify-write race and
     /// no lost updates. The caller whose post-increment total equals the threshold fires the open,
     /// which is itself made exactly-once by a distributed lock plus a DB conditional update.
+    ///
+    /// The clap does not broadcast. It marks the Premiere dirty and returns; the broadcast loop turns
+    /// any number of claps in an interval into a single outbound message (Iteration 3).
     /// </summary>
     public async Task<ClapResult> ClapAsync(Guid premiereId, Guid userId, CancellationToken ct)
     {
@@ -158,123 +125,16 @@ public sealed class PremiereService(
             return new ClapResult(ClapOutcome.CapReached, capped);
         }
 
+        broadcasts.MarkDirty(meta.ScopeId, premiereId);
+
         // Exactly-once open: only the single caller whose INCR landed exactly on the threshold triggers it.
         var opened = false;
         if (reg.Total == meta.Threshold)
-            opened = await TryOpenAsync(meta, PremiereStatus.Opened, ct);
+            opened = await opener.TryOpenAsync(meta, PremiereStatus.Opened, ct);
 
         var capReachedNow = reg.UserClaps >= meta.RegisteredCap;
         var response = await BuildClapResponseAsync(meta, reg.Total, reg.UserClaps, capReachedNow, opened, ct);
         return new ClapResult(ClapOutcome.Ok, response);
-    }
-
-    /// <summary>
-    /// Exactly-once open. Two independent guards, per MARQUEE_PLAN.md Iteration 2 Part B:
-    ///   1. a distributed Redis lock (SET NX PX) so only one caller does the work at a time;
-    ///   2. a DB-level conditional UPDATE (... WHERE Status = Active) so even if the lock expired and
-    ///      a second caller slipped in, the open still commits exactly once.
-    /// The cutoff and the library/emblem fan-out are one transaction, so an open is all-or-nothing —
-    /// no more of the partial, inconsistent fan-out the naive path produced. Final counts are read
-    /// from Redis and persisted to Postgres here (Redis is the hot path, Postgres the record).
-    /// </summary>
-    private async Task<bool> TryOpenAsync(PremiereMeta meta, PremiereStatus openStatus, CancellationToken ct)
-    {
-        var lockTtl = TimeSpan.FromSeconds(_redis.OpenLockTtlSeconds);
-        var token = await counters.TryAcquireOpenLockAsync(meta.ScopeId, meta.PremiereId, lockTtl, ct);
-        if (token is null)
-            return false; // another caller is opening it
-
-        try
-        {
-            // Atomic cutoff: stop counting new claps in Redis BEFORE we snapshot, so every clap that
-            // was accepted (counted) is inside the snapshot we are about to fan out. Claps arriving
-            // after this are rejected as Closed — accepted ⇔ granted.
-            await counters.CloseAsync(meta.ScopeId, meta.PremiereId, ct);
-
-            // Snapshot the contributors and their counts from Redis as one consistent basis for both
-            // the persisted total and the fan-out, so TotalClaps always equals what we hand out.
-            var contributorIds = await counters.GetContributorsAsync(meta.ScopeId, meta.PremiereId, ct);
-            var clapMap = await counters.GetContributorClapsAsync(meta.ScopeId, meta.PremiereId, contributorIds, ct);
-            var finalCount = clapMap.Values.Sum();
-            var now = DateTime.UtcNow;
-
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-
-            var rows = await db.Premieres
-                .Where(p => p.Id == meta.PremiereId && p.Status == PremiereStatus.Active)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(p => p.Status, openStatus)
-                    .SetProperty(p => p.OpenedAt, now)
-                    .SetProperty(p => p.TotalClaps, finalCount)
-                    .SetProperty(p => p.UpdatedAt, now), ct);
-            if (rows == 0)
-            {
-                // The DB guard caught a would-be double open (lock expiry / retry). Do nothing.
-                await tx.RollbackAsync(ct);
-                return false;
-            }
-
-            await FanOutAsync(meta, clapMap, now, ct);
-            await tx.CommitAsync(ct);
-
-            // Reject any further claps straight from cache, then drop the now-final hot keys.
-            await cache.SetStatusAsync(meta.PremiereId, openStatus, ct);
-            await counters.CleanupAsync(meta.ScopeId, meta.PremiereId, ct);
-
-            logger.LogInformation(
-                "Premiere {PremiereId} opened ({Status}) with {Claps} claps across {Contributors} contributors.",
-                meta.PremiereId, openStatus, finalCount, clapMap.Count);
-            return true;
-        }
-        finally
-        {
-            await counters.ReleaseOpenLockAsync(meta.ScopeId, meta.PremiereId, token, ct);
-        }
-    }
-
-    /// <summary>
-    /// Materialise the durable record from the Redis snapshot: one Contribution per participant with
-    /// its emblem tier (§4.3), and a LibraryEntry for each unless they already own the movie. Runs
-    /// once, inside the open transaction. (Fully idempotent, queue-driven fan-out arrives in Iteration 4.)
-    /// </summary>
-    private async Task FanOutAsync(PremiereMeta meta, IReadOnlyDictionary<Guid, int> clapMap, DateTime now, CancellationToken ct)
-    {
-        if (clapMap.Count == 0)
-            return;
-
-        var userIds = clapMap.Keys.ToList();
-        var alreadyOwn = (await db.LibraryEntries
-            .Where(le => le.MovieId == meta.MovieId && userIds.Contains(le.UserId))
-            .Select(le => le.UserId)
-            .ToListAsync(ct)).ToHashSet();
-
-        foreach (var (userId, claps) in clapMap)
-        {
-            if (claps <= 0)
-                continue;
-
-            var tier = EmblemCalculator.Compute(claps, meta.RegisteredCap, _rules, isAnonymous: false);
-            db.Contributions.Add(new Contribution
-            {
-                PremiereId = meta.PremiereId,
-                UserId = userId,
-                ClapCount = claps,
-                EmblemTier = tier
-            });
-
-            if (!alreadyOwn.Contains(userId))
-            {
-                db.LibraryEntries.Add(new LibraryEntry
-                {
-                    UserId = userId,
-                    MovieId = meta.MovieId,
-                    PremiereId = meta.PremiereId,
-                    AcquiredAt = now
-                });
-            }
-        }
-
-        await db.SaveChangesAsync(ct);
     }
 
     // Cache-first metadata resolution; a miss (cold cache / restart) is backfilled from Postgres.
@@ -288,25 +148,29 @@ public sealed class PremiereService(
         if (premiere is null)
             return null;
 
-        var meta = ToMeta(premiere);
+        var meta = premiere.ToMeta();
         await cache.SetAsync(meta, ct);
         return meta;
     }
 
+    private readonly record struct LiveCounts(int Total, int Contributors, int MyClaps);
+
     // Live counts come from Redis while a Premiere is Active; once terminal, from the durable record.
-    private async Task<(int total, int myClaps)> LiveCountsAsync(Premiere premiere, Guid? viewerId, CancellationToken ct)
+    private async Task<LiveCounts> LiveCountsAsync(Premiere premiere, Guid? viewerId, CancellationToken ct)
     {
         if (premiere.Status == PremiereStatus.Active)
         {
             var total = (int)await counters.GetTotalAsync(premiere.ScopeId, premiere.Id, ct);
+            var contributors = (int)await counters.GetContributorCountAsync(premiere.ScopeId, premiere.Id, ct);
             var mine = viewerId is Guid uid
                 ? (int)await counters.GetUserClapsAsync(premiere.ScopeId, premiere.Id, uid, ct)
                 : 0;
-            return (total, mine);
+            return new LiveCounts(total, contributors, mine);
         }
 
+        var persistedContributors = await db.Contributions.CountAsync(c => c.PremiereId == premiere.Id, ct);
         var myClaps = await MyClapsAsync(premiere.Id, viewerId, ct);
-        return (premiere.TotalClaps, myClaps);
+        return new LiveCounts(premiere.TotalClaps, persistedContributors, myClaps);
     }
 
     private async Task<int> MyClapsAsync(Guid premiereId, Guid? viewerId, CancellationToken ct)
@@ -329,7 +193,7 @@ public sealed class PremiereService(
             status = PremiereStatus.Opened;
             var m = await db.Movies.AsNoTracking().FirstOrDefaultAsync(x => x.Id == meta.MovieId, ct);
             if (m is not null)
-                movie = BuildMovieDto(m);
+                movie = MovieDtoFactory.Create(m, _tmdb);
         }
 
         return new ClapResponse(
@@ -342,30 +206,5 @@ public sealed class PremiereService(
             capReached,
             opened,
             movie);
-    }
-
-    private PremiereMeta ToMeta(Premiere p) =>
-        new(p.Id, p.ScopeId, p.Status, p.Threshold, p.RegisteredClapCap, p.AnonymousClapCap, p.MovieId, p.ExpiresAt);
-
-    private PremiereDto ToDto(Premiere premiere, Movie movie, int totalClaps, int myClaps) =>
-        new(premiere.Id,
-            premiere.ScopeId,
-            premiere.Status.ToString(),
-            premiere.Threshold,
-            totalClaps,
-            premiere.RegisteredClapCap,
-            premiere.AnonymousClapCap,
-            premiere.OpensAt,
-            premiere.ExpiresAt,
-            premiere.OpenedAt,
-            myClaps,
-            premiere.RegisteredClapCap,
-            // Movie stays hidden until the Premiere opens (CLAUDE.md — reveal only on open).
-            premiere.IsTerminal ? BuildMovieDto(movie) : null);
-
-    private MovieDto BuildMovieDto(Movie m)
-    {
-        var posterUrl = string.IsNullOrEmpty(m.PosterPath) ? null : _tmdb.ImageBaseUrl.TrimEnd('/') + m.PosterPath;
-        return new MovieDto(m.TmdbId, m.Title, posterUrl, m.ReleaseYear, m.Overview, m.VoteAverage, m.VoteCount);
     }
 }
