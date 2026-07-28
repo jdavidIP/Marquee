@@ -41,8 +41,9 @@ and `SCOPE_ID` for the realtime check.
 USERS=500 API_BASE=http://localhost:5080/api node clap-storm.mjs
 ```
 
-Run the realtime check against a quiet system — the scheduler activating one of the day's Premieres
-mid-run is harmless, but it makes the output harder to read.
+The scheduler activating or auto-opening one of the day's Premieres mid-run is harmless — every
+script creates and targets its own Premiere — but it makes the output noisier. To take it out of the
+picture entirely, start the API with `Scheduler__Enabled=false`.
 
 ## Verifying the authoritative result
 
