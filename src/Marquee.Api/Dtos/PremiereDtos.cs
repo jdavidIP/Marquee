@@ -23,8 +23,12 @@ public sealed record PremiereDto(
     Guid Id,
     string ScopeId,
     string Status,
+    /// <summary>When the Premiere is due to go live. The only time field a Scheduled one has.</summary>
+    DateTime ScheduledFor,
     int Threshold,
     int TotalClaps,
+    /// <summary>Distinct participants so far — the live "how many of us are here" number.</summary>
+    int Contributors,
     int RegisteredClapCap,
     int AnonymousClapCap,
     DateTime? OpensAt,

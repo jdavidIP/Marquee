@@ -13,6 +13,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- Scheduling: Quartz.NET over Hangfire — see Scheduling/README notes in Program.cs. -->
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.*" />
   </ItemGroup>
 
   <ItemGroup>

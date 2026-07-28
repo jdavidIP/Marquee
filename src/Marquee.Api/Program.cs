@@ -1,6 +1,8 @@
 using System.Text;
 using Marquee.Api;
 using Marquee.Api.Auth;
+using Marquee.Api.Realtime;
+using Marquee.Api.Scheduling;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Infrastructure;
@@ -21,7 +23,8 @@ if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
-builder.Services.AddMarqueeApiServices();
+builder.Services.AddMarqueeApiServices(builder.Configuration);
+builder.Services.AddMarqueeScheduling(builder.Configuration);
 
 // --- Auth ---
 builder.Services
@@ -38,18 +41,39 @@ builder.Services
             ValidAudience = jwt.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
         };
+
+        // WebSocket and server-sent-event connections cannot carry an Authorization header, so the
+        // SignalR client passes the token as a query string parameter on the hub URL. Accept it
+        // only for hub paths — everywhere else the header remains the only way in.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments(HubRoutes.Premieres))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization(options => options.AddMarqueePolicies());
 
 // --- Web ---
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => policy
     .WithOrigins("http://localhost:4200")
     .AllowAnyHeader()
-    .AllowAnyMethod()));
+    .AllowAnyMethod()
+    // SignalR's browser client sends credentials on its negotiate request; with an explicit
+    // origin list this is safe (and Allow-Credentials is incompatible with a wildcard origin).
+    .AllowCredentials()));
 
 var app = builder.Build();
 
@@ -70,6 +94,7 @@ app.UseCors(CorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PremiereHub>(HubRoutes.Premieres);
 
 app.Run();
 

@@ -37,6 +37,12 @@ public interface IClapCounters
     /// <summary>The registered contributors recorded so far (the Redis SET), for the open-time fan-out.</summary>
     Task<IReadOnlyList<Guid>> GetContributorsAsync(string scopeId, Guid premiereId, CancellationToken ct);
 
+    /// <summary>
+    /// How many distinct participants have clapped (SCARD). Used for the live contributor count on
+    /// the throttled broadcast path, which must never pull the whole set just to size it.
+    /// </summary>
+    Task<long> GetContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct);
+
     /// <summary>Per-participant clap counts for the given users, read in one round trip (MGET).</summary>
     Task<IReadOnlyDictionary<Guid, int>> GetContributorClapsAsync(
         string scopeId, Guid premiereId, IReadOnlyCollection<Guid> userIds, CancellationToken ct);
