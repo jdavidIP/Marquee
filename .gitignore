@@ -500,3 +500,6 @@ npm-debug.log*
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# Claude Code local config (agents, settings) — not shared to the remote repo
+.claude/
