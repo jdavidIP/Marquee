@@ -97,3 +97,33 @@ public class LibraryEntryConfiguration : IEntityTypeConfiguration<LibraryEntry>
         b.HasIndex(e => new { e.UserId, e.MovieId }).IsUnique();
     }
 }
+
+public class FriendshipConfiguration : IEntityTypeConfiguration<Friendship>
+{
+    public void Configure(EntityTypeBuilder<Friendship> b)
+    {
+        b.ToTable("friendships");
+        b.HasKey(f => f.Id);
+        b.Property(f => f.Status).HasConversion<string>().HasMaxLength(20);
+
+        // Two FKs to the same table, so both navigations have to be named explicitly.
+        // Restrict rather than Cascade on the addressee side: Postgres refuses multiple cascade
+        // paths into one table, and users are blocked rather than deleted in this product anyway.
+        b.HasOne(f => f.Requester)
+            .WithMany(u => u.SentFriendRequests)
+            .HasForeignKey(f => f.RequesterId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(f => f.Addressee)
+            .WithMany(u => u.ReceivedFriendRequests)
+            .HasForeignKey(f => f.AddresseeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // CLAUDE.md §3. Note this is directional: it stops A asking B twice, but not A and B
+        // asking each other simultaneously. That reciprocal case is resolved in FriendshipService,
+        // which treats an incoming request from someone you already asked as a mutual accept.
+        b.HasIndex(f => new { f.RequesterId, f.AddresseeId }).IsUnique();
+
+        // "Requests addressed to me, still pending" is the inbox query and runs on every visit.
+        b.HasIndex(f => new { f.AddresseeId, f.Status });
+    }
+}
