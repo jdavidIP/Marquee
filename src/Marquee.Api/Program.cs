@@ -4,6 +4,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Messaging;
 using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
+using Marquee.Api.Security;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Infrastructure;
@@ -27,6 +28,7 @@ builder.Services.AddMarqueeInfrastructure(builder.Configuration);
 builder.Services.AddMarqueeApiServices(builder.Configuration);
 builder.Services.AddMarqueeScheduling(builder.Configuration);
 builder.Services.AddMarqueeApiMessaging(builder.Configuration);
+builder.Services.AddMarqueeRateLimiting(builder.Configuration);
 
 // --- Auth ---
 builder.Services
@@ -93,7 +95,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors(CorsPolicy);
+// Explicit, because the order of the next four is load-bearing. Authentication first so the rate
+// limiter and the block check both know who is calling; the block check before the rate limiter so
+// a blocked account cannot spend a bucket; the rate limiter after routing so it can see the
+// per-endpoint [EnableRateLimiting] metadata.
+app.UseRouting();
 app.UseAuthentication();
+app.UseBlockedUserCheck();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PremiereHub>(HubRoutes.Premieres);

@@ -36,6 +36,12 @@ public static class DependencyInjection
         services.AddSingleton<IClapCounters, RedisClapCounters>();
         services.AddSingleton<IPremiereCache, RedisPremiereCache>();
 
+        // --- Anti-abuse and social caches (Iteration 5). Singletons for the same reason as the
+        // counters: they hold no per-request state, only a multiplexed Redis connection. ---
+        services.AddSingleton<IClapGuards, RedisClapGuards>();
+        services.AddSingleton<IFriendGraphCache, RedisFriendGraphCache>();
+        services.AddSingleton<IUserBlockCache, RedisUserBlockCache>();
+
         var tmdbOpts = configuration.GetSection(TmdbOptions.SectionName).Get<TmdbOptions>() ?? new TmdbOptions();
         if (string.IsNullOrWhiteSpace(tmdbOpts.ApiKey))
         {
