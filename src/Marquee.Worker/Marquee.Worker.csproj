@@ -9,6 +9,19 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!--
+      Observability (Iteration 6). The worker is a plain generic Host, not a web app, so it takes the
+      three Serilog pieces individually rather than the Serilog.AspNetCore umbrella the API uses.
+
+      Serilog core is listed explicitly even though all three of the others depend on it. Without it
+      NuGet raises NU1107: the sink and the hosting package declare different minimum versions, and
+      Marquee.Infrastructure floats its own Serilog reference on top, leaving no single version NuGet
+      is willing to pick on its own. Naming it here is the documented resolution.
+    -->
+    <PackageReference Include="Serilog" Version="4.*" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.*" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.*" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.*" />
     <!-- EF Core, MassTransit and the Postgres provider all arrive via Marquee.Infrastructure. -->
 
   </ItemGroup>

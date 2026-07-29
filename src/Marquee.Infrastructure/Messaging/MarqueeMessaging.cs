@@ -1,4 +1,5 @@
 using MassTransit;
+using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +43,33 @@ public static class MarqueeMessaging
             if (useBusOutbox)
                 o.UseBusOutbox();
         });
+    }
+
+    /// <summary>
+    /// Registers the open generic correlation-id filters so MassTransit can resolve one per message
+    /// type. Both hosts call this; without it the Type-based filter registrations below have nothing
+    /// to construct.
+    /// </summary>
+    public static void AddMarqueeCorrelationFilters(this IServiceCollection services)
+    {
+        services.AddTransient(typeof(CorrelationIdPublishFilter<>));
+        services.AddTransient(typeof(CorrelationIdSendFilter<>));
+        services.AddTransient(typeof(CorrelationIdConsumeFilter<>));
+    }
+
+    /// <summary>
+    /// Carries the correlation id across the queue hop in both directions (Iteration 6): stamped on
+    /// everything published or sent, restored as ambient for everything consumed.
+    ///
+    /// Applied to the whole bus rather than per endpoint, because the property being tested — "the id
+    /// on the log line the worker writes matches the one the API returned" — has to hold for every
+    /// message, including any added later.
+    /// </summary>
+    public static void UseMarqueeCorrelationId(this IBusFactoryConfigurator cfg, IBusRegistrationContext context)
+    {
+        cfg.UsePublishFilter(typeof(CorrelationIdPublishFilter<>), context);
+        cfg.UseSendFilter(typeof(CorrelationIdSendFilter<>), context);
+        cfg.UseConsumeFilter(typeof(CorrelationIdConsumeFilter<>), context);
     }
 
     /// <summary>Broker connection, identical in both processes.</summary>

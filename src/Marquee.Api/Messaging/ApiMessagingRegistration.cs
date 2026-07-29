@@ -18,6 +18,7 @@ public static class ApiMessagingRegistration
         this IServiceCollection services, IConfiguration configuration)
     {
         var options = services.BindMessagingOptions(configuration);
+        services.AddMarqueeCorrelationFilters();
 
         services.AddMassTransit(x =>
         {
@@ -30,6 +31,7 @@ public static class ApiMessagingRegistration
             x.UsingRabbitMq((context, cfg) =>
             {
                 cfg.ConfigureMarqueeHost(options);
+                cfg.UseMarqueeCorrelationId(context);
 
                 // Endpoints are declared explicitly rather than via ConfigureEndpoints(context), so
                 // the queue names are the ones in QueueNames and nothing extra gets provisioned.

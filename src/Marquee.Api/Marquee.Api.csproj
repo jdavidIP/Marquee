@@ -15,6 +15,12 @@
     </PackageReference>
     <!-- Scheduling: Quartz.NET over Hangfire — see Scheduling/README notes in Program.cs. -->
     <PackageReference Include="Quartz.Extensions.Hosting" Version="3.*" />
+    <!--
+      Observability (Iteration 6). Serilog.AspNetCore is the umbrella package: it brings the console
+      sink, appsettings-driven configuration, and the request-logging middleware that replaces
+      ASP.NET Core's several-lines-per-request default with one structured summary line.
+    -->
+    <PackageReference Include="Serilog.AspNetCore" Version="10.*" />
   </ItemGroup>
 
   <ItemGroup>

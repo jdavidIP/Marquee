@@ -28,6 +28,13 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.*" />
     <PackageReference Include="StackExchange.Redis" Version="2.*" />
     <!--
+      Serilog core only (Iteration 6) — no sinks, no hosting integration. It is here rather than in
+      the two host projects because the correlation-id enricher has to be shared by both, and
+      duplicating an enricher is how the API and the worker end up labelling logs differently.
+      Choosing sinks and levels stays a host concern.
+    -->
+    <PackageReference Include="Serilog" Version="4.*" />
+    <!--
       Queue (Iteration 4). Pinned to the 8.x line deliberately: MassTransit 9 moved to a
       commercial-gated licence, 8.x is Apache-2.0. The outbox/inbox API used here is identical
       in both, so this is a licensing choice, not a capability one.
