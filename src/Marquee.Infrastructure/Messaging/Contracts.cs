@@ -1,7 +1,15 @@
 namespace Marquee.Infrastructure.Messaging;
 
-/// <summary>One participant's contribution to a Premiere, as carried on the wire.</summary>
+/// <summary>One registered participant's contribution to a Premiere, as carried on the wire.</summary>
 public sealed record ContributorClaps(Guid UserId, int Claps);
+
+/// <summary>
+/// One anonymous participant's contribution (Iteration 5). Carries a session id, never a user id —
+/// an anonymous participant is not an account and is never linked to one. They count towards the
+/// threshold and are persisted as a Contribution row, but earn no emblem and no library entry
+/// (CLAUDE.md §4.3).
+/// </summary>
+public sealed record AnonymousContributorClaps(string SessionId, int Claps);
 
 /// <summary>
 /// Published by the API the moment a Premiere is marked opened, and consumed by
@@ -26,9 +34,16 @@ public sealed record PremiereOpened(
     int Threshold,
     /// <summary>Per-participant cap, the denominator of the emblem calculation (§4.2, §4.3).</summary>
     int RegisteredClapCap,
+    /// <summary>Registered and anonymous claps together — what the Premiere actually drew.</summary>
     int TotalClaps,
     DateTime OpenedAt,
-    IReadOnlyList<ContributorClaps> Contributors);
+    IReadOnlyList<ContributorClaps> Contributors,
+    /// <summary>
+    /// Added in Iteration 5. Nullable on the wire on purpose: an event published by a pre-Iteration-5
+    /// API and still sitting in the outbox or the queue during a deploy has no such field, and must
+    /// deserialise and fan out rather than dead-letter. Consumers coalesce it to empty.
+    /// </summary>
+    IReadOnlyList<AnonymousContributorClaps>? AnonymousContributors = null);
 
 /// <summary>
 /// Published by the worker once the fan-out is durably committed, and consumed by the API, which

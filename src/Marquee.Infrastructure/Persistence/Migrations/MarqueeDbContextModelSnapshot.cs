@@ -65,6 +65,39 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.ToTable("contributions", (string)null);
                 });
 
+            modelBuilder.Entity("Marquee.Domain.Entities.Friendship", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AddresseeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequesterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AddresseeId", "Status");
+
+                    b.HasIndex("RequesterId", "AddresseeId")
+                        .IsUnique();
+
+                    b.ToTable("friendships", (string)null);
+                });
+
             modelBuilder.Entity("Marquee.Domain.Entities.LibraryEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -442,6 +475,25 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Marquee.Domain.Entities.Friendship", b =>
+                {
+                    b.HasOne("Marquee.Domain.Entities.User", "Addressee")
+                        .WithMany("ReceivedFriendRequests")
+                        .HasForeignKey("AddresseeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Marquee.Domain.Entities.User", "Requester")
+                        .WithMany("SentFriendRequests")
+                        .HasForeignKey("RequesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Addressee");
+
+                    b.Navigation("Requester");
+                });
+
             modelBuilder.Entity("Marquee.Domain.Entities.LibraryEntry", b =>
                 {
                     b.HasOne("Marquee.Domain.Entities.Movie", "Movie")
@@ -502,6 +554,10 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.Navigation("Contributions");
 
                     b.Navigation("LibraryEntries");
+
+                    b.Navigation("ReceivedFriendRequests");
+
+                    b.Navigation("SentFriendRequests");
                 });
 #pragma warning restore 612, 618
         }

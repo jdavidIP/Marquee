@@ -30,6 +30,14 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
+        // Permissions are stamped into the token from the role at issue time, so authorisation is a
+        // claim check with no database round trip. The cost is that a permission change only takes
+        // effect on the holder's next login — acceptable for capabilities that change rarely, and
+        // deliberately not how blocking works: that has to bite immediately, so it is checked per
+        // request against Redis instead (see BlockedUserMiddleware).
+        claims.AddRange(RolePermissions.For(user.Role)
+            .Select(permission => new Claim(MarqueePermissions.ClaimType, permission)));
+
         var token = new JwtSecurityToken(
             issuer: _opts.Issuer,
             audience: _opts.Audience,

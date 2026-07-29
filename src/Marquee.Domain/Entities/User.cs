@@ -14,4 +14,10 @@ public class User : AuditableEntity
 
     public ICollection<Contribution> Contributions { get; set; } = new List<Contribution>();
     public ICollection<LibraryEntry> LibraryEntries { get; set; } = new List<LibraryEntry>();
+
+    /// <summary>Friend requests this user sent. Accepted ones are friendships like any other.</summary>
+    public ICollection<Friendship> SentFriendRequests { get; set; } = new List<Friendship>();
+
+    /// <summary>Friend requests addressed to this user.</summary>
+    public ICollection<Friendship> ReceivedFriendRequests { get; set; } = new List<Friendship>();
 }

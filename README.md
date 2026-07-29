@@ -5,13 +5,15 @@ times a day a **Premiere** appears containing a hidden movie; it opens only when
 **clap** for it before its 60-minute timer runs out. See [`CLAUDE.md`](./CLAUDE.md) for the full
 domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iteration build plan.
 
-> **Status: Iteration 4 complete** — the expensive part of an open is off the request path. The API
-> marks a Premiere opened and publishes `PremiereOpened` through a transactional outbox, then returns;
-> `Marquee.Worker` consumes it, writes every contribution, emblem and library row, and signals the
-> reveal back through the queue for SignalR to broadcast. Consumers are idempotent, retries back off
-> exponentially, and poison messages are dead-lettered. Design notes in
-> [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md); Iteration 2's concurrency work in
-> [`docs/concurrency-findings.md`](./docs/concurrency-findings.md).
+> **Status: Iteration 5 complete** — the app is now survivable in public and has its social layer.
+> Claps are guarded by a per-participant cap, a debounce, idempotency keys, and a sliding-window rate
+> limiter that partitions per caller; visitors can clap under a short-lived signed anonymous session
+> without ever becoming a user. Authorisation is permission-based rather than a blanket admin flag,
+> and blocking bites on every request rather than only at login. Friendships, viewer-shaped profiles,
+> and a per-request Redis `SINTER` for "which of my friends clapped" complete the social layer.
+> Design notes in [`docs/security-and-social.md`](./docs/security-and-social.md);
+> the queue work in [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md);
+> Iteration 2's concurrency work in [`docs/concurrency-findings.md`](./docs/concurrency-findings.md).
 
 ## Architecture
 
@@ -144,6 +146,7 @@ cd tests/Marquee.LoadTests
 node clap-storm.mjs        # iteration 2 — concurrency: lost updates, double open, cap enforcement
 node realtime-check.mjs    # iteration 3 — two watchers, throttling, reveal, timer auto-open
 node queue-check.mjs       # iteration 4 — fan-out, crash recovery, replay, dead-lettering
+node security-check.mjs    # iteration 5 — throttling, privacy, friend intersection, admin 403s
 ```
 
 `realtime-check.mjs` exits non-zero if any check fails, and includes a ~1 minute wait while it proves
@@ -180,6 +183,18 @@ it waits for something to restart it. Set `SKIP_CRASH=1` to skip that part.
 Verified by `tests/Marquee.LoadTests/queue-check.mjs` against a running stack; see
 [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md) for the recorded run.
 
+## Iteration 5 acceptance criteria — met
+
+- A script hammering the clap endpoint is throttled without degrading service for normal users ✔
+- A stranger requesting a private profile receives only username and bio, and the private user still
+  appears in search ✔
+- Friend intersection is computed per request, not broadcast ✔
+- Non-admin requests to admin endpoints return 403 ✔
+
+Verified by `tests/Marquee.LoadTests/security-check.mjs` against a running stack; see
+[`docs/security-and-social.md`](./docs/security-and-social.md) for the recorded run and the
+reasoning behind the guard ordering.
+
 ## Key endpoints
 
 | Method | Route | Auth | Purpose |
@@ -187,12 +202,40 @@ Verified by `tests/Marquee.LoadTests/queue-check.mjs` against a running stack; s
 | POST | `/api/auth/register` | – | Create account, returns JWT |
 | POST | `/api/auth/login` | – | Log in, returns JWT |
 | GET | `/api/auth/me` | user | Current user |
-| POST | `/api/premieres` | admin | Create + activate a Premiere on demand |
+| POST | `/api/sessions/anonymous` | – | Issue a short-lived anonymous session so a visitor can clap |
+| POST | `/api/premieres` | `CanManagePremieres` | Create + activate a Premiere on demand |
 | GET | `/api/premieres/active` | optional | The live Premiere (movie hidden until open) |
 | GET | `/api/premieres/next` | optional | The next Premiere the scheduler has lined up |
 | GET | `/api/premieres/{id}` | optional | One Premiere (initial load; counts then arrive over the hub) |
-| POST | `/api/premieres/{id}/clap` | user | Clap; the threshold-crossing clap opens the Premiere and queues the fan-out |
+| POST | `/api/premieres/{id}/clap` | user *or* anonymous session | Clap; the threshold-crossing clap opens the Premiere and queues the fan-out. Accepts `Idempotency-Key` |
+| GET | `/api/premieres/{id}/friends` | user | Which of your friends clapped — per viewer, never broadcast |
 | GET | `/api/library` | user | The signed-in user's movies |
+| GET | `/api/users?query=` | optional | Search users by username prefix; private accounts included |
+| GET | `/api/users/{username}` | optional | Profile, shaped by viewer (see below) |
+| PATCH | `/api/users/me` | user | Update your own bio / privacy |
+| GET | `/api/friends` | user | Accepted friends |
+| GET | `/api/friends/requests` | user | Pending requests, both directions |
+| POST | `/api/friends/requests` | user | Send a friend request by username |
+| POST | `/api/friends/requests/{id}/accept` | user | Accept |
+| POST | `/api/friends/requests/{id}/reject` | user | Reject |
+| DELETE | `/api/friends/{userId}` | user | Unfriend |
+| GET | `/api/admin/users` | `CanViewUsers` | List / search users |
+| POST | `/api/admin/users/{id}/block` · `/unblock` | `CanBlockUsers` | Block or unblock an account |
+| GET | `/api/admin/premieres` | `CanManagePremieres` | All Premieres, movie visible before the reveal |
+| PATCH | `/api/admin/premieres/{id}/schedule` | `CanManagePremieres` | Change a Scheduled Premiere's time |
+| POST | `/api/admin/premieres/{id}/movie` | `CanManagePremieres` | Regenerate the hidden movie |
+| POST | `/api/admin/premieres/{id}/activate` | `CanManagePremieres` | Start a Scheduled Premiere now |
+
+### Security model in one paragraph
+
+Authorisation is **permission-based**: endpoints require a capability (`premieres:manage`,
+`users:view`, `users:block`) carried as a JWT claim, mapped from the role at login, so permissions
+can diverge from roles without touching call sites. Blocking is the exception that cannot ride in a
+token — it is checked on every authenticated request against a short-TTL Redis cache, because a JWT
+issued before the block stays valid otherwise. Clapping is guarded by four independent mechanisms in
+a specific order (rate limiter → block check → idempotency → debounce → cap), and a profile a
+stranger is not entitled to see returns a genuinely smaller payload rather than one with nulls. Full
+reasoning in [`docs/security-and-social.md`](./docs/security-and-social.md).
 
 ### Real-time hub
 

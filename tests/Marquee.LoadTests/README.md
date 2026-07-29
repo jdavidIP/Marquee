@@ -15,6 +15,7 @@ Iteration 2's before/after numbers live in
 | `realtime-check.mjs` | Node 22+ (no deps) | **Iteration 3.** Asserts the acceptance criteria that need a running system: two watchers see the count move, broadcasts are throttled, the reveal arrives exactly once, and a Premiere auto-opens on its timer. Exits non-zero on failure. |
 | `signalr-client.mjs` | – | A ~90-line SignalR JSON-protocol client over the native `WebSocket`, so the realtime check stays dependency-free like the rest of this folder. |
 | `queue-check.mjs` | Node 22+ (no deps) | **Iteration 4.** Asserts the queue acceptance criteria: the worker fans out off the request path, a killed-and-restarted worker loses and duplicates nothing, a replayed event changes nothing, and a poisoned message is dead-lettered without blocking the queue. Exits non-zero on failure. |
+| `security-check.mjs` | Node 22+ (no deps) | **Iteration 5.** Asserts the security and social acceptance criteria: an abusive script is throttled while a normal user beside it is not, a private profile shows a stranger only username and bio while staying discoverable in search, friend intersection is per viewer and never broadcast, and admin endpoints return 403/401. With `OPEN_PREMIERE=1` it also drives a Premiere open and checks the anonymous fan-out. Exits non-zero on failure. |
 
 ## Prerequisites
 
@@ -53,15 +54,30 @@ SKIP_AUTOOPEN=1 node realtime-check.mjs   # skip the ~1 minute timer wait
 # Iteration 4 — queue, outbox, idempotency, DLQ
 node queue-check.mjs
 SKIP_CRASH=1 node queue-check.mjs         # skip the check that kills the worker
+
+# Iteration 5 — security, anti-abuse, social
+node security-check.mjs
+OPEN_PREMIERE=1 node security-check.mjs   # also open the Premiere and check the anonymous fan-out
 ```
+
+`security-check.mjs` reuses the currently Active Premiere rather than creating one, so it does not
+burn a movie from the stub pool unless you pass `OPEN_PREMIERE=1`. It is deliberately frugal with
+claps — a dev threshold is only 30–50 — and stops with a clear message if the Premiere opens
+mid-run rather than reporting a cascade of unrelated failures.
 
 The crash check deliberately kills `Marquee.Worker` and then waits (up to 120s) for a process to
 reappear, so run it with something supervising the worker — a `dotnet watch`, a restart loop, or just
 restart it by hand when the script prompts.
 
 Environment overrides: `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS` (all scripts), plus `HUB_URL`
-and `SCOPE_ID` for the realtime check, and `RABBIT_API` / `RABBIT_USER` / `RABBIT_PASS` /
-`PG_CONTAINER` for the queue check.
+and `SCOPE_ID` for the realtime check, `RABBIT_API` / `RABBIT_USER` / `RABBIT_PASS` /
+`PG_CONTAINER` / `RABBIT_CONTAINER` for the queue check, and `PG_CONTAINER` / `HUB_URL` /
+`PREMIERE_ID` / `OPEN_PREMIERE` for the security check.
+
+> The security check creates a dozen or so accounts, and `/api/auth/register` is IP-rate-limited
+> (credential-stuffing brake). It backs off and retries on a 429, and the Development config raises
+> the limit to 100 per 5 minutes for exactly this reason — the shipped default of 20 is the
+> production-shaped value.
 
 ```bash
 USERS=500 API_BASE=http://localhost:5080/api node clap-storm.mjs

@@ -1,5 +1,6 @@
 using Marquee.Api.Auth;
 using Marquee.Api.Realtime;
+using Marquee.Api.Security;
 using Marquee.Api.Services;
 
 namespace Marquee.Api;
@@ -17,6 +18,17 @@ public static class ApiServiceRegistration
         services.AddScoped<ILibraryService, LibraryService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
+
+        // --- Security and social (Iteration 5) ---
+        services.Configure<AnonymousSessionOptions>(
+            configuration.GetSection(AnonymousSessionOptions.SectionName));
+        services.Configure<ClapGuardOptions>(configuration.GetSection(ClapGuardOptions.SectionName));
+        services.AddSingleton<IAnonymousSessionService, AnonymousSessionService>();
+        // Scoped: it caches its answer in HttpContext.Items, so its lifetime is the request's.
+        services.AddScoped<IParticipantResolver, ParticipantResolver>();
+        services.AddScoped<IFriendshipService, FriendshipService>();
+        services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IAdminService, AdminService>();
 
         // --- Real-time (Iteration 3) ---
         services.Configure<RealtimeOptions>(configuration.GetSection(RealtimeOptions.SectionName));

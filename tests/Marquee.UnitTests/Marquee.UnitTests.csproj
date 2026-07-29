@@ -21,6 +21,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Marquee.Domain\Marquee.Domain.csproj" />
+    <!--
+      Added in Iteration 5. The domain formulas are still the bulk of what is unit tested, but the
+      anonymous-session token and the role/permission map are pure functions of their input too —
+      no database, no Redis, no HTTP — and they are security-critical enough to be worth pinning
+      down here rather than only through an end-to-end script.
+    -->
+    <ProjectReference Include="..\..\src\Marquee.Api\Marquee.Api.csproj" />
   </ItemGroup>
 
 </Project>

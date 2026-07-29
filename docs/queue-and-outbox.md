@@ -232,9 +232,12 @@ state, the sampled dashboard number and the authoritative one are not interchang
 - **Contributor count immediately after an open.** `GET /premieres/{id}` counts `contributions` rows
   for a terminal Premiere, so in the sub-second window before the fan-out lands it can report 0.
   Self-correcting, and the reveal broadcast carries the correct number.
-- **Anonymous participants are not fanned out.** The snapshot only carries registered users, matching
-  the Redis contributor set. Anonymous participation arrives in Iteration 5 (§ plan), at which point
-  the contract gains an anonymous list.
+- ~~**Anonymous participants are not fanned out.**~~ **Resolved in Iteration 5.** `PremiereOpened`
+  now carries an `AnonymousContributors` list alongside the registered one, and the worker writes a
+  `Contribution` row for each — with no emblem and no library entry (§4.3). The field is nullable on
+  the wire on purpose, so an event published by a pre-Iteration-5 API and still sitting in the outbox
+  during a deploy deserialises and fans out rather than dead-lettering. See
+  [`security-and-social.md`](./security-and-social.md).
 - **Single consumer instance assumed.** Correctness does not depend on it — the inbox, the unique
   constraints and the retry all hold with several workers — but nothing has been load-tested with
   more than one, and the SignalR reveal still has to come back through the single API process because
