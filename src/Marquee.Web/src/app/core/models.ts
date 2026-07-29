@@ -71,6 +71,23 @@ export interface PremiereOpenedNotification {
   movie: MovieDto | null;
 }
 
+/** A short-lived session that lets a visitor clap without an account (Iteration 5). */
+export interface AnonymousSessionResponse {
+  sessionId: string;
+  token: string;
+  expiresAtUtc: string;
+}
+
+export interface FriendContributorDto {
+  userId: string;
+  username: string;
+}
+
+export interface FriendContributorsResponse {
+  premiereId: string;
+  friends: FriendContributorDto[];
+}
+
 export interface LibraryEntryDto {
   movieId: string;
   movie: MovieDto;

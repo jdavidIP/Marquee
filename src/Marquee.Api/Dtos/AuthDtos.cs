@@ -14,6 +14,12 @@ public sealed record LoginRequest(
 
 public sealed record AuthResponse(string Token, UserDto User);
 
+/// <summary>
+/// An issued anonymous session (Iteration 5). <c>SessionId</c> is returned alongside the token
+/// purely so a client can show "you are clapping as a guest" — the token is the credential.
+/// </summary>
+public sealed record AnonymousSessionResponse(string SessionId, string Token, DateTime ExpiresAtUtc);
+
 public sealed record UserDto(
     Guid Id,
     string Username,
