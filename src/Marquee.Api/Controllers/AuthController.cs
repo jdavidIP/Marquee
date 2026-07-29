@@ -1,9 +1,11 @@
 using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
+using Marquee.Api.Security;
 using Marquee.Api.Services;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Marquee.Api.Controllers;
@@ -12,6 +14,10 @@ namespace Marquee.Api.Controllers;
 [Route("api/auth")]
 public class AuthController(IAuthService auth, MarqueeDbContext db) : ControllerBase
 {
+    // Register and login are partitioned by IP rather than by participant: an attacker working
+    // through a credential list has no identity of their own to throttle, and the account they are
+    // guessing at is the victim's, not theirs.
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken ct)
     {
@@ -26,6 +32,7 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
         }
     }
 
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken ct)
     {
