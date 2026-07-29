@@ -1,6 +1,7 @@
 using System.Text;
 using Marquee.Api;
 using Marquee.Api.Auth;
+using Marquee.Api.Messaging;
 using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
 using Marquee.Domain.Entities;
@@ -25,6 +26,7 @@ if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
 builder.Services.AddMarqueeApiServices(builder.Configuration);
 builder.Services.AddMarqueeScheduling(builder.Configuration);
+builder.Services.AddMarqueeApiMessaging(builder.Configuration);
 
 // --- Auth ---
 builder.Services

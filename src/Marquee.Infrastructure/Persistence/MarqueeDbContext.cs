@@ -1,4 +1,5 @@
 using Marquee.Domain.Entities;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace Marquee.Infrastructure.Persistence;
@@ -15,6 +16,11 @@ public class MarqueeDbContext(DbContextOptions<MarqueeDbContext> options) : DbCo
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MarqueeDbContext).Assembly);
+
+        // MassTransit's outbox/inbox tables (Iteration 4). They live in this DbContext on purpose:
+        // the outbox is only atomic with a domain write if both go through the same connection and
+        // transaction. InboxState additionally gives consumers broker-redelivery dedup for free.
+        modelBuilder.AddTransactionalOutboxEntities();
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

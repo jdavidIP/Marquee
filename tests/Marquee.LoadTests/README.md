@@ -14,11 +14,28 @@ Iteration 2's before/after numbers live in
 | `clap-storm.js` | [k6](https://k6.io) | The canonical load test per CLAUDE.md §2. Single contended burst; emits `claps_opened_true`, `claps_accepted`, `claps_5xx` metrics. |
 | `realtime-check.mjs` | Node 22+ (no deps) | **Iteration 3.** Asserts the acceptance criteria that need a running system: two watchers see the count move, broadcasts are throttled, the reveal arrives exactly once, and a Premiere auto-opens on its timer. Exits non-zero on failure. |
 | `signalr-client.mjs` | – | A ~90-line SignalR JSON-protocol client over the native `WebSocket`, so the realtime check stays dependency-free like the rest of this folder. |
+| `queue-check.mjs` | Node 22+ (no deps) | **Iteration 4.** Asserts the queue acceptance criteria: the worker fans out off the request path, a killed-and-restarted worker loses and duplicates nothing, a replayed event changes nothing, and a poisoned message is dead-lettered without blocking the queue. Exits non-zero on failure. |
 
 ## Prerequisites
 
-- Postgres up (`docker compose up -d`) and the API running on `http://localhost:5080`.
+- Postgres, Redis and RabbitMQ up (`docker compose up -d`) and the API running on
+  `http://localhost:5080`.
 - The seeded dev admin (`admin` / `admin12345`) exists — the API seeds it on startup.
+- For `queue-check.mjs`: `Marquee.Worker` running, plus `docker` on `PATH` (it reads the
+  authoritative numbers straight out of the Postgres container).
+
+### The stub TMDB pool is a hard ceiling
+
+With no `Tmdb__ApiKey` configured, movies come from `StubTmdbClient`'s fixed pool of **12** films, and
+§4.6 forbids a movie ever repeating. That caps a given database at 12 Premieres in total — which these
+scripts burn through quickly, after which premiere creation fails with
+`TMDB returned no fresh movie for a new Premiere`. Either set a real key, or clear the tables before a
+long session:
+
+```bash
+docker exec -e PGPASSWORD=marquee marquee-postgres psql -U marquee -d marquee \
+  -c 'DELETE FROM library_entries; DELETE FROM contributions; DELETE FROM premieres; DELETE FROM movies;'
+```
 
 ## Running
 
@@ -32,10 +49,19 @@ k6 run clap-storm.js        # or the canonical k6 version
 # Iteration 3 — real-time and scheduling
 node realtime-check.mjs
 SKIP_AUTOOPEN=1 node realtime-check.mjs   # skip the ~1 minute timer wait
+
+# Iteration 4 — queue, outbox, idempotency, DLQ
+node queue-check.mjs
+SKIP_CRASH=1 node queue-check.mjs         # skip the check that kills the worker
 ```
 
+The crash check deliberately kills `Marquee.Worker` and then waits (up to 120s) for a process to
+reappear, so run it with something supervising the worker — a `dotnet watch`, a restart loop, or just
+restart it by hand when the script prompts.
+
 Environment overrides: `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS` (all scripts), plus `HUB_URL`
-and `SCOPE_ID` for the realtime check.
+and `SCOPE_ID` for the realtime check, and `RABBIT_API` / `RABBIT_USER` / `RABBIT_PASS` /
+`PG_CONTAINER` for the queue check.
 
 ```bash
 USERS=500 API_BASE=http://localhost:5080/api node clap-storm.mjs
