@@ -1,8 +1,10 @@
+using Marquee.Domain;
+
 namespace Marquee.Infrastructure.Redis;
 
 public enum ClapCountOutcome
 {
-    /// <summary>The clap was counted (per-user and total incremented).</summary>
+    /// <summary>The clap was counted (per-participant and total incremented).</summary>
     Counted,
     /// <summary>The participant is already at their cap; nothing was incremented.</summary>
     CapReached,
@@ -15,37 +17,62 @@ public enum ClapCountOutcome
 /// value straight out of Redis INCR — the single caller whose Total equals the threshold is the one
 /// that fires the open (MARQUEE_PLAN.md, Iteration 2 Part B).
 /// </summary>
-public readonly record struct ClapRegistration(ClapCountOutcome Outcome, long UserClaps, long Total);
+public readonly record struct ClapRegistration(ClapCountOutcome Outcome, long ParticipantClaps, long Total);
 
 /// <summary>
 /// The Redis hot path for clap counting. All counting is atomic (INCR / Lua), never a
 /// read-modify-write. Postgres remains the durable record, written once at open time.
+///
+/// Since Iteration 5 every counting operation is expressed over a <see cref="Participant"/> rather
+/// than a user id: anonymous visitors are counted and capped exactly like registered users (only
+/// their rewards differ, §4.3), so the hot path has no reason to distinguish them. The two are kept
+/// in separate contributor sets purely so the friend intersection and the fan-out do not have to
+/// filter one kind out of the other.
 /// </summary>
 public interface IClapCounters
 {
     /// <summary>
     /// Atomically enforce the per-participant cap and, if under it, increment the participant's
-    /// counter and the Premiere total, and record the participant in the contributors set — all in
-    /// one Lua script so no request can exceed its cap or lose an update under concurrency.
+    /// counter and the Premiere total, and record the participant in the matching contributors set —
+    /// all in one Lua script so no request can exceed its cap or lose an update under concurrency.
     /// </summary>
-    Task<ClapRegistration> TryClapAsync(string scopeId, Guid premiereId, Guid userId, int cap, CancellationToken ct);
+    Task<ClapRegistration> TryClapAsync(
+        string scopeId, Guid premiereId, Participant participant, int cap, CancellationToken ct);
 
+    /// <summary>Every clap on this Premiere, registered and anonymous alike.</summary>
     Task<long> GetTotalAsync(string scopeId, Guid premiereId, CancellationToken ct);
 
-    Task<long> GetUserClapsAsync(string scopeId, Guid premiereId, Guid userId, CancellationToken ct);
+    Task<long> GetParticipantClapsAsync(
+        string scopeId, Guid premiereId, Participant participant, CancellationToken ct);
 
     /// <summary>The registered contributors recorded so far (the Redis SET), for the open-time fan-out.</summary>
     Task<IReadOnlyList<Guid>> GetContributorsAsync(string scopeId, Guid premiereId, CancellationToken ct);
 
+    /// <summary>The anonymous session ids recorded so far. They earn nothing, but they are persisted.</summary>
+    Task<IReadOnlyList<string>> GetAnonymousContributorsAsync(string scopeId, Guid premiereId, CancellationToken ct);
+
     /// <summary>
-    /// How many distinct participants have clapped (SCARD). Used for the live contributor count on
-    /// the throttled broadcast path, which must never pull the whole set just to size it.
+    /// How many distinct participants have clapped (SCARD of both sets). Used for the live
+    /// contributor count on the throttled broadcast path, which must never pull the whole set just
+    /// to size it.
     /// </summary>
     Task<long> GetContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct);
 
-    /// <summary>Per-participant clap counts for the given users, read in one round trip (MGET).</summary>
+    /// <summary>Per-user clap counts for the given users, read in one round trip (MGET).</summary>
     Task<IReadOnlyDictionary<Guid, int>> GetContributorClapsAsync(
         string scopeId, Guid premiereId, IReadOnlyCollection<Guid> userIds, CancellationToken ct);
+
+    /// <summary>Per-session clap counts for the given anonymous sessions, read in one round trip (MGET).</summary>
+    Task<IReadOnlyDictionary<string, int>> GetAnonymousContributorClapsAsync(
+        string scopeId, Guid premiereId, IReadOnlyCollection<string> sessionIds, CancellationToken ct);
+
+    /// <summary>
+    /// Which of <paramref name="viewerId"/>'s friends contributed to this Premiere, computed with a
+    /// single SINTER between the viewer's friends set and the Premiere's registered contributors
+    /// (MARQUEE_PLAN.md, Iteration 5). Answered per request and per viewer — never broadcast.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetFriendContributorsAsync(
+        string scopeId, Guid premiereId, Guid viewerId, CancellationToken ct);
 
     /// <summary>
     /// Try to take the distributed open lock (SET NX PX). Returns a release token on success, or

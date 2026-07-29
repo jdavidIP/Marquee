@@ -70,7 +70,20 @@ public sealed class PremiereOpener(
                 .Where(kv => kv.Value > 0)
                 .Select(kv => new ContributorClaps(kv.Key, kv.Value))
                 .ToList();
-            var finalCount = contributors.Sum(c => c.Claps);
+
+            // Anonymous participants are snapshotted the same way (Iteration 5). They earn nothing
+            // (§4.3), but their claps are real claps: they counted towards the threshold that opened
+            // this Premiere, so leaving them out of TotalClaps would make the durable record
+            // disagree with the number the room watched cross the line.
+            var anonymousIds = await counters.GetAnonymousContributorsAsync(meta.ScopeId, meta.PremiereId, ct);
+            var anonymousClapMap = await counters.GetAnonymousContributorClapsAsync(
+                meta.ScopeId, meta.PremiereId, anonymousIds, ct);
+            var anonymousContributors = anonymousClapMap
+                .Where(kv => kv.Value > 0)
+                .Select(kv => new AnonymousContributorClaps(kv.Key, kv.Value))
+                .ToList();
+
+            var finalCount = contributors.Sum(c => c.Claps) + anonymousContributors.Sum(c => c.Claps);
             var now = DateTime.UtcNow;
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -104,7 +117,8 @@ public sealed class PremiereOpener(
                     meta.RegisteredCap,
                     finalCount,
                     now,
-                    contributors),
+                    contributors,
+                    anonymousContributors),
                 ct);
 
             // Flushes the outbox row the Publish above staged — inside the open transaction.
@@ -118,8 +132,9 @@ public sealed class PremiereOpener(
             await counters.CleanupAsync(meta.ScopeId, meta.PremiereId, ct);
 
             logger.LogInformation(
-                "Premiere {PremiereId} opened ({Status}) with {Claps} claps across {Contributors} contributors; fan-out queued.",
-                meta.PremiereId, openStatus, finalCount, contributors.Count);
+                "Premiere {PremiereId} opened ({Status}) with {Claps} claps across {Contributors} registered and " +
+                "{AnonymousContributors} anonymous contributors; fan-out queued.",
+                meta.PremiereId, openStatus, finalCount, contributors.Count, anonymousContributors.Count);
             return true;
         }
         finally

@@ -71,22 +71,32 @@ public sealed class PremiereOpenedConsumer(
                 msg.Status,
                 msg.TotalClaps,
                 msg.Threshold,
-                msg.Contributors.Count,
+                msg.Contributors.Count + (msg.AnonymousContributors?.Count ?? 0),
                 msg.OpenedAt),
             ct);
 
         logger.LogInformation(
-            "Fanned out Premiere {PremiereId}: {Contributions} contributions and {Library} library entries written " +
-            "({Total} contributors in the event).",
-            msg.PremiereId, written.Contributions, written.LibraryEntries, msg.Contributors.Count);
+            "Fanned out Premiere {PremiereId}: {Contributions} contributions, {AnonymousContributions} anonymous " +
+            "contributions and {Library} library entries written ({Total} registered and {TotalAnonymous} anonymous " +
+            "contributors in the event).",
+            msg.PremiereId, written.Contributions, written.AnonymousContributions, written.LibraryEntries,
+            msg.Contributors.Count, msg.AnonymousContributors?.Count ?? 0);
     }
 
-    private readonly record struct FanOutResult(int Contributions, int LibraryEntries);
+    private readonly record struct FanOutResult(int Contributions, int LibraryEntries, int AnonymousContributions);
 
     private async Task<FanOutResult> FanOutAsync(PremiereOpened msg, CancellationToken ct)
     {
+        // Null rather than empty for an event published before Iteration 5 added the field.
+        var anonymous = msg.AnonymousContributors ?? [];
+
+        if (msg.Contributors.Count == 0 && anonymous.Count == 0)
+            return new FanOutResult(0, 0, 0);
+
+        var anonymousAdded = await FanOutAnonymousAsync(msg, anonymous, ct);
+
         if (msg.Contributors.Count == 0)
-            return new FanOutResult(0, 0);
+            return new FanOutResult(0, 0, anonymousAdded);
 
         var userIds = msg.Contributors.Select(c => c.UserId).ToList();
 
@@ -140,6 +150,52 @@ public sealed class PremiereOpenedConsumer(
 
         // No explicit SaveChanges/commit: the outbox filter around this consumer saves and commits
         // once Consume returns, so these rows and the reveal event above land in one transaction.
-        return new FanOutResult(contributionsAdded, libraryAdded);
+        return new FanOutResult(contributionsAdded, libraryAdded, anonymousAdded);
+    }
+
+    /// <summary>
+    /// Anonymous participants get a Contribution row and nothing else (CLAUDE.md §4.3): no emblem,
+    /// because there is no account to award it to, and no LibraryEntry, because a library belongs to
+    /// a user. The row is still worth writing — it is what makes an opened Premiere's participation
+    /// reconstructable from Postgres alone, once Redis has been cleaned up.
+    ///
+    /// Idempotent on the same terms as the registered path: the insert set is derived from what is
+    /// already stored, with the unique index on (PremiereId, AnonymousSessionId) as the backstop.
+    /// </summary>
+    private async Task<int> FanOutAnonymousAsync(
+        PremiereOpened msg, IReadOnlyList<AnonymousContributorClaps> anonymous, CancellationToken ct)
+    {
+        if (anonymous.Count == 0)
+            return 0;
+
+        var sessionIds = anonymous.Select(a => a.SessionId).ToList();
+
+        var existing = (await db.Contributions
+            .Where(c => c.PremiereId == msg.PremiereId
+                        && c.AnonymousSessionId != null
+                        && sessionIds.Contains(c.AnonymousSessionId))
+            .Select(c => c.AnonymousSessionId!)
+            .ToListAsync(ct)).ToHashSet();
+
+        var added = 0;
+        foreach (var contributor in anonymous)
+        {
+            if (contributor.Claps <= 0)
+                continue;
+            if (!existing.Add(contributor.SessionId))
+                continue;
+
+            db.Contributions.Add(new Contribution
+            {
+                PremiereId = msg.PremiereId,
+                UserId = null,
+                AnonymousSessionId = contributor.SessionId,
+                ClapCount = contributor.Claps,
+                EmblemTier = null
+            });
+            added++;
+        }
+
+        return added;
     }
 }
