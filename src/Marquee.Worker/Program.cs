@@ -24,6 +24,12 @@ builder.Services.AddSerilog((services, loggerConfig) => loggerConfig
     .Enrich.With<CorrelationIdEnricher>()
     .Enrich.WithProperty(MarqueeLogging.ServiceProperty, MarqueeLogging.WorkerServiceName));
 
+// --- Tracing (Iteration 6) ---
+// No ASP.NET Core instrumentation here, because the worker serves no HTTP. Its spans start from the
+// MassTransit consume, whose parent is the API's publish — that link is what makes one clap's
+// journey a single trace rather than two unrelated ones.
+builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.WorkerServiceName);
+
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
 builder.Services.AddMarqueeWorkerMessaging(builder.Configuration);
 

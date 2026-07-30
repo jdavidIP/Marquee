@@ -21,6 +21,12 @@
       ASP.NET Core's several-lines-per-request default with one structured summary line.
     -->
     <PackageReference Include="Serilog.AspNetCore" Version="10.*" />
+    <!--
+      The one instrumentation the worker has no use for: it serves no HTTP. Everything else the API
+      traces (Redis, EF Core, the queue) is wired once in Marquee.Infrastructure so both processes
+      emit the same shape.
+    -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.*" />
   </ItemGroup>
 
   <ItemGroup>

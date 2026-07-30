@@ -26,6 +26,20 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.*" />
+    <!--
+      Tracing (Iteration 6). These live here rather than in the hosts because the things worth
+      tracing — Redis, EF Core, the queue — are all owned by this project, and both hosts need the
+      identical source list or the two halves of one journey would not join up.
+
+      The instrumentation packages are prerelease upstream: OpenTelemetry ships the core libraries
+      stable but keeps several instrumentations in beta, so the versions are floated with "-*" to
+      allow prerelease. That is upstream's state, not a choice made here.
+    -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.*-*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.*-*" />
     <PackageReference Include="StackExchange.Redis" Version="2.*" />
     <!--
       Serilog core only (Iteration 6) — no sinks, no hosting integration. It is here rather than in

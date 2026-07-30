@@ -14,6 +14,7 @@ using Marquee.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Trace;
 using Serilog;
 
 // A bootstrap logger, replaced by the configured one as soon as the host is built. Without it, any
@@ -38,6 +39,19 @@ builder.Services.AddSerilog((services, loggerConfig) => loggerConfig
     .Enrich.FromLogContext()
     .Enrich.With<CorrelationIdEnricher>()
     .Enrich.WithProperty(MarqueeLogging.ServiceProperty, MarqueeLogging.ApiServiceName));
+
+// --- Tracing (Iteration 6) ---
+// Redis, EF Core, HTTP and the queue are instrumented in AddMarqueeTracing, which both processes
+// share. ASP.NET Core is the API's alone — it is what opens the root span a clap's whole journey
+// hangs from.
+builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.ApiServiceName, tracing =>
+    tracing.AddAspNetCoreInstrumentation(instrumentation =>
+    {
+        // Health probes are polled continuously by orchestrators and would swamp the trace store
+        // with spans nobody reads, burying the journeys that matter.
+        instrumentation.Filter = http =>
+            !http.Request.Path.StartsWithSegments("/health");
+    }));
 
 // --- Options ---
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
