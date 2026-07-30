@@ -27,6 +27,13 @@
       emit the same shape.
     -->
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.*" />
+    <!--
+      Health checks (Iteration 6). Postgres and Redis get real probes; RabbitMQ does not need one
+      here because MassTransit registers its own bus health check as part of AddMassTransit, and the
+      bus being connected is a stricter statement than the broker answering a ping.
+    -->
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.*" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.*" />
   </ItemGroup>
 
   <ItemGroup>

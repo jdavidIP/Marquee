@@ -65,6 +65,7 @@ builder.Services.AddMarqueeApiServices(builder.Configuration);
 builder.Services.AddMarqueeScheduling(builder.Configuration);
 builder.Services.AddMarqueeApiMessaging(builder.Configuration);
 builder.Services.AddMarqueeRateLimiting(builder.Configuration);
+builder.Services.AddMarqueeHealthChecks(builder.Configuration);
 
 // --- Auth ---
 builder.Services
@@ -152,6 +153,9 @@ app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PremiereHub>(HubRoutes.Premieres);
+// Deliberately outside the rate limiter and the auth pipeline: a probe that can be throttled or
+// rejected reports the platform unhealthy for reasons that have nothing to do with its health.
+app.MapMarqueeHealthChecks();
 
 app.Run();
 
