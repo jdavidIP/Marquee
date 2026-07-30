@@ -12,6 +12,16 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="FluentAssertions" Version="6.*" />
+    <!--
+      Iteration 6. WebApplicationFactory drives the real API in-process; Testcontainers gives it a
+      real Postgres and a real Redis. Both matter for what these tests assert: the clap path's
+      correctness lives in a Lua script and in Postgres' conditional UPDATE, and neither an in-memory
+      EF provider nor a fake Redis would execute either of them.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.*" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.*" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.*" />
   </ItemGroup>
 
   <ItemGroup>
