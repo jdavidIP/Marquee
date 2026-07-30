@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Realtime;
 using Marquee.Api.Security;
 using Marquee.Api.Services;
+using Marquee.Infrastructure.Messaging;
 
 namespace Marquee.Api;
 
@@ -29,6 +30,14 @@ public static class ApiServiceRegistration
         services.AddScoped<IFriendshipService, FriendshipService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
         services.AddScoped<IAdminService, AdminService>();
+
+        // --- Dashboard metrics (Iteration 6) ---
+        // The connection tracker is a singleton because it is a process-wide count; the queue reader
+        // gets a typed HttpClient so it takes part in the shared handler pool rather than opening a
+        // fresh socket on every dashboard poll.
+        services.AddSingleton<IHubConnectionTracker, HubConnectionTracker>();
+        services.AddHttpClient<IQueueDepthReader, RabbitMqQueueDepthReader>();
+        services.AddScoped<IAdminMetricsService, AdminMetricsService>();
 
         // --- Real-time (Iteration 3) ---
         services.Configure<RealtimeOptions>(configuration.GetSection(RealtimeOptions.SectionName));

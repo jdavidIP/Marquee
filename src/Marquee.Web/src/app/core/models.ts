@@ -95,3 +95,22 @@ export interface LibraryEntryDto {
   acquiredAt: string;
   emblemTier: number | null;
 }
+
+/** Live operational numbers for the admin dashboard (Iteration 6). */
+export interface AdminMetricsDto {
+  queueDepth: number;
+  /** False means the broker could not be reached — which is different news from a depth of zero. */
+  queueDepthAvailable: boolean;
+  deadLetterDepth: number;
+  revealQueueDepth: number;
+  activeConnections: number;
+  clapsInWindow: number;
+  clapRatePerMinute: number;
+  rateWindowSeconds: number;
+  activePremiereId: string | null;
+  activePremiereThreshold: number | null;
+  activePremiereExpiresAt: string | null;
+  liveClaps: number;
+  liveContributors: number;
+  observedAt: string;
+}

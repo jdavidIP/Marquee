@@ -15,6 +15,13 @@ public sealed class MessagingOptions
     public string Password { get; set; } = "marquee";
 
     /// <summary>
+    /// RabbitMQ's HTTP management port (Iteration 6). Queue depth is read from the management API
+    /// rather than AMQP because AMQP has no way to ask "how deep is this queue" without declaring or
+    /// consuming from it, and a monitoring read must not be able to alter what it is monitoring.
+    /// </summary>
+    public ushort ManagementPort { get; set; } = 15672;
+
+    /// <summary>
     /// How often the bus-outbox delivery service sweeps for messages committed but not yet published.
     /// MassTransit also nudges it on save, so this is the backstop after a crash — not the normal
     /// path. Kept short in dev because it bounds worst-case reveal latency.

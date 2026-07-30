@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddSingleton<IClapGuards, RedisClapGuards>();
         services.AddSingleton<IFriendGraphCache, RedisFriendGraphCache>();
         services.AddSingleton<IUserBlockCache, RedisUserBlockCache>();
+        services.AddSingleton<IClapRateTracker, RedisClapRateTracker>();
 
         var tmdbOpts = configuration.GetSection(TmdbOptions.SectionName).Get<TmdbOptions>() ?? new TmdbOptions();
         if (string.IsNullOrWhiteSpace(tmdbOpts.ApiKey))

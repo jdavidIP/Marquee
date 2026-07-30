@@ -24,4 +24,10 @@ public sealed class RedisOptions
     /// and every API instance refusing their requests, so it is deliberately short.
     /// </summary>
     public int BlockStatusTtlSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Window the dashboard's clap rate is averaged over (Iteration 6). Short enough that a burst is
+    /// still visible as a burst rather than smoothed into the surrounding minute.
+    /// </summary>
+    public int ClapRateWindowSeconds { get; set; } = 60;
 }

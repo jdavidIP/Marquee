@@ -15,9 +15,21 @@ namespace Marquee.Api.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize]
-public class AdminController(IAdminService admin) : ControllerBase
+public class AdminController(IAdminService admin, IAdminMetricsService metrics) : ControllerBase
 {
     private const int MaxPageSize = 100;
+
+    /// <summary>
+    /// Live queue depth, connected watchers and clap rate (Iteration 6).
+    ///
+    /// Gated on CanViewUsers rather than a permission of its own: it is the existing "may look at the
+    /// operational side of the system" capability, and inventing a second one for a read-only panel
+    /// would add a permission without adding a decision anyone actually makes separately.
+    /// </summary>
+    [Authorize(Policy = AuthPolicies.CanViewUsers)]
+    [HttpGet("metrics")]
+    public async Task<ActionResult<AdminMetricsDto>> Metrics(CancellationToken ct) =>
+        Ok(await metrics.ReadAsync(ct));
 
     [Authorize(Policy = AuthPolicies.CanViewUsers)]
     [HttpGet("users")]

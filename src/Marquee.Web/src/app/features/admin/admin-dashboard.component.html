@@ -1,0 +1,76 @@
+<section class="dashboard">
+  <header class="dashboard__head">
+    <h1>Operations</h1>
+    @if (metrics(); as m) {
+      <span class="dashboard__stamp">Updated {{ m.observedAt | date: 'HH:mm:ss' }}</span>
+    }
+  </header>
+
+  @if (error(); as e) {
+    <p class="dashboard__error">{{ e }} Showing the last reading.</p>
+  }
+
+  @if (loading()) {
+    <p class="dashboard__empty">Loading metrics…</p>
+  } @else if (metrics(); as m) {
+    <div class="tiles">
+      <article class="tile">
+        <h2>Fan-out queue</h2>
+        @if (m.queueDepthAvailable) {
+          <p class="tile__value">{{ m.queueDepth }}</p>
+          <p class="tile__note">messages waiting for the worker</p>
+        } @else {
+          <!-- Deliberately not rendered as 0: "nothing queued" and "broker unreachable" are
+               opposite pieces of news and must not look identical. -->
+          <p class="tile__value tile__value--muted">—</p>
+          <p class="tile__note">broker unreachable</p>
+        }
+      </article>
+
+      <article class="tile" [class.tile--alarm]="m.deadLetterDepth > 0">
+        <h2>Dead-lettered</h2>
+        <p class="tile__value">{{ m.deadLetterDepth }}</p>
+        <p class="tile__note">messages that exhausted their retries</p>
+      </article>
+
+      <article class="tile">
+        <h2>Watching now</h2>
+        <p class="tile__value">{{ m.activeConnections }}</p>
+        <p class="tile__note">live hub connections</p>
+      </article>
+
+      <article class="tile">
+        <h2>Clap rate</h2>
+        <p class="tile__value">{{ m.clapRatePerMinute }}</p>
+        <p class="tile__note">
+          per minute, over the last {{ m.rateWindowSeconds }}s ({{ m.clapsInWindow }} claps)
+        </p>
+      </article>
+
+      <article class="tile">
+        <h2>Reveal queue</h2>
+        <p class="tile__value">{{ m.revealQueueDepth }}</p>
+        <p class="tile__note">fan-outs finished, waiting to be announced</p>
+      </article>
+    </div>
+
+    <article class="premiere">
+      <h2>Active Premiere</h2>
+      @if (m.activePremiereId) {
+        <p class="premiere__meta">
+          {{ m.liveClaps }} of {{ m.activePremiereThreshold }} claps ·
+          {{ m.liveContributors }} contributors ·
+          expires {{ m.activePremiereExpiresAt | date: 'HH:mm' }}
+        </p>
+        <div class="bar" role="progressbar" [attr.aria-valuenow]="progress(m)" aria-valuemin="0" aria-valuemax="100">
+          <div class="bar__fill" [style.width.%]="progress(m)"></div>
+        </div>
+        <p class="premiere__note">
+          Counts come from Redis — a Premiere's durable total is only written when it opens.
+        </p>
+      } @else {
+        <p class="dashboard__empty">Nothing is running right now.</p>
+      }
+    </article>
+  }
+</section>

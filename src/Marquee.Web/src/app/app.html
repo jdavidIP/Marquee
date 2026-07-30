@@ -4,6 +4,9 @@
     <nav class="nav">
       <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
       <a routerLink="/library" routerLinkActive="active">Library</a>
+      @if (auth.isAdmin()) {
+        <a routerLink="/admin" routerLinkActive="active">Operations</a>
+      }
     </nav>
     <div class="account">
       <span class="who">{{ auth.user()?.username }}</span>
