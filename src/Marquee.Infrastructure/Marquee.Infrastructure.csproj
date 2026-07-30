@@ -49,6 +49,12 @@
     -->
     <PackageReference Include="Serilog" Version="4.*" />
     <!--
+      Resilience around the TMDB client (Iteration 6). Microsoft.Extensions.Http.Resilience is the
+      supported way to attach a Polly v8 pipeline to a typed HttpClient; taking a direct Polly
+      dependency would mean hand-wiring the DelegatingHandler this package already provides.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+    <!--
       Queue (Iteration 4). Pinned to the 8.x line deliberately: MassTransit 9 moved to a
       commercial-gated licence, 8.x is Apache-2.0. The outbox/inbox API used here is identical
       in both, so this is a licensing choice, not a capability one.
