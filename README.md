@@ -5,13 +5,15 @@ times a day a **Premiere** appears containing a hidden movie; it opens only when
 **clap** for it before its 60-minute timer runs out. See [`CLAUDE.md`](./CLAUDE.md) for the full
 domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iteration build plan.
 
-> **Status: Iteration 5 complete** — the app is now survivable in public and has its social layer.
-> Claps are guarded by a per-participant cap, a debounce, idempotency keys, and a sliding-window rate
-> limiter that partitions per caller; visitors can clap under a short-lived signed anonymous session
-> without ever becoming a user. Authorisation is permission-based rather than a blanket admin flag,
-> and blocking bites on every request rather than only at login. Friendships, viewer-shaped profiles,
-> and a per-request Redis `SINTER` for "which of my friends clapped" complete the social layer.
-> Design notes in [`docs/security-and-social.md`](./docs/security-and-social.md);
+> **Status: Iteration 6 complete** — the system can now be watched and has been proven under load.
+> A clap's journey is readable end to end two ways: a correlation id that survives the queue hop in
+> both directions, and an OpenTelemetry trace joining API → Redis → RabbitMQ → worker into one span
+> tree. Liveness and readiness are separate endpoints; TMDB sits behind retry, timeouts and a circuit
+> breaker; integration tests run against real Postgres and Redis via Testcontainers; a k6 burst test
+> showed no lost claps and no duplicate opens; and an admin dashboard reports live queue depth,
+> connections and clap rate.
+> Design notes in [`docs/observability-and-resilience.md`](./docs/observability-and-resilience.md);
+> the security and social layer in [`docs/security-and-social.md`](./docs/security-and-social.md);
 > the queue work in [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md);
 > Iteration 2's concurrency work in [`docs/concurrency-findings.md`](./docs/concurrency-findings.md).
 
@@ -82,11 +84,12 @@ those rows and is idempotent, so a restart simply picks up on the next tick.
 
 ## Running it
 
-**1. Start Postgres + Redis + RabbitMQ**
+**1. Start Postgres + Redis + RabbitMQ + Jaeger**
 
 ```bash
 docker compose up -d
 # RabbitMQ management UI: http://localhost:15672  (marquee / marquee)
+# Jaeger (traces):        http://localhost:16686
 ```
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
@@ -195,6 +198,31 @@ Verified by `tests/Marquee.LoadTests/security-check.mjs` against a running stack
 [`docs/security-and-social.md`](./docs/security-and-social.md) for the recorded run and the
 reasoning behind the guard ordering.
 
+## Iteration 6 acceptance criteria — met
+
+- A single clap is traceable end to end across both services ✔
+- Load test runs with no lost claps and no duplicate opens ✔
+- TMDB being down does not prevent an already-scheduled Premiere from running ✔
+
+The first is a 30-span trace spanning `api` and `worker`, plus a correlation id appearing identically
+on both sides of the queue. The second is `tests/Marquee.LoadTests/premiere-rush.js` under k6, with
+the result checked against Postgres — `TotalClaps` equal to the summed contribution rows, and never
+more than one library entry per `(user, premiere)`. The third is enforced by integration tests rather
+than argued from §4.6. Recorded runs and the reasoning are in
+[`docs/observability-and-resilience.md`](./docs/observability-and-resilience.md), including the one
+honest limitation found: the outbox starts a new trace at delivery, which is why the correlation id
+earns its place alongside the trace id.
+
+## Observability at a glance
+
+| What | Where |
+|---|---|
+| Structured logs, both services | stdout, Serilog, same console template |
+| Traces | Jaeger UI at `http://localhost:16686` |
+| Queue depth, DLQ, message rates | RabbitMQ management UI at `http://localhost:15672` |
+| Liveness / readiness | `GET /health/live`, `GET /health/ready` |
+| Live queue depth, connections, clap rate | `GET /api/admin/metrics`, or the `/admin` panel in the SPA |
+
 ## Key endpoints
 
 | Method | Route | Auth | Purpose |
@@ -225,6 +253,8 @@ reasoning behind the guard ordering.
 | PATCH | `/api/admin/premieres/{id}/schedule` | `CanManagePremieres` | Change a Scheduled Premiere's time |
 | POST | `/api/admin/premieres/{id}/movie` | `CanManagePremieres` | Regenerate the hidden movie |
 | POST | `/api/admin/premieres/{id}/activate` | `CanManagePremieres` | Start a Scheduled Premiere now |
+| GET | `/api/admin/metrics` | `CanViewUsers` | Live queue depth, connections and clap rate |
+| GET | `/health/live` · `/health/ready` | – | Liveness (no dependencies) and readiness (Postgres, Redis, bus) |
 
 ### Security model in one paragraph
 
