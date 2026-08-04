@@ -26,7 +26,34 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.*" />
+    <!--
+      Tracing (Iteration 6). These live here rather than in the hosts because the things worth
+      tracing — Redis, EF Core, the queue — are all owned by this project, and both hosts need the
+      identical source list or the two halves of one journey would not join up.
+
+      The instrumentation packages are prerelease upstream: OpenTelemetry ships the core libraries
+      stable but keeps several instrumentations in beta, so the versions are floated with "-*" to
+      allow prerelease. That is upstream's state, not a choice made here.
+    -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.*-*" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.*-*" />
     <PackageReference Include="StackExchange.Redis" Version="2.*" />
+    <!--
+      Serilog core only (Iteration 6) — no sinks, no hosting integration. It is here rather than in
+      the two host projects because the correlation-id enricher has to be shared by both, and
+      duplicating an enricher is how the API and the worker end up labelling logs differently.
+      Choosing sinks and levels stays a host concern.
+    -->
+    <PackageReference Include="Serilog" Version="4.*" />
+    <!--
+      Resilience around the TMDB client (Iteration 6). Microsoft.Extensions.Http.Resilience is the
+      supported way to attach a Polly v8 pipeline to a typed HttpClient; taking a direct Polly
+      dependency would mean hand-wiring the DelegatingHandler this package already provides.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
     <!--
       Queue (Iteration 4). Pinned to the 8.x line deliberately: MassTransit 9 moved to a
       commercial-gated licence, 8.x is Apache-2.0. The outbox/inbox API used here is identical

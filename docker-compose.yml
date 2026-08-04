@@ -50,6 +50,25 @@ services:
       timeout: 10s
       retries: 10
 
+  # Trace store and UI (Iteration 6). Jaeger's all-in-one image speaks OTLP directly, so the API and
+  # the worker export straight to it and no separate OpenTelemetry Collector is needed for local work.
+  # Storage is in-memory: traces are for watching a journey while you work on it, and losing them on
+  # restart is the right trade for a dev dependency that should start instantly and need no volume.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: marquee-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # UI — search a trace by service, or paste a trace id straight in
+      - "4317:4317"    # OTLP/gRPC — what TracingOptions.OtlpEndpoint points at
+      - "4318:4318"    # OTLP/HTTP, for anything that cannot speak gRPC
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   marquee-pgdata:
   marquee-redisdata:

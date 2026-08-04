@@ -65,6 +65,14 @@ public static class RedisKeys
     public static string ClapIdempotency(string scopeId, Guid premiereId, Participant participant, string key) =>
         $"{Prefix(scopeId, premiereId)}:idem:{participant.KeyPart}:{key}";
 
+    /// <summary>
+    /// One second's worth of claps, for the dashboard's live rate (Iteration 6). Scope-namespaced
+    /// like everything else, so a future scoped Premiere reports its own rate rather than inflating
+    /// global's.
+    /// </summary>
+    public static string ClapRateBucket(string scopeId, long unixSecond) =>
+        $"metrics:{scopeId}:claps:sec:{unixSecond}";
+
     /// <summary>A user's accepted friends (CLAUDE.md §3), the SINTER operand for friend intersection.</summary>
     public static string Friends(Guid userId) => $"user:{userId}:friends";
 

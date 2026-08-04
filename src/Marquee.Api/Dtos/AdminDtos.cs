@@ -41,3 +41,26 @@ public sealed record UpdatePremiereScheduleRequest([Required] DateTime Scheduled
 public sealed record BlockUserRequest(
     /// <summary>Recorded in the log line for the block, so the action is auditable.</summary>
     [MaxLength(500)] string? Reason);
+
+/// <summary>
+/// Live operational numbers for the admin dashboard (Iteration 6).
+///
+/// <see cref="QueueDepthAvailable"/> is separate from a depth of zero on purpose: "the broker says
+/// nothing is queued" and "the broker could not be reached" are opposite pieces of news, and a
+/// dashboard that renders both as 0 is actively misleading during an outage.
+/// </summary>
+public sealed record AdminMetricsDto(
+    long QueueDepth,
+    bool QueueDepthAvailable,
+    long DeadLetterDepth,
+    long RevealQueueDepth,
+    int ActiveConnections,
+    long ClapsInWindow,
+    double ClapRatePerMinute,
+    int RateWindowSeconds,
+    Guid? ActivePremiereId,
+    int? ActivePremiereThreshold,
+    DateTime? ActivePremiereExpiresAt,
+    long LiveClaps,
+    long LiveContributors,
+    DateTime ObservedAt);

@@ -2,20 +2,56 @@ using System.Text;
 using Marquee.Api;
 using Marquee.Api.Auth;
 using Marquee.Api.Messaging;
+using Marquee.Api.Observability;
 using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
 using Marquee.Api.Security;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Infrastructure;
+using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Trace;
+using Serilog;
+
+// A bootstrap logger, replaced by the configured one as soon as the host is built. Without it, any
+// failure before that point — bad connection string, unreadable config, a missing Jwt:Key — would be
+// written by whatever default logger happened to exist, or not at all. Startup is exactly when you
+// most need the log to work.
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console(outputTemplate: MarqueeLogging.OutputTemplate)
+    .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
 
 const string CorsPolicy = "MarqueeSpa";
+
+// --- Logging (Iteration 6) ---
+// ReadFrom.Configuration keeps levels and overrides in appsettings (CLAUDE.md §7); the enrichers are
+// added in code because they are structural, not tunable. FromLogContext is what makes
+// LogContext.PushProperty work; the correlation enricher is what carries an id across the queue hop.
+builder.Services.AddSerilog((services, loggerConfig) => loggerConfig
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.With<CorrelationIdEnricher>()
+    .Enrich.WithProperty(MarqueeLogging.ServiceProperty, MarqueeLogging.ApiServiceName));
+
+// --- Tracing (Iteration 6) ---
+// Redis, EF Core, HTTP and the queue are instrumented in AddMarqueeTracing, which both processes
+// share. ASP.NET Core is the API's alone — it is what opens the root span a clap's whole journey
+// hangs from.
+builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.ApiServiceName, tracing =>
+    tracing.AddAspNetCoreInstrumentation(instrumentation =>
+    {
+        // Health probes are polled continuously by orchestrators and would swamp the trace store
+        // with spans nobody reads, burying the journeys that matter.
+        instrumentation.Filter = http =>
+            !http.Request.Path.StartsWithSegments("/health");
+    }));
 
 // --- Options ---
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
@@ -29,6 +65,7 @@ builder.Services.AddMarqueeApiServices(builder.Configuration);
 builder.Services.AddMarqueeScheduling(builder.Configuration);
 builder.Services.AddMarqueeApiMessaging(builder.Configuration);
 builder.Services.AddMarqueeRateLimiting(builder.Configuration);
+builder.Services.AddMarqueeHealthChecks(builder.Configuration);
 
 // --- Auth ---
 builder.Services
@@ -94,6 +131,16 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// First in the pipeline on purpose: everything after this point, including the request-logging
+// middleware immediately below and any exception handler, should be able to name the journey it is
+// talking about.
+app.UseCorrelationId();
+
+// One structured summary line per request instead of ASP.NET Core's several. Placed after the
+// correlation middleware so that line carries the id, and before the rest so it still times — and
+// still reports — requests that are rejected by the rate limiter or the block check.
+app.UseSerilogRequestLogging();
+
 app.UseCors(CorsPolicy);
 // Explicit, because the order of the next four is load-bearing. Authentication first so the rate
 // limiter and the block check both know who is calling; the block check before the rate limiter so
@@ -106,11 +153,16 @@ app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PremiereHub>(HubRoutes.Premieres);
+// Deliberately outside the rate limiter and the auth pipeline: a probe that can be throttled or
+// rejected reports the platform unhealthy for reasons that have nothing to do with its health.
+app.MapMarqueeHealthChecks();
 
 app.Run();
 
 // Seeds a single admin so Premieres can be created out of the box in dev.
-static async Task SeedAdminAsync(IServiceProvider sp, IConfiguration config, ILogger logger)
+// ILogger is qualified because `using Serilog` brings a second, unrelated ILogger into scope here.
+static async Task SeedAdminAsync(
+    IServiceProvider sp, IConfiguration config, Microsoft.Extensions.Logging.ILogger logger)
 {
     var db = sp.GetRequiredService<MarqueeDbContext>();
     var hasher = sp.GetRequiredService<IPasswordHasherService>();

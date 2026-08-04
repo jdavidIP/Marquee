@@ -1,9 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>4d97fd9f-26e8-4d0d-b05c-e9934029135f</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +16,25 @@
     </PackageReference>
     <!-- Scheduling: Quartz.NET over Hangfire — see Scheduling/README notes in Program.cs. -->
     <PackageReference Include="Quartz.Extensions.Hosting" Version="3.*" />
+    <!--
+      Observability (Iteration 6). Serilog.AspNetCore is the umbrella package: it brings the console
+      sink, appsettings-driven configuration, and the request-logging middleware that replaces
+      ASP.NET Core's several-lines-per-request default with one structured summary line.
+    -->
+    <PackageReference Include="Serilog.AspNetCore" Version="10.*" />
+    <!--
+      The one instrumentation the worker has no use for: it serves no HTTP. Everything else the API
+      traces (Redis, EF Core, the queue) is wired once in Marquee.Infrastructure so both processes
+      emit the same shape.
+    -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.*" />
+    <!--
+      Health checks (Iteration 6). Postgres and Redis get real probes; RabbitMQ does not need one
+      here because MassTransit registers its own bus health check as part of AddMassTransit, and the
+      bus being connected is a stricter statement than the broker answering a ping.
+    -->
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.*" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.*" />
   </ItemGroup>
 
   <ItemGroup>

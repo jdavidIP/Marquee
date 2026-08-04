@@ -1,0 +1,70 @@
+/* Reuses the same custom properties as the rest of the app (--panel, --border, --muted, --accent)
+   so the dashboard reads as part of Marquee rather than a bolted-on tool. */
+
+.dashboard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+h1 { font-size: 1.6rem; margin: 0; }
+h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+
+.dashboard__stamp { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.dashboard__empty { color: var(--muted); }
+.dashboard__error { color: var(--accent); margin-bottom: 16px; }
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+/* Tabular figures so a value changing every few seconds does not make the tile jump about. */
+.tile__value {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.tile__value--muted { color: var(--muted); }
+.tile__note { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; }
+
+/* Dead-lettered messages are the one number here that always means something is wrong. */
+.tile--alarm { border-color: var(--accent); }
+.tile--alarm .tile__value { color: var(--accent); }
+
+.premiere {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.premiere__meta { margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+.premiere__note { margin: 10px 0 0; color: var(--muted); font-size: 0.8rem; }
+
+.bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.bar__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}

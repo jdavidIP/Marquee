@@ -19,6 +19,7 @@ public static class WorkerMessagingRegistration
         this IServiceCollection services, IConfiguration configuration)
     {
         var options = services.BindMessagingOptions(configuration);
+        services.AddMarqueeCorrelationFilters();
 
         services.AddMassTransit(x =>
         {
@@ -28,6 +29,7 @@ public static class WorkerMessagingRegistration
             x.UsingRabbitMq((context, cfg) =>
             {
                 cfg.ConfigureMarqueeHost(options);
+                cfg.UseMarqueeCorrelationId(context);
 
                 cfg.ReceiveEndpoint(QueueNames.PremiereFanOut, e =>
                 {

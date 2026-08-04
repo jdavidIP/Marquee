@@ -6,6 +6,9 @@ using Marquee.Infrastructure.Tmdb;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
+using Polly.Retry;
 using StackExchange.Redis;
 
 namespace Marquee.Infrastructure;
@@ -41,6 +44,7 @@ public static class DependencyInjection
         services.AddSingleton<IClapGuards, RedisClapGuards>();
         services.AddSingleton<IFriendGraphCache, RedisFriendGraphCache>();
         services.AddSingleton<IUserBlockCache, RedisUserBlockCache>();
+        services.AddSingleton<IClapRateTracker, RedisClapRateTracker>();
 
         var tmdbOpts = configuration.GetSection(TmdbOptions.SectionName).Get<TmdbOptions>() ?? new TmdbOptions();
         if (string.IsNullOrWhiteSpace(tmdbOpts.ApiKey))
@@ -50,11 +54,46 @@ public static class DependencyInjection
         }
         else
         {
+            var resilience = tmdbOpts.Resilience;
+
             services.AddHttpClient<ITmdbClient, TmdbClient>(client =>
             {
                 var baseUrl = tmdbOpts.BaseUrl.EndsWith('/') ? tmdbOpts.BaseUrl : tmdbOpts.BaseUrl + "/";
                 client.BaseAddress = new Uri(baseUrl);
-                client.Timeout = TimeSpan.FromSeconds(15);
+
+                // No HttpClient.Timeout: the resilience pipeline below owns timeouts now. Leaving it
+                // set would cut attempts off with a TaskCanceledException the retry strategy does not
+                // recognise as transient, so a slow TMDB would fail instead of being retried.
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            })
+            // Retry then break, in that order: retry rides out the blip that one request hit, and
+            // the breaker notices when retrying has stopped being worth it and stops sending calls
+            // into a service that is plainly down (§4.6 movie selection only runs at Premiere
+            // creation, so failing fast there costs one scheduling attempt, not a live Premiere).
+            .AddResilienceHandler("tmdb", pipeline =>
+            {
+                pipeline.AddTimeout(TimeSpan.FromSeconds(resilience.TotalTimeoutSeconds));
+
+                pipeline.AddRetry(new HttpRetryStrategyOptions
+                {
+                    MaxRetryAttempts = resilience.RetryCount,
+                    Delay = TimeSpan.FromMilliseconds(resilience.BaseDelayMs),
+                    BackoffType = DelayBackoffType.Exponential,
+                    // Jitter, because the daily generation job creates several Premieres in a loop;
+                    // without it their retries would line up and hit TMDB in synchronised waves.
+                    UseJitter = true,
+                });
+
+                pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+                {
+                    FailureRatio = resilience.BreakerFailureRatio,
+                    MinimumThroughput = resilience.BreakerMinimumThroughput,
+                    SamplingDuration = TimeSpan.FromSeconds(resilience.BreakerSamplingSeconds),
+                    BreakDuration = TimeSpan.FromSeconds(resilience.BreakerDurationSeconds),
+                });
+
+                // Innermost, so it bounds a single attempt rather than the whole pipeline.
+                pipeline.AddTimeout(TimeSpan.FromSeconds(resilience.AttemptTimeoutSeconds));
             });
         }
 

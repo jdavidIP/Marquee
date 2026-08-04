@@ -16,6 +16,7 @@ Iteration 2's before/after numbers live in
 | `signalr-client.mjs` | – | A ~90-line SignalR JSON-protocol client over the native `WebSocket`, so the realtime check stays dependency-free like the rest of this folder. |
 | `queue-check.mjs` | Node 22+ (no deps) | **Iteration 4.** Asserts the queue acceptance criteria: the worker fans out off the request path, a killed-and-restarted worker loses and duplicates nothing, a replayed event changes nothing, and a poisoned message is dead-lettered without blocking the queue. Exits non-zero on failure. |
 | `security-check.mjs` | Node 22+ (no deps) | **Iteration 5.** Asserts the security and social acceptance criteria: an abusive script is throttled while a normal user beside it is not, a private profile shows a stranger only username and bio while staying discoverable in search, friend intersection is per viewer and never broadcast, and admin endpoints return 403/401. With `OPEN_PREMIERE=1` it also drives a Premiere open and checks the anonymous fan-out. Exits non-zero on failure. |
+| `premiere-rush.js` | [k6](https://k6.io) | **Iteration 6.** The realistic Premiere: a burst of anonymous participants arriving at once, then a decaying tail. Asserts the acceptance criteria that exactly one clap reports `opened=true` and that no clap ever 5xxes. |
 
 ## Prerequisites
 
@@ -58,7 +59,58 @@ SKIP_CRASH=1 node queue-check.mjs         # skip the check that kills the worker
 # Iteration 5 — security, anti-abuse, social
 node security-check.mjs
 OPEN_PREMIERE=1 node security-check.mjs   # also open the Premiere and check the anonymous fan-out
+
+# Iteration 6 — the realistic Premiere rush (k6 via Docker, no local install needed)
+docker run --rm -i -e API_BASE=http://host.docker.internal:5080/api \
+  grafana/k6 run - < premiere-rush.js
 ```
+
+### Running `premiere-rush.js`
+
+Start the API with rate limiting off:
+
+```bash
+RateLimiting__Enabled=false Scheduler__Enabled=false \
+  dotnet run --project ../../src/Marquee.Api --urls http://0.0.0.0:5080
+```
+
+Both settings are load-test accommodations, not a claim that the guards are optional:
+
+- **Rate limiting off.** Every k6 request arrives from one IP, so `/sessions/anonymous` — which is
+  IP-partitioned as a bot brake — would throttle the participants into existence one at a time and
+  the burst would never happen. The limiter has its own dedicated coverage in `security-check.mjs`,
+  where a throttled attacker beside an unaffected normal user is the actual subject.
+- **Scheduler off.** Otherwise the tick job can auto-open the Premiere on its timer mid-run, and the
+  run could no longer claim to be the only thing that opened it.
+
+Participants are anonymous sessions rather than accounts: that is realistic (anonymous visitors can
+clap, per Iteration 5) and it is the only way to get hundreds of *distinct* participants without
+registering hundreds of accounts. Distinctness is the point — the per-participant cap means one
+identity cannot generate contention by itself.
+
+`PEAK_RATE` (default 400) scales the burst. The default is sized to run on a laptop that is already
+hosting Postgres, Redis, RabbitMQ, Jaeger and both services.
+
+### What a passing run looks like
+
+k6's own thresholds cover "exactly one open" and "no clap ever 5xxed". The no-lost-claps check is a
+Postgres query, because the API's own responses are not the authoritative record:
+
+```bash
+docker exec -e PGPASSWORD=marquee marquee-postgres psql -U marquee -d marquee \
+  -c 'SELECT p."Id", p."Status", p."Threshold", p."TotalClaps",
+             COALESCE(SUM(c."ClapCount"),0) AS summed, COUNT(c.*) AS rows
+      FROM "premieres" p LEFT JOIN "contributions" c ON c."PremiereId" = p."Id"
+      WHERE p."Id" = (SELECT "Id" FROM "premieres" ORDER BY "CreatedAt" DESC LIMIT 1)
+      GROUP BY p."Id", p."Status", p."Threshold", p."TotalClaps";'
+```
+
+`TotalClaps` must equal `summed`. A lost update shows up as `TotalClaps` below the sum of the
+contributions actually handed out.
+
+`TotalClaps` slightly exceeding `Threshold` is correct, not a bug: the Redis cutoff is set inside the
+open, so claps already in flight when the threshold was crossed still count — and they get
+contribution rows, which is the "accepted implies granted" property.
 
 `security-check.mjs` reuses the currently Active Premiere rather than creating one, so it does not
 burn a movie from the stub pool unless you pass `OPEN_PREMIERE=1`. It is deliberately frugal with

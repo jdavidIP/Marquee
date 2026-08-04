@@ -1,5 +1,7 @@
 using Marquee.Infrastructure;
+using Marquee.Infrastructure.Observability;
 using Marquee.Worker;
+using Serilog;
 
 // Marquee.Worker exists to keep expensive, bursty work off the API's request path. As of
 // Iteration 4 that is the open-time fan-out: writing a Contribution and a LibraryEntry for every
@@ -10,6 +12,23 @@ using Marquee.Worker;
 // It does not run EF migrations either: the API owns the schema, so a cold start of the worker
 // cannot race it into a half-migrated database.
 var builder = Host.CreateApplicationBuilder(args);
+
+// --- Logging (Iteration 6) ---
+// Deliberately the same enricher set and the same console template as the API. The worker's log is
+// only useful for this project's purposes if a line it writes can be read side by side with the API
+// line that caused it, which means both have to render the correlation id the same way.
+builder.Services.AddSerilog((services, loggerConfig) => loggerConfig
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.With<CorrelationIdEnricher>()
+    .Enrich.WithProperty(MarqueeLogging.ServiceProperty, MarqueeLogging.WorkerServiceName));
+
+// --- Tracing (Iteration 6) ---
+// No ASP.NET Core instrumentation here, because the worker serves no HTTP. Its spans start from the
+// MassTransit consume, whose parent is the API's publish — that link is what makes one clap's
+// journey a single trace rather than two unrelated ones.
+builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.WorkerServiceName);
 
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
 builder.Services.AddMarqueeWorkerMessaging(builder.Configuration);

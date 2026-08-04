@@ -1,3 +1,4 @@
+using Marquee.Api.Observability;
 using Marquee.Api.Services;
 using Quartz;
 
@@ -21,6 +22,10 @@ public sealed class PremiereTickJob(
     public async Task Execute(IJobExecutionContext context)
     {
         var ct = context.CancellationToken;
+
+        // Labels this firing and everything it publishes, so an auto-open is traceable into the
+        // worker exactly like a clap-driven one.
+        using var correlation = context.BeginCorrelationScope();
 
         try
         {

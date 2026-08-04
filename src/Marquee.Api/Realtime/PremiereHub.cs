@@ -12,8 +12,20 @@ namespace Marquee.Api.Realtime;
 /// part of the product (their claps land in Iteration 5). Nothing personalised is ever pushed to a
 /// group; per-viewer data stays on the request path.
 /// </summary>
-public sealed class PremiereHub(ILogger<PremiereHub> logger) : Hub
+public sealed class PremiereHub(IHubConnectionTracker connections, ILogger<PremiereHub> logger) : Hub
 {
+    public override Task OnConnectedAsync()
+    {
+        connections.Increment();
+        return base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        connections.Decrement();
+        return base.OnDisconnectedAsync(exception);
+    }
+
     /// <summary>Join the scope feed, so a newly activated Premiere is announced to this client.</summary>
     public async Task JoinScope(string scopeId)
     {

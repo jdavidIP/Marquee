@@ -1,3 +1,4 @@
+using Marquee.Api.Observability;
 using Marquee.Api.Services;
 using Microsoft.Extensions.Options;
 using Quartz;
@@ -23,6 +24,8 @@ public sealed class GenerateDailyScheduleJob(
     public async Task Execute(IJobExecutionContext context)
     {
         var ct = context.CancellationToken;
+        using var correlation = context.BeginCorrelationScope();
+
         var today = DateOnly.FromDateTime(DateTime.Now); // §4.4 is expressed in local time
 
         for (var i = 0; i < Math.Max(1, _options.GenerateDaysAhead); i++)

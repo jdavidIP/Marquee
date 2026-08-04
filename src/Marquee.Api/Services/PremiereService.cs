@@ -51,6 +51,7 @@ public sealed class PremiereService(
     IClapGuards guards,
     IPremiereCache cache,
     IClapBroadcastQueue broadcasts,
+    IClapRateTracker clapRate,
     IFriendshipService friendships,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<ClapGuardOptions> clapGuardOptions,
@@ -220,6 +221,11 @@ public sealed class PremiereService(
         }
 
         broadcasts.MarkDirty(meta.ScopeId, meta.PremiereId);
+
+        // Records into a per-second Redis bucket, fire-and-forget, so the dashboard's live rate costs
+        // the clap path nothing. Only counted claps get here — capped and throttled ones returned
+        // above — so the rate measures claps that actually landed.
+        clapRate.Record(meta.ScopeId);
 
         // Exactly-once open: only the single caller whose INCR landed exactly on the threshold triggers it.
         var opened = false;
