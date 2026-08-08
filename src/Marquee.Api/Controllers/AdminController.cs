@@ -72,11 +72,34 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
         return Ok(result);
     }
 
+    /// <summary>
+    /// What this Premiere may be changed to — the times it can move to within its day, and the band
+    /// its threshold may sit in. Read this before rendering the editors, so the constraints are shown
+    /// rather than discovered.
+    /// </summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("premieres/{id:guid}/edit-options")]
+    public async Task<ActionResult<PremiereEditOptionsDto>> EditOptions(Guid id, CancellationToken ct)
+    {
+        var result = await admin.GetEditOptionsAsync(id, ct);
+        return result.Outcome == AdminOutcome.NotFound ? NotFound() : Ok(result.Value);
+    }
+
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPatch("premieres/{id:guid}/schedule")]
     public async Task<ActionResult<AdminPremiereDto>> Reschedule(
         Guid id, UpdatePremiereScheduleRequest request, CancellationToken ct) =>
         Respond(await admin.RescheduleAsync(id, request.ScheduledForUtc, ct));
+
+    /// <summary>
+    /// Retune the threshold. The caps are recomputed from it rather than supplied, so §4.2 holds
+    /// without the caller having to know about it.
+    /// </summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpPatch("premieres/{id:guid}/threshold")]
+    public async Task<ActionResult<AdminPremiereDto>> SetThreshold(
+        Guid id, UpdatePremiereThresholdRequest request, CancellationToken ct) =>
+        Respond(await admin.SetThresholdAsync(id, request.Threshold, ct));
 
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost("premieres/{id:guid}/movie")]
@@ -91,6 +114,9 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
     private ActionResult<AdminPremiereDto> Respond(AdminResult<AdminPremiereDto> result) => result.Outcome switch
     {
         AdminOutcome.NotFound => NotFound(),
+        // 400, not 409: the request was understood and the Premiere is in a state that accepts
+        // changes — this particular value just breaks a rule, and the message names which one.
+        AdminOutcome.Invalid => BadRequest(new { error = result.Error }),
         AdminOutcome.AlreadyTerminal => Conflict(
             new { error = "This Premiere has already started or opened and can no longer be changed." }),
         AdminOutcome.AlreadyActive => Conflict(new { error = "This Premiere is already running." }),

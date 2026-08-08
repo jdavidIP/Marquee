@@ -38,6 +38,32 @@ public sealed record AdminPremiereDto(
 
 public sealed record UpdatePremiereScheduleRequest([Required] DateTime ScheduledForUtc);
 
+public sealed record UpdatePremiereThresholdRequest([Required, Range(1, int.MaxValue)] int Threshold);
+
+/// <summary>An inclusive range of local times, "HH:mm", a Premiere may be moved to.</summary>
+public sealed record ScheduleWindowDto(string Start, string End);
+
+/// <summary>
+/// What an admin may change about a Premiere, so the UI can show the constraints rather than let
+/// someone discover them one rejection at a time.
+///
+/// Windows are local "HH:mm" strings rather than instants: §4.4 is expressed in local wall-clock
+/// time, and the admin is picking a time of day, not a moment on a timeline.
+/// </summary>
+public sealed record PremiereEditOptionsDto(
+    Guid PremiereId,
+    string Status,
+    /// <summary>False once the Premiere is running or opened — everything below is then frozen.</summary>
+    bool CanEdit,
+    /// <summary>The local day it belongs to. It cannot be moved off this day (see AdminService).</summary>
+    DateOnly LocalDate,
+    IReadOnlyList<ScheduleWindowDto> AllowedWindows,
+    int ThresholdMin,
+    int ThresholdMax,
+    int CurrentThreshold,
+    /// <summary>The user count the band was derived from, so the UI can explain where it came from.</summary>
+    int RegisteredUsers);
+
 public sealed record BlockUserRequest(
     /// <summary>Recorded in the log line for the block, so the action is auditable.</summary>
     [MaxLength(500)] string? Reason);
