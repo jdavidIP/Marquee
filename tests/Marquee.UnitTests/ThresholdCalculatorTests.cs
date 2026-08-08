@@ -65,4 +65,55 @@ public class ThresholdCalculatorTests
         ThresholdCalculator.PercentageRange(true, Rules).Should().Be((0.45, 0.55));
         ThresholdCalculator.PercentageRange(false, Rules).Should().Be((0.32, 0.45));
     }
+
+    // --- Admin override band ---
+
+    [Fact]
+    public void AdminBand_spans_the_floor_up_to_the_peak_ceiling()
+    {
+        // 1,000 users: the formula's own extremes are the floor (30) and round(0.55 * 1000) = 550.
+        ThresholdCalculator.AdminBand(1000, Rules).Should().Be((30, 550));
+    }
+
+    [Fact]
+    public void AdminBand_never_falls_below_the_floor_ceiling_at_small_user_counts()
+    {
+        // 40 users: round(0.55 * 40) = 22, which sits *below* the 30-50 floor range. Without the
+        // guard the band would come out as (30, 22) — inverted, and it would reject every value the
+        // formula can actually produce for this user base.
+        ThresholdCalculator.AdminBand(40, Rules).Should().Be((30, 50));
+    }
+
+    [Fact]
+    public void AdminBand_is_never_inverted()
+    {
+        for (var users = 0; users <= 2_000; users += 7)
+        {
+            var (min, max) = ThresholdCalculator.AdminBand(users, Rules);
+            max.Should().BeGreaterThanOrEqualTo(min, "the band for {0} users must be usable", users);
+        }
+    }
+
+    [Fact]
+    public void Every_threshold_the_formula_draws_lands_inside_the_admin_band()
+    {
+        // The band's contract: an admin may pick anything Draw could have produced, and nothing else.
+        // If Draw could ever land outside it, the admin would be unable to restore a value the
+        // system itself chose.
+        var rng = new SystemRandomSource(new Random(20260808));
+
+        foreach (var users in new[] { 0, 1, 20, 40, 100, 1_000, 25_000 })
+        {
+            var (min, max) = ThresholdCalculator.AdminBand(users, Rules);
+
+            for (var draw = 0; draw < 500; draw++)
+            {
+                foreach (var isPeak in new[] { true, false })
+                {
+                    var threshold = ThresholdCalculator.Draw(users, isPeak, Rules, rng);
+                    threshold.Should().BeInRange(min, max, "a drawn threshold for {0} users must be re-selectable", users);
+                }
+            }
+        }
+    }
 }
