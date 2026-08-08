@@ -21,6 +21,12 @@ public enum AdminOutcome
     AlreadyActive,
     NoMovieAvailable,
     /// <summary>
+    /// The chosen film has already been used by an earlier Premiere. §4.6's no-repeat rule is a data
+    /// constraint here, not a preference — Movie.TmdbId is unique — so this is a conflict with the
+    /// existing record rather than a bad value.
+    /// </summary>
+    MovieAlreadyUsed,
+    /// <summary>
     /// The request was well-formed but breaks a domain rule — a time outside the day's window, a
     /// threshold outside the band. Always carries an <see cref="AdminResult{T}.Error"/> saying which,
     /// because "invalid" on its own leaves an admin guessing at rules they cannot see.
@@ -40,7 +46,18 @@ public interface IAdminService
 
     Task<AdminResult<AdminPremiereDto>> RescheduleAsync(Guid premiereId, DateTime scheduledForUtc, CancellationToken ct);
     Task<AdminResult<AdminPremiereDto>> SetThresholdAsync(Guid premiereId, int threshold, CancellationToken ct);
-    Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(Guid premiereId, CancellationToken ct);
+    Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(
+        Guid premiereId, MovieFilter? filter, CancellationToken ct);
+
+    /// <summary>Set a specific film, chosen by the admin from a search rather than re-rolled.</summary>
+    Task<AdminResult<AdminPremiereDto>> SetMovieAsync(Guid premiereId, int tmdbId, CancellationToken ct);
+
+    /// <summary>Search TMDB for a film to pick, flagging any already spent by an earlier Premiere.</summary>
+    Task<IReadOnlyList<MovieSearchResultDto>> SearchMoviesAsync(string query, CancellationToken ct);
+
+    /// <summary>The genre and country lists for the filter controls, read locally rather than from TMDB.</summary>
+    Task<IReadOnlyList<GenreDto>> ListGenresAsync(CancellationToken ct);
+    Task<IReadOnlyList<CountryDto>> ListCountriesAsync(CancellationToken ct);
     Task<AdminResult<AdminPremiereDto>> ActivateAsync(Guid premiereId, CancellationToken ct);
 
     /// <summary>
@@ -59,10 +76,12 @@ public sealed class AdminService(
     IUserBlockCache blockCache,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<MarqueeRulesOptions> rules,
+    IOptions<TmdbOptions> tmdbOptions,
     ILogger<AdminService> logger) : IAdminService
 {
     private readonly MarqueeScheduleOptions _schedule = schedule.Value;
     private readonly MarqueeRulesOptions _rules = rules.Value;
+    private readonly TmdbOptions _tmdbOptions = tmdbOptions.Value;
 
     public async Task<PagedResult<AdminUserDto>> ListUsersAsync(
         string? search, int page, int pageSize, CancellationToken ct)
@@ -307,6 +326,50 @@ public sealed class AdminService(
         _ => "That time is not allowed."
     };
 
+    public async Task<IReadOnlyList<MovieSearchResultDto>> SearchMoviesAsync(string query, CancellationToken ct)
+    {
+        var hits = await tmdb.SearchMoviesAsync(query, ct);
+        if (hits.Count == 0)
+            return [];
+
+        // One query for the whole page rather than one per hit. "Already used" is resolved here, and
+        // not left to the client, because §4.6's no-repeat rule is enforced server-side anyway —
+        // showing a film as pickable and then refusing it would be the worst of both.
+        var ids = hits.Select(h => h.TmdbId).ToList();
+        var used = (await db.Movies
+            .Where(m => ids.Contains(m.TmdbId))
+            .Select(m => m.TmdbId)
+            .ToListAsync(ct)).ToHashSet();
+
+        return hits.Select(h => new MovieSearchResultDto(
+            h.TmdbId,
+            h.Title,
+            h.OriginalTitle,
+            PosterUrl(h.PosterPath),
+            h.ReleaseYear,
+            h.Overview,
+            h.VoteAverage,
+            h.VoteCount,
+            used.Contains(h.TmdbId))).ToList();
+    }
+
+    // Read from the local tables, not TMDB: they are seeded at startup, they are what the films are
+    // actually linked to, and a filter dropdown should not depend on TMDB being reachable.
+    public async Task<IReadOnlyList<GenreDto>> ListGenresAsync(CancellationToken ct) =>
+        await db.Genres.AsNoTracking()
+            .OrderBy(g => g.Name)
+            .Select(g => new GenreDto(g.TmdbId, g.Name))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<CountryDto>> ListCountriesAsync(CancellationToken ct) =>
+        await db.Countries.AsNoTracking()
+            .OrderBy(c => c.Name)
+            .Select(c => new CountryDto(c.Iso3166Code, c.Name))
+            .ToListAsync(ct);
+
+    private string? PosterUrl(string? posterPath) =>
+        string.IsNullOrEmpty(posterPath) ? null : _tmdbOptions.ImageBaseUrl.TrimEnd('/') + posterPath;
+
     private static AdminResult<AdminPremiereDto> Invalid(string error) =>
         new(AdminOutcome.Invalid, Error: error);
 
@@ -320,7 +383,8 @@ public sealed class AdminService(
     /// global no-repeats rule. Only meaningful before the reveal — afterwards the movie is already
     /// in people's libraries.
     /// </summary>
-    public async Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(Guid premiereId, CancellationToken ct)
+    public async Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(
+        Guid premiereId, MovieFilter? filter, CancellationToken ct)
     {
         var premiere = await LoadAsync(premiereId, ct);
         if (premiere is null)
@@ -329,12 +393,56 @@ public sealed class AdminService(
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
         // Exclude everything ever used, including this Premiere's current pick, so "regenerate"
-        // always produces a genuinely different film (§4.6).
+        // always produces a genuinely different film (§4.6). The filter narrows the pool the pick is
+        // made from; it cannot widen it below the §4.6 floors (see MovieFilter).
         var usedTmdbIds = (await db.Movies.Select(m => m.TmdbId).ToListAsync(ct)).ToHashSet();
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds, filter: null, ct);
+        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds, filter, ct);
         if (chosen is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NoMovieAvailable);
 
+        return await SwapMovieAsync(premiere, chosen, ct);
+    }
+
+    /// <summary>
+    /// Put a specific film into a Premiere, rather than re-rolling for one.
+    ///
+    /// The §4.6 quality floors are deliberately not re-checked: an explicit pick is a considered
+    /// override, and refusing a film the admin deliberately searched for and selected would be
+    /// second-guessing them. The no-repeat rule is enforced, because that one is not a preference —
+    /// Movie.TmdbId is unique, so a repeat is a constraint violation rather than a matter of taste.
+    /// </summary>
+    public async Task<AdminResult<AdminPremiereDto>> SetMovieAsync(
+        Guid premiereId, int tmdbId, CancellationToken ct)
+    {
+        var premiere = await LoadAsync(premiereId, ct);
+        if (premiere is null)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.NotFound);
+        if (premiere.IsTerminal)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
+
+        if (await db.Movies.AnyAsync(m => m.TmdbId == tmdbId, ct))
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.MovieAlreadyUsed);
+
+        var chosen = await tmdb.GetMovieAsync(tmdbId, ct);
+        if (chosen is null)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.NoMovieAvailable);
+
+        // §4.6 requires a poster, and this is the one quality rule an explicit pick cannot waive:
+        // the reveal has nothing to show without it.
+        if (string.IsNullOrWhiteSpace(chosen.PosterPath))
+            return Invalid($"'{chosen.Title}' has no poster on TMDB, so it cannot be used for a Premiere.");
+
+        return await SwapMovieAsync(premiere, chosen, ct);
+    }
+
+    /// <summary>
+    /// The half both movie changes share: cache the new film, repoint the Premiere, and refresh the
+    /// Redis meta — which carries MovieId, so a stale entry would announce the previous film at the
+    /// reveal.
+    /// </summary>
+    private async Task<AdminResult<AdminPremiereDto>> SwapMovieAsync(
+        Premiere premiere, TmdbMovie chosen, CancellationToken ct)
+    {
         var movie = await movies.AddAsync(chosen, ct);
         premiere.Movie = movie;
         premiere.MovieId = movie.Id;

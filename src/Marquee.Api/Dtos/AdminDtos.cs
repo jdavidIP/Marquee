@@ -40,6 +40,43 @@ public sealed record UpdatePremiereScheduleRequest([Required] DateTime Scheduled
 
 public sealed record UpdatePremiereThresholdRequest([Required, Range(1, int.MaxValue)] int Threshold);
 
+/// <summary>
+/// An admin's narrowing for one re-roll. Every field is optional and every field only narrows — the
+/// §4.6 floors (vote count, vote average, poster) are re-applied on top regardless.
+/// </summary>
+public sealed record RegenerateMovieRequest(
+    [Range(0, 10)] double? MinVoteAverage,
+    [Range(1874, 2200)] int? MinYear,
+    [Range(1874, 2200)] int? MaxYear,
+    int? GenreId,
+    [MaxLength(10)] string? OriginalLanguage,
+    [Range(1, 1000)] int? MinRuntime,
+    [Range(1, 1000)] int? MaxRuntime,
+    [MaxLength(2)] string? OriginCountry);
+
+/// <summary>Choose a specific film by its TMDB id, instead of re-rolling for one.</summary>
+public sealed record SetPremiereMovieRequest([Required] int TmdbId);
+
+/// <summary>
+/// A TMDB search hit, for the admin's film picker. <see cref="AlreadyUsed"/> is resolved server-side
+/// against the local catalogue: §4.6 forbids a repeat, so a used film must be visibly unpickable
+/// rather than offered and then refused.
+/// </summary>
+public sealed record MovieSearchResultDto(
+    int TmdbId,
+    string Title,
+    string? OriginalTitle,
+    string? PosterUrl,
+    int? ReleaseYear,
+    string? Overview,
+    double VoteAverage,
+    int VoteCount,
+    bool AlreadyUsed);
+
+public sealed record GenreDto(int TmdbId, string Name);
+
+public sealed record CountryDto(string Iso3166Code, string Name);
+
 /// <summary>An inclusive range of local times, "HH:mm", a Premiere may be moved to.</summary>
 public sealed record ScheduleWindowDto(string Start, string End);
 

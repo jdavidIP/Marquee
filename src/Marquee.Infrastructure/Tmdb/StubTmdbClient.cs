@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Marquee.Domain.Rules;
 using Microsoft.Extensions.Logging;
 
@@ -101,6 +102,11 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
     /// </summary>
     private const int SyntheticProbeAttempts = 32;
 
+    /// <summary>How far into the synthetic pool a prefix search browses. A page, not the pool.</summary>
+    private const int SyntheticSearchWindow = 200;
+
+    private const int SearchResultLimit = 20;
+
     public Task<TmdbMovie?> DiscoverRandomMovieAsync(
         IReadOnlySet<int> excludeTmdbIds, MovieFilter? filter, CancellationToken ct = default)
     {
@@ -116,17 +122,47 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
         return Task.FromResult(NextSynthetic(excludeTmdbIds, filter));
     }
 
+    /// <summary>
+    /// Searches both pools.
+    ///
+    /// The synthetic half matters more than it looks: the curated dozen is spent after twelve
+    /// Premieres, and a search that then returns nothing would misrepresent how the real endpoint
+    /// behaves — TMDB has millions of films behind it and never runs dry. A picker that goes empty
+    /// offline would be untestable and would look broken.
+    /// </summary>
     public Task<IReadOnlyList<TmdbMovie>> SearchMoviesAsync(string query, CancellationToken ct = default)
     {
         var trimmed = query?.Trim();
         if (string.IsNullOrEmpty(trimmed))
             return Task.FromResult<IReadOnlyList<TmdbMovie>>([]);
 
-        IReadOnlyList<TmdbMovie> hits = Curated
-            .Where(m => m.Title.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+        var hits = Curated
+            .Where(m => m.Title.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
+                        || (m.OriginalTitle?.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ?? false))
             .ToList();
 
-        return Task.FromResult(hits);
+        // A whole synthetic title ("Test Feature #04217") resolves straight to its film, however deep
+        // in the pool it sits — so one that was handed out can always be found again by name.
+        var numbered = Regex.Match(trimmed, @"#(\d{1,5})");
+        if (numbered.Success
+            && int.TryParse(numbered.Groups[1].Value, out var index)
+            && index >= 0 && index < SyntheticPoolSize)
+        {
+            hits.Add(Synthesise(SyntheticIdBase + index));
+        }
+
+        // Prefix browsing over a bounded window, so "test" returns a usable page rather than 100,000.
+        hits.AddRange(Enumerable.Range(0, SyntheticSearchWindow)
+            .Select(i => Synthesise(SyntheticIdBase + i))
+            .Where(m => m.Title.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
+
+        IReadOnlyList<TmdbMovie> deduped = hits
+            .GroupBy(m => m.TmdbId)
+            .Select(g => g.First())
+            .Take(SearchResultLimit)
+            .ToList();
+
+        return Task.FromResult(deduped);
     }
 
     public Task<TmdbMovie?> GetMovieAsync(int tmdbId, CancellationToken ct = default)
@@ -166,6 +202,16 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
         if (filter.MaxYear is int maxYear && (movie.ReleaseYear is null || movie.ReleaseYear > maxYear))
             return false;
         if (filter.GenreId is int genreId && !movie.Genres.Contains(genreId))
+            return false;
+        if (!string.IsNullOrWhiteSpace(filter.OriginalLanguage) &&
+            !string.Equals(movie.OriginalLanguage, filter.OriginalLanguage, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (filter.MinRuntime is int minRuntime && (movie.Runtime is null || movie.Runtime < minRuntime))
+            return false;
+        if (filter.MaxRuntime is int maxRuntime && (movie.Runtime is null || movie.Runtime > maxRuntime))
+            return false;
+        if (!string.IsNullOrWhiteSpace(filter.OriginCountry) &&
+            !movie.Countries.Contains(filter.OriginCountry, StringComparer.OrdinalIgnoreCase))
             return false;
 
         return true;

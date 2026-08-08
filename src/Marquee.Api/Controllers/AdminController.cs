@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
 using Marquee.Api.Services;
 using Marquee.Domain.Enums;
+using Marquee.Infrastructure.Tmdb;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -101,10 +102,66 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
         Guid id, UpdatePremiereThresholdRequest request, CancellationToken ct) =>
         Respond(await admin.SetThresholdAsync(id, request.Threshold, ct));
 
+    /// <summary>
+    /// Re-roll the hidden film, optionally within a narrower pool. An absent body means the plain
+    /// §4.6 pool; the filter can only ever narrow it.
+    /// </summary>
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost("premieres/{id:guid}/movie")]
-    public async Task<ActionResult<AdminPremiereDto>> RegenerateMovie(Guid id, CancellationToken ct) =>
-        Respond(await admin.RegenerateMovieAsync(id, ct));
+    public async Task<ActionResult<AdminPremiereDto>> RegenerateMovie(
+        Guid id, RegenerateMovieRequest? request, CancellationToken ct) =>
+        Respond(await admin.RegenerateMovieAsync(id, ToFilter(request), ct));
+
+    /// <summary>Set a specific film the admin chose from a search.</summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpPut("premieres/{id:guid}/movie")]
+    public async Task<ActionResult<AdminPremiereDto>> SetMovie(
+        Guid id, SetPremiereMovieRequest request, CancellationToken ct) =>
+        Respond(await admin.SetMovieAsync(id, request.TmdbId, ct));
+
+    /// <summary>Search TMDB for a film to pick. Already-used films come back flagged, not hidden.</summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/search")]
+    public async Task<ActionResult<IReadOnlyList<MovieSearchResultDto>>> SearchMovies(
+        [FromQuery] string? query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Ok(Array.Empty<MovieSearchResultDto>());
+
+        return Ok(await admin.SearchMoviesAsync(query, ct));
+    }
+
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/genres")]
+    public async Task<ActionResult<IReadOnlyList<GenreDto>>> Genres(CancellationToken ct) =>
+        Ok(await admin.ListGenresAsync(ct));
+
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/countries")]
+    public async Task<ActionResult<IReadOnlyList<CountryDto>>> Countries(CancellationToken ct) =>
+        Ok(await admin.ListCountriesAsync(ct));
+
+    /// <summary>
+    /// The wire shape carries flat, individually-validatable fields; the domain takes one filter
+    /// object. An entirely empty body is the same as no filter at all.
+    /// </summary>
+    private static MovieFilter? ToFilter(RegenerateMovieRequest? request)
+    {
+        if (request is null)
+            return null;
+
+        var filter = new MovieFilter(
+            request.MinVoteAverage,
+            request.MinYear,
+            request.MaxYear,
+            request.GenreId,
+            request.OriginalLanguage,
+            request.MinRuntime,
+            request.MaxRuntime,
+            request.OriginCountry);
+
+        return filter.IsEmpty ? null : filter;
+    }
 
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost("premieres/{id:guid}/activate")]
@@ -120,6 +177,8 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
         AdminOutcome.AlreadyTerminal => Conflict(
             new { error = "This Premiere has already started or opened and can no longer be changed." }),
         AdminOutcome.AlreadyActive => Conflict(new { error = "This Premiere is already running." }),
+        AdminOutcome.MovieAlreadyUsed => Conflict(
+            new { error = "That film has already been used by an earlier Premiere, and no film repeats." }),
         AdminOutcome.NoMovieAvailable => StatusCode(
             StatusCodes.Status503ServiceUnavailable, new { error = "TMDB returned no fresh movie." }),
         _ => Ok(result.Value)

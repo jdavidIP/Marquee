@@ -50,10 +50,19 @@ public sealed record MovieFilter(
     double? MinVoteAverage = null,
     int? MinYear = null,
     int? MaxYear = null,
-    int? GenreId = null)
+    int? GenreId = null,
+    /// <summary>ISO 639-1, e.g. "ko".</summary>
+    string? OriginalLanguage = null,
+    int? MinRuntime = null,
+    int? MaxRuntime = null,
+    /// <summary>ISO 3166-1 alpha-2, e.g. "KR".</summary>
+    string? OriginCountry = null)
 {
     /// <summary>True when nothing is actually constrained, so callers can skip the work.</summary>
-    public bool IsEmpty => MinVoteAverage is null && MinYear is null && MaxYear is null && GenreId is null;
+    public bool IsEmpty =>
+        MinVoteAverage is null && MinYear is null && MaxYear is null && GenreId is null &&
+        string.IsNullOrWhiteSpace(OriginalLanguage) && MinRuntime is null && MaxRuntime is null &&
+        string.IsNullOrWhiteSpace(OriginCountry);
 }
 
 // --- Raw discover response shapes (System.Text.Json) ---

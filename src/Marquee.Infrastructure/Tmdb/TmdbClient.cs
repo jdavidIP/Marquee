@@ -220,6 +220,14 @@ public sealed class TmdbClient(
             url += $"&primary_release_date.lte={maxYear:D4}-12-31";
         if (filter?.GenreId is int genreId)
             url += $"&with_genres={genreId}";
+        if (!string.IsNullOrWhiteSpace(filter?.OriginalLanguage))
+            url += $"&with_original_language={Uri.EscapeDataString(filter.OriginalLanguage)}";
+        if (filter?.MinRuntime is int minRuntime)
+            url += $"&with_runtime.gte={minRuntime}";
+        if (filter?.MaxRuntime is int maxRuntime)
+            url += $"&with_runtime.lte={maxRuntime}";
+        if (!string.IsNullOrWhiteSpace(filter?.OriginCountry))
+            url += $"&with_origin_country={Uri.EscapeDataString(filter.OriginCountry)}";
 
         using var resp = await http.GetAsync(url, ct);
         if (!resp.IsSuccessStatusCode)
