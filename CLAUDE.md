@@ -189,7 +189,18 @@ Query TMDB `/discover/movie` with:
 - `vote_average.gte=5.0`
 - Must have a poster
 
-Pick randomly from the filtered pool. Track previously used TMDB IDs globally and exclude them so no movie repeats. The chosen movie is resolved and cached **at Premiere creation time**, never during the clap flow.
+Pick randomly from the filtered pool. The chosen movie is resolved and cached **at Premiere creation time**, never during the clap flow.
+
+**Reuse is a cooldown, not a ban.** A film is unavailable to the random pick while:
+
+1. it is attached to a Premiere that has not run yet (`Scheduled` or `Active`), or
+2. it was revealed within `MovieCooldownDays` (default 90) of now.
+
+The clock runs from `Premiere.OpenedAt` — when the film was actually *seen*. Being scheduled is not being seen, and a film swapped out of a Premiere before it ran was never shown at all, so neither starts the timer. The exclusion set is therefore derived from Premieres, **not** from every `Movie` row ever cached: a discarded pick must not shrink the pool for something nobody watched.
+
+Because a film may premiere more than once, `Movie` rows are reused rather than re-created (`TmdbId` is unique), and the open-time fan-out already skips a `LibraryEntry` for anyone who owns the film from an earlier Premiere.
+
+An admin choosing a film explicitly may override the cooldown, but only with an explicit acknowledgement — they are shown when it last premiered and when it comes free. Rule 1 has no override: the same film in two pending Premieres is a scheduling mistake, not a judgement about freshness.
 
 ---
 

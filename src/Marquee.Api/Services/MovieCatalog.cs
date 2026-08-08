@@ -1,7 +1,11 @@
 using Marquee.Domain.Entities;
+using Marquee.Domain.Enums;
+using Marquee.Domain.Options;
+using Marquee.Domain.Rules;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Tmdb;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Marquee.Api.Services;
 
@@ -16,15 +20,54 @@ namespace Marquee.Api.Services;
 /// and splitting that into two transactions would allow a Premiere to exist pointing at a film row
 /// that was never written.
 /// </summary>
+/// <summary>How a film stands relative to §4.6's reuse rule, at the moment it was asked about.</summary>
+public sealed record MovieAvailability(
+    DateTime? LastPremieredAt,
+    DateTime? EligibleFrom,
+    bool IsResting,
+    /// <summary>
+    /// True when the film is already attached to a Premiere that has not run yet. Distinct from
+    /// resting, and not overridable: the same film queued twice is a scheduling mistake, not a
+    /// judgement call about freshness.
+    /// </summary>
+    bool AlreadyQueued);
+
 public interface IMovieCatalog
 {
-    Task<Movie> AddAsync(TmdbMovie chosen, CancellationToken ct);
+    Task<Movie> GetOrAddAsync(TmdbMovie chosen, CancellationToken ct);
+
+    /// <summary>
+    /// TMDB ids the random pick may not choose: films already queued for a Premiere, and films
+    /// premiered recently enough to still be resting (§4.6).
+    /// </summary>
+    Task<IReadOnlySet<int>> UnavailableTmdbIdsAsync(CancellationToken ct);
+
+    /// <summary>Availability for a page of search hits, in one query rather than one per film.</summary>
+    Task<IReadOnlyDictionary<int, MovieAvailability>> AvailabilityAsync(
+        IReadOnlyCollection<int> tmdbIds, CancellationToken ct);
+
+    Task<MovieAvailability> AvailabilityAsync(int tmdbId, CancellationToken ct);
 }
 
-public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
+public sealed class MovieCatalog(MarqueeDbContext db, IOptions<MarqueeRulesOptions> rules) : IMovieCatalog
 {
-    public async Task<Movie> AddAsync(TmdbMovie chosen, CancellationToken ct)
+    private readonly MarqueeRulesOptions _rules = rules.Value;
+
+    /// <summary>
+    /// Returns the existing row when the film has been cached before, rather than inserting a second.
+    /// Movie.TmdbId is unique, and a film may now be premiered more than once (§4.6), so the same
+    /// TMDB id legitimately arrives twice over a catalogue's life.
+    ///
+    /// A reused row keeps its existing genres and countries: they are already linked, and re-adding
+    /// them would violate the unique index on the join.
+    /// </summary>
+    public async Task<Movie> GetOrAddAsync(TmdbMovie chosen, CancellationToken ct)
     {
+        var existing = await db.Movies.FirstOrDefaultAsync(m => m.TmdbId == chosen.TmdbId, ct)
+                       ?? db.Movies.Local.FirstOrDefault(m => m.TmdbId == chosen.TmdbId);
+        if (existing is not null)
+            return existing;
+
         var movie = new Movie
         {
             TmdbId = chosen.TmdbId,
@@ -58,6 +101,70 @@ public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
     /// the film's genre permanently — nothing revisits an old movie — whereas a placeholder keeps the
     /// relationship and lets the startup seed correct the name whenever TMDB is next reachable.
     /// </summary>
+    public async Task<IReadOnlySet<int>> UnavailableTmdbIdsAsync(CancellationToken ct)
+    {
+        var cutoff = MovieCooldown.CutoffFor(DateTime.UtcNow, _rules);
+
+        // Built from Premieres, not from every Movie row ever written. A film cached and then swapped
+        // out by an admin before its Premiere ran was never actually shown, and banning it would
+        // shrink the pool for something nobody ever saw.
+        var query = db.Premieres.AsNoTracking().Where(p =>
+            p.Status == PremiereStatus.Scheduled ||
+            p.Status == PremiereStatus.Active ||
+            (p.OpenedAt != null && p.OpenedAt >= cutoff));
+
+        var ids = await query.Select(p => p.Movie!.TmdbId).Distinct().ToListAsync(ct);
+        return ids.ToHashSet();
+    }
+
+    public async Task<MovieAvailability> AvailabilityAsync(int tmdbId, CancellationToken ct)
+    {
+        var map = await AvailabilityAsync([tmdbId], ct);
+        return map.TryGetValue(tmdbId, out var availability)
+            ? availability
+            : new MovieAvailability(null, null, false, false);
+    }
+
+    public async Task<IReadOnlyDictionary<int, MovieAvailability>> AvailabilityAsync(
+        IReadOnlyCollection<int> tmdbIds, CancellationToken ct)
+    {
+        if (tmdbIds.Count == 0)
+            return new Dictionary<int, MovieAvailability>();
+
+        var rows = await db.Premieres
+            .AsNoTracking()
+            .Where(p => tmdbIds.Contains(p.Movie!.TmdbId))
+            .Select(p => new { p.Movie!.TmdbId, p.Status, p.OpenedAt })
+            .ToListAsync(ct);
+
+        var now = DateTime.UtcNow;
+        var result = new Dictionary<int, MovieAvailability>();
+
+        foreach (var tmdbId in tmdbIds.Distinct())
+        {
+            var mine = rows.Where(r => r.TmdbId == tmdbId).ToList();
+
+            // The most recent *open*, not the most recent Premiere: a film sitting in a Scheduled
+            // Premiere has not been seen, and must not start its own cooldown.
+            var lastPremieredAt = mine
+                .Where(r => r.OpenedAt != null)
+                .Select(r => r.OpenedAt)
+                .DefaultIfEmpty(null)
+                .Max();
+
+            var queued = mine.Any(r =>
+                r.Status is PremiereStatus.Scheduled or PremiereStatus.Active);
+
+            result[tmdbId] = new MovieAvailability(
+                lastPremieredAt,
+                MovieCooldown.EligibleFrom(lastPremieredAt, _rules),
+                MovieCooldown.IsResting(lastPremieredAt, now, _rules),
+                queued);
+        }
+
+        return result;
+    }
+
     private async Task<IReadOnlyList<Genre>> ResolveGenresAsync(IReadOnlyList<int> tmdbGenreIds, CancellationToken ct)
     {
         var wanted = tmdbGenreIds.Distinct().ToList();

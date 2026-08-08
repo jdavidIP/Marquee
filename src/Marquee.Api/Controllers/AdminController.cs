@@ -117,7 +117,7 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
     [HttpPut("premieres/{id:guid}/movie")]
     public async Task<ActionResult<AdminPremiereDto>> SetMovie(
         Guid id, SetPremiereMovieRequest request, CancellationToken ct) =>
-        Respond(await admin.SetMovieAsync(id, request.TmdbId, ct));
+        Respond(await admin.SetMovieAsync(id, request.TmdbId, request.AcknowledgeCooldown, ct));
 
     /// <summary>Search TMDB for a film to pick. Already-used films come back flagged, not hidden.</summary>
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
@@ -177,8 +177,11 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
         AdminOutcome.AlreadyTerminal => Conflict(
             new { error = "This Premiere has already started or opened and can no longer be changed." }),
         AdminOutcome.AlreadyActive => Conflict(new { error = "This Premiere is already running." }),
-        AdminOutcome.MovieAlreadyUsed => Conflict(
-            new { error = "That film has already been used by an earlier Premiere, and no film repeats." }),
+        AdminOutcome.MovieAlreadyQueued => Conflict(
+            new { error = "That film is already lined up for another Premiere that has not run yet." }),
+        // 409 with the reason and the dates, so the client can offer the override rather than just
+        // report a failure. Resending with acknowledgeCooldown succeeds.
+        AdminOutcome.MovieInCooldown => Conflict(new { error = result.Error, cooldown = true }),
         AdminOutcome.NoMovieAvailable => StatusCode(
             StatusCodes.Status503ServiceUnavailable, new { error = "TMDB returned no fresh movie." }),
         _ => Ok(result.Value)

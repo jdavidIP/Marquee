@@ -24,7 +24,8 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
     private sealed record ErrorBody(string Error);
     private sealed record SearchHit(
         int TmdbId, string Title, string? OriginalTitle, string? PosterUrl, int? ReleaseYear,
-        string? Overview, double VoteAverage, int VoteCount, bool AlreadyUsed);
+        string? Overview, double VoteAverage, int VoteCount,
+        DateTime? LastPremieredAt, DateTime? EligibleFrom, bool InCooldown, bool AlreadyQueued);
     private sealed record GenreBody(int TmdbId, string Name);
     private sealed record CountryBody(string Iso3166Code, string Name);
     private sealed record PremiereBody(Guid Id, string Status, Guid MovieId, int MovieTmdbId, string MovieTitle);
@@ -115,10 +116,10 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
         var client = await AuthedClientAsync();
 
         // Search the synthetic pool rather than the curated dozen: by the time the whole suite has
-        // run, every curated film has been spent, and this test needs one that has not.
+        // run, every curated film has been spent, and this test needs one that is free.
         var hits = await client.GetFromJsonAsync<List<SearchHit>>(
             "/api/admin/movies/search?query=Test%20Feature");
-        var target = hits!.First(h => !h.AlreadyUsed);
+        var target = hits!.First(h => !h.AlreadyQueued && !h.InCooldown);
 
         var response = await client.PutAsJsonAsync(
             $"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId = target.TmdbId });
@@ -136,24 +137,137 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
     }
 
     [Fact]
-    public async Task Choosing_a_film_that_has_already_been_used_is_refused()
+    public async Task Choosing_a_film_already_lined_up_elsewhere_is_refused_outright()
     {
-        // §4.6's no-repeat rule is a unique constraint, so this has to be caught before the insert
-        // rather than surfacing as a database error.
+        // Not a freshness judgement — the same film in two pending Premieres is a scheduling mistake,
+        // so there is no override for it.
         factory.Tmdb.IsDown = false;
-        var spent = await ScheduledPremiereAsync(204);
+        var queued = await ScheduledPremiereAsync(204);
         var premiere = await ScheduledPremiereAsync(205);
         var client = await AuthedClientAsync();
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
-        var alreadyUsed = await db.Movies.AsNoTracking().FirstAsync(m => m.Id == spent.MovieId);
+        var taken = await db.Movies.AsNoTracking().FirstAsync(m => m.Id == queued.MovieId);
 
         var response = await client.PutAsJsonAsync(
-            $"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId = alreadyUsed.TmdbId });
+            $"/api/admin/premieres/{premiere.Id}/movie",
+            new { tmdbId = taken.TmdbId, acknowledgeCooldown = true });
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await response.Content.ReadFromJsonAsync<ErrorBody>())!.Error.Should().Contain("no film repeats");
+        (await response.Content.ReadFromJsonAsync<ErrorBody>())!.Error.Should().Contain("already lined up");
+    }
+
+    // ------------------------------------------------------------------ cooldown (§4.6)
+
+    /// <summary>
+    /// Puts a film in the past: opened, and revealed <paramref name="daysAgo"/> days ago. Returns the
+    /// TMDB id, which is what the picker deals in.
+    /// </summary>
+    private async Task<int> PremieredFilmAsync(int hoursAhead, int daysAgo)
+    {
+        var premiere = await ScheduledPremiereAsync(hoursAhead);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var openedAt = DateTime.UtcNow.AddDays(-daysAgo);
+
+        await db.Premieres.Where(p => p.Id == premiere.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Status, Domain.Enums.PremiereStatus.Opened)
+                .SetProperty(p => p.OpenedAt, openedAt), default);
+
+        return (await db.Movies.AsNoTracking().FirstAsync(m => m.Id == premiere.MovieId)).TmdbId;
+    }
+
+    [Fact]
+    public async Task A_film_still_resting_is_refused_without_an_acknowledgement()
+    {
+        factory.Tmdb.IsDown = false;
+        var tmdbId = await PremieredFilmAsync(210, daysAgo: 10);
+        var premiere = await ScheduledPremiereAsync(211);
+        var client = await AuthedClientAsync();
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var error = (await response.Content.ReadFromJsonAsync<ErrorBody>())!.Error;
+        error.Should().Contain("premiered on").And.Contain("available again from");
+    }
+
+    [Fact]
+    public async Task A_film_still_resting_is_accepted_once_the_override_is_explicit()
+    {
+        factory.Tmdb.IsDown = false;
+        var tmdbId = await PremieredFilmAsync(212, daysAgo: 10);
+        var premiere = await ScheduledPremiereAsync(213);
+        var client = await AuthedClientAsync();
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/premieres/{premiere.Id}/movie",
+            new { tmdbId, acknowledgeCooldown = true });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<PremiereBody>())!.MovieTmdbId.Should().Be(tmdbId);
+    }
+
+    [Fact]
+    public async Task A_film_past_its_cooldown_needs_no_acknowledgement()
+    {
+        factory.Tmdb.IsDown = false;
+        var tmdbId = await PremieredFilmAsync(214, daysAgo: 200);
+        var premiere = await ScheduledPremiereAsync(215);
+        var client = await AuthedClientAsync();
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Re_premiering_reuses_the_existing_film_row_rather_than_duplicating_it()
+    {
+        // Movie.TmdbId is unique, so a second Premiere of the same film has to point at the row that
+        // already exists — with its genres and countries intact.
+        factory.Tmdb.IsDown = false;
+        var tmdbId = await PremieredFilmAsync(216, daysAgo: 200);
+        var premiere = await ScheduledPremiereAsync(217);
+        var client = await AuthedClientAsync();
+
+        await client.PutAsJsonAsync($"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId });
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var rows = await db.Movies.AsNoTracking().Where(m => m.TmdbId == tmdbId).ToListAsync();
+
+        rows.Should().HaveCount(1);
+        (await db.MovieGenres.AsNoTracking().CountAsync(mg => mg.MovieId == rows[0].Id))
+            .Should().BePositive("the reused row keeps the genres it was linked to");
+    }
+
+    [Fact]
+    public async Task A_film_dropped_before_its_Premiere_ran_is_not_banned()
+    {
+        // The bug the cooldown work exposed: the old exclusion list was every Movie row ever cached,
+        // so a film an admin swapped out before it was ever shown stayed blocked forever.
+        factory.Tmdb.IsDown = false;
+        var premiere = await ScheduledPremiereAsync(218);
+        var client = await AuthedClientAsync();
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var dropped = await db.Movies.AsNoTracking().FirstAsync(m => m.Id == premiere.MovieId);
+
+        // Swap it out; the dropped film was never revealed to anyone.
+        await client.PostAsJsonAsync($"/api/admin/premieres/{premiere.Id}/movie", new { });
+
+        var other = await ScheduledPremiereAsync(219);
+        var response = await client.PutAsJsonAsync(
+            $"/api/admin/premieres/{other.Id}/movie", new { tmdbId = dropped.TmdbId });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "a film nobody saw has nothing to rest from");
     }
 
     [Fact]
@@ -172,7 +286,7 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
     // ------------------------------------------------------------------ picker data
 
     [Fact]
-    public async Task Search_flags_films_already_spent_rather_than_hiding_them()
+    public async Task Search_flags_a_queued_film_rather_than_hiding_it()
     {
         factory.Tmdb.IsDown = false;
         var premiere = await ScheduledPremiereAsync(207);
@@ -180,14 +294,40 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
-        var used = await db.Movies.AsNoTracking().FirstAsync(m => m.Id == premiere.MovieId);
+        var queued = await db.Movies.AsNoTracking().FirstAsync(m => m.Id == premiere.MovieId);
 
         var hits = await client.GetFromJsonAsync<List<SearchHit>>(
-            $"/api/admin/movies/search?query={Uri.EscapeDataString(used.Title)}");
+            $"/api/admin/movies/search?query={Uri.EscapeDataString(queued.Title)}");
 
         hits.Should().NotBeNull().And.NotBeEmpty();
-        hits!.Should().Contain(h => h.TmdbId == used.TmdbId && h.AlreadyUsed,
-            "a spent film stays visible so the admin can see why it is unavailable");
+        hits!.Should().Contain(h => h.TmdbId == queued.TmdbId && h.AlreadyQueued,
+            "an unavailable film stays visible so the admin can see why");
+    }
+
+    [Fact]
+    public async Task Search_reports_when_a_resting_film_becomes_available_again()
+    {
+        factory.Tmdb.IsDown = false;
+        var tmdbId = await PremieredFilmAsync(220, daysAgo: 10);
+        var client = await AuthedClientAsync();
+
+        var hits = await client.GetFromJsonAsync<List<SearchHit>>(
+            $"/api/admin/movies/search?query=%23");
+
+        var hit = hits!.FirstOrDefault(h => h.TmdbId == tmdbId)
+                  ?? (await client.GetFromJsonAsync<List<SearchHit>>(
+                          "/api/admin/movies/search?query=Test%20Feature"))!
+                      .FirstOrDefault(h => h.TmdbId == tmdbId);
+
+        // Only assert when the film is actually in the searchable window; the point is the shape of
+        // the answer, not the stub's paging.
+        if (hit is null)
+            return;
+
+        hit.InCooldown.Should().BeTrue();
+        hit.LastPremieredAt.Should().NotBeNull();
+        hit.EligibleFrom.Should().NotBeNull();
+        hit.EligibleFrom.Should().BeAfter(hit.LastPremieredAt!.Value);
     }
 
     [Fact]

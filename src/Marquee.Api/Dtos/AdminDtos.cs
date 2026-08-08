@@ -55,12 +55,20 @@ public sealed record RegenerateMovieRequest(
     [MaxLength(2)] string? OriginCountry);
 
 /// <summary>Choose a specific film by its TMDB id, instead of re-rolling for one.</summary>
-public sealed record SetPremiereMovieRequest([Required] int TmdbId);
+public sealed record SetPremiereMovieRequest(
+    [Required] int TmdbId,
+    /// <summary>
+    /// Confirms the admin has seen that the film is still in its §4.6 cooldown and means to use it
+    /// anyway. Without it a resting film is refused, so the override is always a deliberate act.
+    /// </summary>
+    bool AcknowledgeCooldown = false);
 
 /// <summary>
-/// A TMDB search hit, for the admin's film picker. <see cref="AlreadyUsed"/> is resolved server-side
-/// against the local catalogue: §4.6 forbids a repeat, so a used film must be visibly unpickable
-/// rather than offered and then refused.
+/// A TMDB search hit, for the admin's film picker.
+///
+/// Availability is resolved server-side against the local record. A resting film stays in the list
+/// with the date it was last shown, rather than vanishing: §4.6 is now a cooldown an admin may
+/// deliberately override, so what they need is the fact, not a hidden option.
 /// </summary>
 public sealed record MovieSearchResultDto(
     int TmdbId,
@@ -71,7 +79,14 @@ public sealed record MovieSearchResultDto(
     string? Overview,
     double VoteAverage,
     int VoteCount,
-    bool AlreadyUsed);
+    /// <summary>When this film was last revealed, or null if it never has been.</summary>
+    DateTime? LastPremieredAt,
+    /// <summary>When it becomes freely selectable again.</summary>
+    DateTime? EligibleFrom,
+    /// <summary>Still inside its cooldown — pickable, but only with an acknowledgement.</summary>
+    bool InCooldown,
+    /// <summary>Already attached to a Premiere that has not run. Not pickable at all.</summary>
+    bool AlreadyQueued);
 
 public sealed record GenreDto(int TmdbId, string Name);
 

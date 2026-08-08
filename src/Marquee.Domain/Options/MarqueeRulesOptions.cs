@@ -28,6 +28,13 @@ public sealed class MarqueeRulesOptions
     public double MinParticipationFraction { get; set; } = 0.08;
     public double AnonymousCapFraction { get; set; } = 0.25;
 
+    // --- Movie reuse (§4.6) ---
+    /// <summary>
+    /// How long a film stays off-limits after it has been premiered. Zero means never reusable,
+    /// which is the original v1 behaviour.
+    /// </summary>
+    public int MovieCooldownDays { get; set; } = 90;
+
     // --- Emblem tier boundaries as a fraction of the participant's cap (§4.3) ---
     public double EmblemTier2Fraction { get; set; } = 0.25;
     public double EmblemTier3Fraction { get; set; } = 0.50;

@@ -20,12 +20,14 @@ public enum AdminOutcome
     /// <summary>The Premiere is already running; it cannot be activated a second time.</summary>
     AlreadyActive,
     NoMovieAvailable,
+    /// <summary>The film is already attached to a Premiere that has not run yet. Not overridable.</summary>
+    MovieAlreadyQueued,
     /// <summary>
-    /// The chosen film has already been used by an earlier Premiere. §4.6's no-repeat rule is a data
-    /// constraint here, not a preference — Movie.TmdbId is unique — so this is a conflict with the
-    /// existing record rather than a bad value.
+    /// The film was premiered recently enough to still be resting (§4.6). Overridable, but only with
+    /// an explicit acknowledgement, so bypassing the rule is a decision someone made rather than a
+    /// click they did not notice.
     /// </summary>
-    MovieAlreadyUsed,
+    MovieInCooldown,
     /// <summary>
     /// The request was well-formed but breaks a domain rule — a time outside the day's window, a
     /// threshold outside the band. Always carries an <see cref="AdminResult{T}.Error"/> saying which,
@@ -50,7 +52,8 @@ public interface IAdminService
         Guid premiereId, MovieFilter? filter, CancellationToken ct);
 
     /// <summary>Set a specific film, chosen by the admin from a search rather than re-rolled.</summary>
-    Task<AdminResult<AdminPremiereDto>> SetMovieAsync(Guid premiereId, int tmdbId, CancellationToken ct);
+    Task<AdminResult<AdminPremiereDto>> SetMovieAsync(
+        Guid premiereId, int tmdbId, bool acknowledgeCooldown, CancellationToken ct);
 
     /// <summary>Search TMDB for a film to pick, flagging any already spent by an earlier Premiere.</summary>
     Task<IReadOnlyList<MovieSearchResultDto>> SearchMoviesAsync(string query, CancellationToken ct);
@@ -332,25 +335,28 @@ public sealed class AdminService(
         if (hits.Count == 0)
             return [];
 
-        // One query for the whole page rather than one per hit. "Already used" is resolved here, and
-        // not left to the client, because §4.6's no-repeat rule is enforced server-side anyway —
-        // showing a film as pickable and then refusing it would be the worst of both.
-        var ids = hits.Select(h => h.TmdbId).ToList();
-        var used = (await db.Movies
-            .Where(m => ids.Contains(m.TmdbId))
-            .Select(m => m.TmdbId)
-            .ToListAsync(ct)).ToHashSet();
+        // One query for the whole page rather than one per hit. Availability is resolved here rather
+        // than left to the client because the same rules are enforced on the write path anyway —
+        // showing a film as freely pickable and then refusing it would be the worst of both.
+        var availability = await movies.AvailabilityAsync(hits.Select(h => h.TmdbId).ToList(), ct);
 
-        return hits.Select(h => new MovieSearchResultDto(
-            h.TmdbId,
-            h.Title,
-            h.OriginalTitle,
-            PosterUrl(h.PosterPath),
-            h.ReleaseYear,
-            h.Overview,
-            h.VoteAverage,
-            h.VoteCount,
-            used.Contains(h.TmdbId))).ToList();
+        return hits.Select(h =>
+        {
+            var state = availability[h.TmdbId];
+            return new MovieSearchResultDto(
+                h.TmdbId,
+                h.Title,
+                h.OriginalTitle,
+                PosterUrl(h.PosterPath),
+                h.ReleaseYear,
+                h.Overview,
+                h.VoteAverage,
+                h.VoteCount,
+                state.LastPremieredAt,
+                state.EligibleFrom,
+                state.IsResting,
+                state.AlreadyQueued);
+        }).ToList();
     }
 
     // Read from the local tables, not TMDB: they are seeded at startup, they are what the films are
@@ -392,11 +398,11 @@ public sealed class AdminService(
         if (premiere.IsTerminal)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
-        // Exclude everything ever used, including this Premiere's current pick, so "regenerate"
-        // always produces a genuinely different film (§4.6). The filter narrows the pool the pick is
-        // made from; it cannot widen it below the §4.6 floors (see MovieFilter).
-        var usedTmdbIds = (await db.Movies.Select(m => m.TmdbId).ToListAsync(ct)).ToHashSet();
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds, filter, ct);
+        // Films queued for a Premiere — this one's current pick included — plus anything still
+        // resting out its cooldown (§4.6). The filter narrows the pool further; it cannot widen it
+        // below the §4.6 floors (see MovieFilter).
+        var unavailable = await movies.UnavailableTmdbIdsAsync(ct);
+        var chosen = await tmdb.DiscoverRandomMovieAsync(unavailable, filter, ct);
         if (chosen is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NoMovieAvailable);
 
@@ -412,7 +418,7 @@ public sealed class AdminService(
     /// Movie.TmdbId is unique, so a repeat is a constraint violation rather than a matter of taste.
     /// </summary>
     public async Task<AdminResult<AdminPremiereDto>> SetMovieAsync(
-        Guid premiereId, int tmdbId, CancellationToken ct)
+        Guid premiereId, int tmdbId, bool acknowledgeCooldown, CancellationToken ct)
     {
         var premiere = await LoadAsync(premiereId, ct);
         if (premiere is null)
@@ -420,8 +426,24 @@ public sealed class AdminService(
         if (premiere.IsTerminal)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
-        if (await db.Movies.AnyAsync(m => m.TmdbId == tmdbId, ct))
-            return new AdminResult<AdminPremiereDto>(AdminOutcome.MovieAlreadyUsed);
+        var availability = await movies.AvailabilityAsync(tmdbId, ct);
+
+        // Not overridable, unlike the cooldown: the same film sitting in two pending Premieres is a
+        // scheduling mistake rather than a judgement about how recently it was seen.
+        if (availability.AlreadyQueued && premiere.Movie?.TmdbId != tmdbId)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.MovieAlreadyQueued);
+
+        // Overridable, but only deliberately. The admin is told when it was last shown and has to say
+        // they mean it — a single click that silently bypasses a domain rule is not a decision anyone
+        // can later account for.
+        if (availability.IsResting && !acknowledgeCooldown)
+        {
+            return new AdminResult<AdminPremiereDto>(
+                AdminOutcome.MovieInCooldown,
+                Error: $"That film premiered on {availability.LastPremieredAt:yyyy-MM-dd} and is " +
+                       $"available again from {availability.EligibleFrom:yyyy-MM-dd}. Confirm the " +
+                       "override to use it anyway.");
+        }
 
         var chosen = await tmdb.GetMovieAsync(tmdbId, ct);
         if (chosen is null)
@@ -443,7 +465,7 @@ public sealed class AdminService(
     private async Task<AdminResult<AdminPremiereDto>> SwapMovieAsync(
         Premiere premiere, TmdbMovie chosen, CancellationToken ct)
     {
-        var movie = await movies.AddAsync(chosen, ct);
+        var movie = await movies.GetOrAddAsync(chosen, ct);
         premiere.Movie = movie;
         premiere.MovieId = movie.Id;
         await db.SaveChangesAsync(ct);
