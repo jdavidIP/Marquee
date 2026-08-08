@@ -41,9 +41,4 @@ export class PremiereService {
       `${environment.apiBase}/premieres/${id}/friends`,
     );
   }
-
-  /** Admin-only: manually create (and immediately activate) a Premiere. */
-  create(): Observable<PremiereDto> {
-    return this.http.post<PremiereDto>(`${environment.apiBase}/premieres`, {});
-  }
 }

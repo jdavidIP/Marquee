@@ -30,7 +30,6 @@ export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly nextPremiere = signal<PremiereDto | null>(null);
   protected readonly loading = signal(true);
   protected readonly clapping = signal(false);
-  protected readonly creating = signal(false);
   protected readonly error = signal<string | null>(null);
 
   /**
@@ -180,24 +179,6 @@ export class PremiereComponent implements OnInit, OnDestroy {
             ? 'This Premiere is no longer accepting claps.'
             : 'That clap did not register. Try again.',
         );
-      },
-    });
-  }
-
-  createPremiere(): void {
-    this.creating.set(true);
-    this.error.set(null);
-    this.premieres.create().subscribe({
-      next: (p) => {
-        this.creating.set(false);
-        this.premiere.set(p);
-        this.nextPremiere.set(null);
-        void this.realtime.watchPremiere(p.id);
-      },
-      error: (err: unknown) => {
-        this.creating.set(false);
-        const e = err as { error?: { error?: string } };
-        this.error.set(e?.error?.error ?? 'Could not create a Premiere.');
       },
     });
   }

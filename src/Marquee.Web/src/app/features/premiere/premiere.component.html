@@ -12,11 +12,6 @@
     } @else {
       <p class="sub">Premieres appear four times a day. Check back soon.</p>
     }
-    @if (auth.isAdmin()) {
-      <button class="primary" (click)="createPremiere()" [disabled]="creating()">
-        {{ creating() ? 'Creating…' : 'Create a Premiere (admin)' }}
-      </button>
-    }
     @if (error()) { <p class="err">{{ error() }}</p> }
   </section>
 } @else {

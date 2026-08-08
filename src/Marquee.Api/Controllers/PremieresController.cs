@@ -62,9 +62,19 @@ public class PremieresController(IPremiereService premieres, IParticipantResolve
     }
 
     /// <summary>
-    /// Admin-only manual Premiere creation. The scheduler generates the day's four (§4.4); this is
-    /// the on-demand trigger, and unlike a scheduled one it activates immediately.
+    /// Manual Premiere creation — development and test only.
+    ///
+    /// How many Premieres exist per day is a product invariant (§4.4): the scheduler draws four, and
+    /// nobody, admin included, may add a fifth. In a deployed environment this endpoint does not
+    /// exist. It survives here because the integration tests and the load scripts need an Active
+    /// Premiere in front of them without waiting on the day's schedule, and driving that through the
+    /// real creation path is better than seeding rows behind the application's back.
+    ///
+    /// Gated on the environment rather than on a permission, so no production token can reach it
+    /// however roles are configured. Admins tune the Premieres that already exist, via
+    /// AdminController.
     /// </summary>
+    [DevelopmentOnly]
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost]
     public async Task<ActionResult<PremiereDto>> Create(CreatePremiereRequest request, CancellationToken ct)
