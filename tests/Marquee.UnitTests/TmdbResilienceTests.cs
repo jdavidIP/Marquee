@@ -98,7 +98,7 @@ public class TmdbResilienceTests
         var (client, handler) = BuildClient(
             new ScriptedHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         movie.Should().NotBeNull("two 503s are transient and the pipeline should ride them out");
         movie!.TmdbId.Should().Be(603);
@@ -110,7 +110,7 @@ public class TmdbResilienceTests
     {
         var (client, handler) = BuildClient(new ScriptedHandler(HttpStatusCode.ServiceUnavailable));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         // The contract callers rely on: a dead TMDB yields "no movie", not an exception escaping into
         // the scheduler. PremiereFactory turns this into NoMovieAvailableException, which the daily
@@ -127,7 +127,7 @@ public class TmdbResilienceTests
         // endpoint on every scheduling run is how a wrong key becomes a rate-limit ban.
         var (client, handler) = BuildClient(new ScriptedHandler(HttpStatusCode.Unauthorized));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         movie.Should().BeNull();
         handler.Attempts.Should().Be(1, "4xx other than 408/429 is not transient");

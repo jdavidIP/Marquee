@@ -41,7 +41,7 @@ public sealed class PremiereFactory(
 
         // --- Movie selection at creation time (§4.6), never during the clap flow. ---
         var usedTmdbIds = await db.Movies.Select(m => m.TmdbId).ToListAsync(ct);
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds.ToHashSet(), ct)
+        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds.ToHashSet(), filter: null, ct)
             ?? throw new NoMovieAvailableException("TMDB returned no fresh movie for a new Premiere.");
 
         var movie = new Movie

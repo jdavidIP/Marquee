@@ -157,7 +157,7 @@ public sealed class AdminService(
         // Exclude everything ever used, including this Premiere's current pick, so "regenerate"
         // always produces a genuinely different film (§4.6).
         var usedTmdbIds = (await db.Movies.Select(m => m.TmdbId).ToListAsync(ct)).ToHashSet();
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds, ct);
+        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds, filter: null, ct);
         if (chosen is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NoMovieAvailable);
 
