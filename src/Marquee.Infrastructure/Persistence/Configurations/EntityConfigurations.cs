@@ -31,6 +31,42 @@ public class MovieConfiguration : IEntityTypeConfiguration<Movie>
     }
 }
 
+public class GenreConfiguration : IEntityTypeConfiguration<Genre>
+{
+    public void Configure(EntityTypeBuilder<Genre> b)
+    {
+        b.ToTable("genres");
+        b.HasKey(g => g.Id);
+        b.Property(g => g.Name).HasMaxLength(100).IsRequired();
+        b.HasIndex(g => g.TmdbId).IsUnique();
+    }
+}
+
+public class MovieGenreConfiguration : IEntityTypeConfiguration<MovieGenre>
+{
+    public void Configure(EntityTypeBuilder<MovieGenre> b)
+    {
+        b.ToTable("movie_genres");
+        b.HasKey(mg => mg.Id);
+        b.HasOne(mg => mg.Movie)
+            .WithMany(m => m.MovieGenres)
+            .HasForeignKey(mg => mg.MovieId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(mg => mg.Genre)
+            .WithMany(g => g.MovieGenres)
+            .HasForeignKey(mg => mg.GenreId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A film carries a genre once.
+        b.HasIndex(mg => new { mg.MovieId, mg.GenreId }).IsUnique();
+
+        // The unique index above only serves lookups that start from the movie. "Every film in this
+        // genre" — which is what a library filter asks — walks the other way and would otherwise
+        // scan the join table.
+        b.HasIndex(mg => mg.GenreId);
+    }
+}
+
 public class PremiereConfiguration : IEntityTypeConfiguration<Premiere>
 {
     public void Configure(EntityTypeBuilder<Premiere> b)

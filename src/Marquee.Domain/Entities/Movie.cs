@@ -10,4 +10,6 @@ public class Movie : AuditableEntity
     public double VoteAverage { get; set; }
     public int VoteCount { get; set; }
     public DateTime CachedAt { get; set; }
+
+    public ICollection<MovieGenre> MovieGenres { get; set; } = [];
 }

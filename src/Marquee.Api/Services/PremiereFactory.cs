@@ -26,6 +26,7 @@ public interface IPremiereFactory
 public sealed class PremiereFactory(
     MarqueeDbContext db,
     ITmdbClient tmdb,
+    IMovieCatalog movies,
     IPremiereCache cache,
     IRandomSource rng,
     IOptions<MarqueeRulesOptions> rules,
@@ -44,18 +45,7 @@ public sealed class PremiereFactory(
         var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds.ToHashSet(), filter: null, ct)
             ?? throw new NoMovieAvailableException("TMDB returned no fresh movie for a new Premiere.");
 
-        var movie = new Movie
-        {
-            TmdbId = chosen.TmdbId,
-            Title = chosen.Title,
-            PosterPath = chosen.PosterPath,
-            ReleaseYear = chosen.ReleaseYear,
-            Overview = chosen.Overview,
-            VoteAverage = chosen.VoteAverage,
-            VoteCount = chosen.VoteCount,
-            CachedAt = now
-        };
-        db.Movies.Add(movie);
+        var movie = await movies.AddAsync(chosen, ct);
 
         // --- Threshold + caps, computed once from the current registered user base (§4.1, §4.2). ---
         var totalUsers = await db.Users.CountAsync(ct);

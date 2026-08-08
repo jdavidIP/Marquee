@@ -39,6 +39,7 @@ public interface IAdminService
 public sealed class AdminService(
     MarqueeDbContext db,
     ITmdbClient tmdb,
+    IMovieCatalog movies,
     IPremiereCache cache,
     IUserBlockCache blockCache,
     IOptions<MarqueeScheduleOptions> schedule,
@@ -161,18 +162,7 @@ public sealed class AdminService(
         if (chosen is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NoMovieAvailable);
 
-        var movie = new Movie
-        {
-            TmdbId = chosen.TmdbId,
-            Title = chosen.Title,
-            PosterPath = chosen.PosterPath,
-            ReleaseYear = chosen.ReleaseYear,
-            Overview = chosen.Overview,
-            VoteAverage = chosen.VoteAverage,
-            VoteCount = chosen.VoteCount,
-            CachedAt = DateTime.UtcNow
-        };
-        db.Movies.Add(movie);
+        var movie = await movies.AddAsync(chosen, ct);
         premiere.Movie = movie;
         premiere.MovieId = movie.Id;
         await db.SaveChangesAsync(ct);
