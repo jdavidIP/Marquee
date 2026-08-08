@@ -29,4 +29,7 @@ public interface ITmdbClient
 
     /// <summary>The genre list, for the admin's filter dropdown.</summary>
     Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(CancellationToken ct = default);
+
+    /// <summary>The country list, for the admin's filter dropdown and for naming origin countries.</summary>
+    Task<IReadOnlyList<TmdbCountry>> GetCountriesAsync(CancellationToken ct = default);
 }

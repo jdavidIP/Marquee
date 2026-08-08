@@ -43,20 +43,43 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
         new(10752, "War"),
     ];
 
+    /// <summary>The countries the curated films come from, with their real ISO 3166-1 codes.</summary>
+    private static readonly TmdbCountry[] CountryCatalogue =
+    [
+        new("US", "United States of America"),
+        new("GB", "United Kingdom"),
+        new("JP", "Japan"),
+        new("KR", "South Korea"),
+        new("IN", "India"),
+        new("FR", "France"),
+    ];
+
     private static readonly TmdbMovie[] Curated =
     [
-        new(238,   "The Godfather",           "/3bhkrj58Vtu7enYsRolD1fZdja1.jpg", 1972, "An organized crime dynasty's aging patriarch transfers control to his reluctant son.", 8.7, 19000, [18, 80]),
-        new(278,   "The Shawshank Redemption","/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg", 1994, "Two imprisoned men bond over years, finding solace and redemption.", 8.7, 25000, [18, 80]),
-        new(240,   "The Godfather Part II",   "/hek3koDUyRQk7FIhPXsa6mT2Zc3.jpg", 1974, "The early life of Vito Corleone and the rise of his son Michael.", 8.6, 11000, [18, 80]),
-        new(424,   "Schindler's List",        "/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg", 1993, "A businessman saves his Jewish workforce from the Holocaust.", 8.6, 15000, [18, 36, 10752]),
-        new(389,   "12 Angry Men",            "/ow3wq89wM8qd5X7hWKxiRfsFf9C.jpg", 1957, "A jury holdout attempts to prevent a miscarriage of justice.", 8.5, 8000, [18]),
-        new(129,   "Spirited Away",           "/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg", 2001, "A girl wanders into a world ruled by gods and witches.", 8.5, 16000, [16, 10751, 14]),
-        new(19404, "Dilwale Dulhania Le Jayenge","/2CAL2433ZeIihfX1Hb2139CX0pW.jpg", 1995, "A young couple falls in love on a trip across Europe.", 8.6, 4000, [35, 18, 10749]),
-        new(155,   "The Dark Knight",         "/qJ2tW6WMUDux911r6m7haRef0WH.jpg", 2008, "Batman faces the Joker, a criminal mastermind bent on chaos.", 8.5, 30000, [18, 28, 80, 53]),
-        new(496243,"Parasite",                "/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg", 2019, "Greed and class discrimination threaten a symbiotic relationship.", 8.5, 17000, [35, 53, 18]),
-        new(497,   "The Green Mile",          "/velWPhVMQeQKcxggNEU8YmIo52R.jpg", 1999, "A death-row guard witnesses supernatural events surrounding an inmate.", 8.5, 16000, [14, 18, 80]),
-        new(680,   "Pulp Fiction",            "/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg", 1994, "The lives of two mob hitmen, a boxer, and a couple intertwine.", 8.5, 27000, [53, 80]),
-        new(13,    "Forrest Gump",            "/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg", 1994, "Decades of American history unfold through the eyes of an Alabama man.", 8.5, 26000, [35, 18, 10749]),
+        new(238, "The Godfather", "/3bhkrj58Vtu7enYsRolD1fZdja1.jpg", 1972, "An organized crime dynasty's aging patriarch transfers control to his reluctant son.", 8.7, 19000, [18, 80],
+            "The Godfather", "en", new DateOnly(1972, 3, 14), 175, ["US"]),
+        new(278, "The Shawshank Redemption", "/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg", 1994, "Two imprisoned men bond over years, finding solace and redemption.", 8.7, 25000, [18, 80],
+            "The Shawshank Redemption", "en", new DateOnly(1994, 9, 23), 142, ["US"]),
+        new(240, "The Godfather Part II", "/hek3koDUyRQk7FIhPXsa6mT2Zc3.jpg", 1974, "The early life of Vito Corleone and the rise of his son Michael.", 8.6, 11000, [18, 80],
+            "The Godfather Part II", "en", new DateOnly(1974, 12, 20), 202, ["US"]),
+        new(424, "Schindler's List", "/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg", 1993, "A businessman saves his Jewish workforce from the Holocaust.", 8.6, 15000, [18, 36, 10752],
+            "Schindler's List", "en", new DateOnly(1993, 12, 15), 195, ["US"]),
+        new(389, "12 Angry Men", "/ow3wq89wM8qd5X7hWKxiRfsFf9C.jpg", 1957, "A jury holdout attempts to prevent a miscarriage of justice.", 8.5, 8000, [18],
+            "12 Angry Men", "en", new DateOnly(1957, 4, 10), 97, ["US"]),
+        new(129, "Spirited Away", "/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg", 2001, "A girl wanders into a world ruled by gods and witches.", 8.5, 16000, [16, 10751, 14],
+            "千と千尋の神隠し", "ja", new DateOnly(2001, 7, 20), 125, ["JP"]),
+        new(19404, "Dilwale Dulhania Le Jayenge", "/2CAL2433ZeIihfX1Hb2139CX0pW.jpg", 1995, "A young couple falls in love on a trip across Europe.", 8.6, 4000, [35, 18, 10749],
+            "दिलवाले दुल्हनिया ले जाएंगे", "hi", new DateOnly(1995, 10, 20), 190, ["IN"]),
+        new(155, "The Dark Knight", "/qJ2tW6WMUDux911r6m7haRef0WH.jpg", 2008, "Batman faces the Joker, a criminal mastermind bent on chaos.", 8.5, 30000, [18, 28, 80, 53],
+            "The Dark Knight", "en", new DateOnly(2008, 7, 16), 152, ["US", "GB"]),
+        new(496243, "Parasite", "/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg", 2019, "Greed and class discrimination threaten a symbiotic relationship.", 8.5, 17000, [35, 53, 18],
+            "기생충", "ko", new DateOnly(2019, 5, 30), 133, ["KR"]),
+        new(497, "The Green Mile", "/velWPhVMQeQKcxggNEU8YmIo52R.jpg", 1999, "A death-row guard witnesses supernatural events surrounding an inmate.", 8.5, 16000, [14, 18, 80],
+            "The Green Mile", "en", new DateOnly(1999, 12, 10), 189, ["US"]),
+        new(680, "Pulp Fiction", "/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg", 1994, "The lives of two mob hitmen, a boxer, and a couple intertwine.", 8.5, 27000, [53, 80],
+            "Pulp Fiction", "en", new DateOnly(1994, 9, 10), 154, ["US"]),
+        new(13, "Forrest Gump", "/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg", 1994, "Decades of American history unfold through the eyes of an Alabama man.", 8.5, 26000, [35, 18, 10749],
+            "Forrest Gump", "en", new DateOnly(1994, 6, 23), 142, ["US"]),
     ];
 
     /// <summary>
@@ -124,6 +147,9 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
     public Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<TmdbGenre>>(GenreCatalogue);
 
+    public Task<IReadOnlyList<TmdbCountry>> GetCountriesAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TmdbCountry>>(CountryCatalogue);
+
     /// <summary>
     /// The in-memory equivalent of the query parameters <see cref="TmdbClient"/> sends to /discover.
     /// The §4.6 floors are not re-checked here because everything in both pools already clears them.
@@ -177,15 +203,21 @@ public sealed class StubTmdbClient(IRandomSource rng, ILogger<StubTmdbClient> lo
     {
         var index = tmdbId - SyntheticIdBase;
         var poster = Curated[index % Curated.Length].PosterPath;
+        var year = 1980 + index % 45;
 
         return new TmdbMovie(
             TmdbId: tmdbId,
             Title: $"Test Feature #{index:D5}",
             PosterPath: poster,
-            ReleaseYear: 1980 + index % 45,
+            ReleaseYear: year,
             Overview: "Generated by StubTmdbClient because no TMDB API key is configured.",
             VoteAverage: 7.0,
             VoteCount: 1000,
-            GenreIds: [GenreCatalogue[index % GenreCatalogue.Length].Id]);
+            GenreIds: [GenreCatalogue[index % GenreCatalogue.Length].Id],
+            OriginalTitle: $"Test Feature #{index:D5}",
+            OriginalLanguage: "en",
+            ReleaseDate: new DateOnly(year, 1 + index % 12, 1 + index % 28),
+            Runtime: 80 + index % 90,
+            OriginCountries: [CountryCatalogue[index % CountryCatalogue.Length].Iso3166Code]);
     }
 }

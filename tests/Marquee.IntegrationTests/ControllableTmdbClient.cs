@@ -47,6 +47,12 @@ public sealed class ControllableTmdbClient(IRandomSource rng, ILogger<StubTmdbCl
         return _inner.GetGenresAsync(ct);
     }
 
+    public Task<IReadOnlyList<TmdbCountry>> GetCountriesAsync(CancellationToken ct = default)
+    {
+        ThrowIfDown();
+        return _inner.GetCountriesAsync(ct);
+    }
+
     private void ThrowIfDown()
     {
         if (IsDown)

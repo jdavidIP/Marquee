@@ -10,6 +10,8 @@ public class MarqueeDbContext(DbContextOptions<MarqueeDbContext> options) : DbCo
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
+    public DbSet<Country> Countries => Set<Country>();
+    public DbSet<MovieCountry> MovieCountries => Set<MovieCountry>();
     public DbSet<Premiere> Premieres => Set<Premiere>();
     public DbSet<Contribution> Contributions => Set<Contribution>();
     public DbSet<LibraryEntry> LibraryEntries => Set<LibraryEntry>();

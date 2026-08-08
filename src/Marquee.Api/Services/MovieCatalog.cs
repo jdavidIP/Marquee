@@ -29,8 +29,12 @@ public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
         {
             TmdbId = chosen.TmdbId,
             Title = chosen.Title,
+            OriginalTitle = chosen.OriginalTitle,
             PosterPath = chosen.PosterPath,
             ReleaseYear = chosen.ReleaseYear,
+            ReleaseDate = chosen.ReleaseDate,
+            OriginalLanguage = chosen.OriginalLanguage,
+            Runtime = chosen.Runtime,
             Overview = chosen.Overview,
             VoteAverage = chosen.VoteAverage,
             VoteCount = chosen.VoteCount,
@@ -38,8 +42,11 @@ public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
         };
         db.Movies.Add(movie);
 
-        foreach (var genre in await ResolveAsync(chosen.Genres, ct))
+        foreach (var genre in await ResolveGenresAsync(chosen.Genres, ct))
             movie.MovieGenres.Add(new MovieGenre { Movie = movie, Genre = genre });
+
+        foreach (var country in await ResolveCountriesAsync(chosen.Countries, ct))
+            movie.MovieCountries.Add(new MovieCountry { Movie = movie, Country = country });
 
         return movie;
     }
@@ -51,7 +58,7 @@ public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
     /// the film's genre permanently — nothing revisits an old movie — whereas a placeholder keeps the
     /// relationship and lets the startup seed correct the name whenever TMDB is next reachable.
     /// </summary>
-    private async Task<IReadOnlyList<Genre>> ResolveAsync(IReadOnlyList<int> tmdbGenreIds, CancellationToken ct)
+    private async Task<IReadOnlyList<Genre>> ResolveGenresAsync(IReadOnlyList<int> tmdbGenreIds, CancellationToken ct)
     {
         var wanted = tmdbGenreIds.Distinct().ToList();
         if (wanted.Count == 0)
@@ -70,6 +77,37 @@ public sealed class MovieCatalog(MarqueeDbContext db) : IMovieCatalog
             var genre = new Genre { TmdbId = tmdbId, Name = $"Genre {tmdbId}" };
             db.Genres.Add(genre);
             resolved.Add(genre);
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// The country equivalent of <see cref="ResolveGenresAsync"/>, including the placeholder-rather-
+    /// than-skip rule. The code doubles as the placeholder name: an ISO code is at least meaningful
+    /// on its own, unlike a bare genre number.
+    /// </summary>
+    private async Task<IReadOnlyList<Country>> ResolveCountriesAsync(
+        IReadOnlyList<string> isoCodes, CancellationToken ct)
+    {
+        var wanted = isoCodes
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim().ToUpperInvariant())
+            .Distinct()
+            .ToList();
+        if (wanted.Count == 0)
+            return [];
+
+        var resolved = await db.Countries.Where(c => wanted.Contains(c.Iso3166Code)).ToListAsync(ct);
+
+        resolved.AddRange(db.Countries.Local
+            .Where(c => wanted.Contains(c.Iso3166Code) && resolved.All(r => r.Iso3166Code != c.Iso3166Code)));
+
+        foreach (var code in wanted.Except(resolved.Select(c => c.Iso3166Code)))
+        {
+            var country = new Country { Iso3166Code = code, Name = code };
+            db.Countries.Add(country);
+            resolved.Add(country);
         }
 
         return resolved;

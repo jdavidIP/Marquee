@@ -3,6 +3,7 @@ using System;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Marquee.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MarqueeDbContext))]
-    partial class MarqueeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260808221641_EnrichMovieMetadata")]
+    partial class EnrichMovieMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

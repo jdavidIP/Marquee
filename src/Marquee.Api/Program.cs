@@ -126,6 +126,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await SeedAdminAsync(scope.ServiceProvider, app.Configuration, app.Logger);
     await SeedGenresAsync(scope.ServiceProvider, app.Logger);
+    await SeedCountriesAsync(scope.ServiceProvider, app.Logger);
 }
 
 if (app.Environment.IsDevelopment())
@@ -234,6 +235,57 @@ static async Task SeedGenresAsync(IServiceProvider sp, Microsoft.Extensions.Logg
 
     await db.SaveChangesAsync();
     logger.LogInformation("Seeded {Added} genre(s) and corrected {Renamed} name(s).", added, renamed);
+}
+
+// The country equivalent of SeedGenresAsync, and best-effort for the same reasons. MovieCatalog
+// falls back to using the ISO code as the name, so a failed fetch shows "KR" instead of
+// "South Korea" until the next successful start — never a missing relationship.
+static async Task SeedCountriesAsync(IServiceProvider sp, Microsoft.Extensions.Logging.ILogger logger)
+{
+    var db = sp.GetRequiredService<MarqueeDbContext>();
+    var tmdb = sp.GetRequiredService<ITmdbClient>();
+
+    IReadOnlyList<TmdbCountry> countries;
+    try
+    {
+        countries = await tmdb.GetCountriesAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not fetch the TMDB country list; names will be filled in on a later start.");
+        return;
+    }
+
+    if (countries.Count == 0)
+        return;
+
+    var existing = await db.Countries.ToDictionaryAsync(c => c.Iso3166Code);
+    var added = 0;
+    var renamed = 0;
+
+    foreach (var country in countries)
+    {
+        var code = country.Iso3166Code.ToUpperInvariant();
+        if (existing.TryGetValue(code, out var row))
+        {
+            if (row.Name == country.Name)
+                continue;
+
+            row.Name = country.Name;
+            renamed++;
+        }
+        else
+        {
+            db.Countries.Add(new Country { Iso3166Code = code, Name = country.Name });
+            added++;
+        }
+    }
+
+    if (added == 0 && renamed == 0)
+        return;
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("Seeded {Added} country/countries and corrected {Renamed} name(s).", added, renamed);
 }
 
 // Exposed so the integration test project can drive the API with WebApplicationFactory.

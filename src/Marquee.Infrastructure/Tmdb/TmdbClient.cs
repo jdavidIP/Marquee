@@ -52,8 +52,16 @@ public sealed class TmdbClient(
             if (candidates.Count == 0)
                 continue;
 
-            var chosen = candidates[rng.NextInt(0, candidates.Count - 1)];
-            return Map(chosen);
+            var chosen = Map(candidates[rng.NextInt(0, candidates.Count - 1)]);
+
+            // /discover does not carry runtime or origin country, so the chosen film gets one detail
+            // round trip. Affordable because this runs at Premiere creation — four times a day plus
+            // admin re-rolls — and never on the clap path (§4.6).
+            //
+            // A failed enrichment falls back to the discover-level record rather than failing the
+            // selection: missing runtime is a gap in metadata, while no movie at all is a Premiere
+            // that cannot exist.
+            return await EnrichAsync(chosen, ct);
         }
 
         logger.LogWarning("TMDB discover exhausted {Attempts} page attempts without a fresh candidate.", maxPageAttempts);
@@ -113,7 +121,61 @@ public sealed class TmdbClient(
             Overview: detail.Overview,
             VoteAverage: detail.VoteAverage,
             VoteCount: detail.VoteCount,
-            GenreIds: detail.Genres?.Select(g => g.Id).ToList());
+            GenreIds: detail.Genres?.Select(g => g.Id).ToList(),
+            OriginalTitle: detail.OriginalTitle,
+            OriginalLanguage: detail.OriginalLanguage,
+            ReleaseDate: DateOf(detail.ReleaseDate),
+            Runtime: detail.Runtime,
+            OriginCountries: detail.OriginCountry);
+    }
+
+    public async Task<IReadOnlyList<TmdbCountry>> GetCountriesAsync(CancellationToken ct = default)
+    {
+        var url = $"configuration/countries?api_key={Uri.EscapeDataString(_opts.ApiKey)}";
+
+        using var resp = await http.GetAsync(url, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            logger.LogWarning("TMDB country list failed: {Status}", resp.StatusCode);
+            return [];
+        }
+
+        var body = await resp.Content.ReadFromJsonAsync<List<TmdbCountryResult>>(ct);
+        return body?
+            .Where(c => !string.IsNullOrWhiteSpace(c.Iso3166Code) && !string.IsNullOrWhiteSpace(c.EnglishName))
+            .Select(c => new TmdbCountry(c.Iso3166Code!, c.EnglishName!))
+            .ToList() ?? [];
+    }
+
+    /// <summary>
+    /// Fills in the fields only /movie/{id} carries. Returns the original on any failure — a film
+    /// with no runtime is worth having; no film at all is a Premiere that cannot be created.
+    /// </summary>
+    private async Task<TmdbMovie> EnrichAsync(TmdbMovie movie, CancellationToken ct)
+    {
+        try
+        {
+            var detail = await GetMovieAsync(movie.TmdbId, ct);
+
+            // The id must match before the detail record replaces the chosen one. Enrichment is a
+            // second call about a film already selected, so anything that comes back describing a
+            // different film is a wrong answer — and silently swapping it in would put a movie in a
+            // Premiere that was never picked. The discover record is the trustworthy fallback.
+            if (detail is null || detail.TmdbId != movie.TmdbId)
+            {
+                logger.LogWarning(
+                    "TMDB detail for {TmdbId} came back as {ReturnedId}; keeping the discover record.",
+                    movie.TmdbId, detail?.TmdbId);
+                return movie;
+            }
+
+            return detail;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not enrich TMDB movie {TmdbId}; using the discover record.", movie.TmdbId);
+            return movie;
+        }
     }
 
     public async Task<IReadOnlyList<TmdbGenre>> GetGenresAsync(CancellationToken ct = default)
@@ -169,12 +231,15 @@ public sealed class TmdbClient(
         return await resp.Content.ReadFromJsonAsync<TmdbDiscoverResponse>(ct);
     }
 
-    private static int? YearOf(string? releaseDate)
+    private static int? YearOf(string? releaseDate) => DateOf(releaseDate)?.Year;
+
+    private static DateOnly? DateOf(string? releaseDate)
     {
+        // TMDB sends "" for an unknown release date, not null.
         if (!string.IsNullOrWhiteSpace(releaseDate) &&
-            DateTime.TryParse(releaseDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+            DateOnly.TryParse(releaseDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
         {
-            return d.Year;
+            return d;
         }
 
         return null;
@@ -188,5 +253,8 @@ public sealed class TmdbClient(
             Overview: r.Overview,
             VoteAverage: r.VoteAverage,
             VoteCount: r.VoteCount,
-            GenreIds: r.GenreIds);
+            GenreIds: r.GenreIds,
+            OriginalTitle: r.OriginalTitle,
+            OriginalLanguage: r.OriginalLanguage,
+            ReleaseDate: DateOf(r.ReleaseDate));
 }

@@ -102,7 +102,12 @@ public class TmdbResilienceTests
 
         movie.Should().NotBeNull("two 503s are transient and the pipeline should ride them out");
         movie!.TmdbId.Should().Be(603);
-        handler.Attempts.Should().Be(3, "two failures plus the successful third attempt");
+
+        // Two failures, the successful third attempt, then the /movie/{id} call that fills in the
+        // detail-only fields. This handler answers every URL with the same discover-shaped body, so
+        // that fourth response does not describe film 603 — and the id guard in EnrichAsync is what
+        // keeps the assertion above true rather than letting a mismatched record through.
+        handler.Attempts.Should().Be(4);
     }
 
     [Fact]
