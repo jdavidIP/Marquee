@@ -158,3 +158,27 @@ Write the observed numbers down in the repo (`docs/concurrency-findings.md`). Do
 - Every edit is refused with the domain reason when it would break §4.4 or §4.2, and the UI shows the constraints up front
 - A Premiere started early announces itself over SignalR exactly as the scheduler's own activation does
 - Postgres and Redis agree after every mutation that touches cached Premiere metadata
+
+---
+
+## The seven iterations above are complete
+
+Iteration 7 merged, and with it every iteration this file plans. **That does not mean the product is
+finished** — it means the sequence that got it from nothing to a working, observable, load-tested
+system is done, and what remains is a different kind of work.
+
+Remaining work toward a real deployment is tracked in the
+[**Production readiness**](https://github.com/jdavidIP/Marquee/milestone/1) milestone rather than as
+an eighth iteration. That is deliberate: the iterations above are a *build sequence*, each one
+deliberately unlocking the next, and the remaining work has no such spine — the friendship module's
+missing frontend, verified signup, password recovery, a browsable library, and a design pass are
+largely independent of one another.
+
+Restating them here would create a second source of truth that drifts from the issues within a week.
+The milestone is the live record; this file stays what it always was, the account of how the system
+was built.
+
+**Where the remaining work touches this project's specification**, it says so in the issue itself —
+notably, requiring email confirmation changes what `totalRegisteredUsers` *means* to §4.1 and §4.2,
+so CLAUDE.md is amended as part of that work rather than left describing a rule the code no longer
+follows.

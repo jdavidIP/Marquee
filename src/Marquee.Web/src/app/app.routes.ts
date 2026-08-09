@@ -19,6 +19,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/library/library.component').then((m) => m.LibraryComponent),
   },
   {
+    path: 'friends',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/friends/friends.component').then((m) => m.FriendsComponent),
+  },
+  {
     path: 'admin',
     canActivate: [adminGuard],
     loadChildren: () => import('./features/admin/admin.routes').then((m) => m.ADMIN_ROUTES),
