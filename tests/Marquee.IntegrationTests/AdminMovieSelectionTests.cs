@@ -367,6 +367,30 @@ public class AdminMovieSelectionTests(MarqueeAppFactory factory)
     // ------------------------------------------------------------------ state gating
 
     [Fact]
+    public async Task A_running_Premiere_refuses_both_routes()
+    {
+        // Not because the film is public — it is not — but because a running Premiere can cross its
+        // threshold at any moment, and the open path takes its MovieId from the Redis meta snapshot
+        // the crossing clap already read. A swap landing in between would leave Premiere.MovieId
+        // naming a film that was never revealed and never reached a library.
+        factory.Tmdb.IsDown = false;
+        using var scope = factory.Services.CreateScope();
+        var premiereFactory = scope.ServiceProvider.GetRequiredService<IPremiereFactory>();
+
+        var premiere = await premiereFactory.CreateAsync(
+            DateTime.UtcNow, activateNow: true, TimeSpan.FromMinutes(60), default);
+
+        var client = await AuthedClientAsync();
+
+        var reroll = await client.PostAsJsonAsync($"/api/admin/premieres/{premiere.Id}/movie", new { });
+        var pick = await client.PutAsJsonAsync(
+            $"/api/admin/premieres/{premiere.Id}/movie", new { tmdbId = 238 });
+
+        reroll.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        pick.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task An_opened_Premiere_refuses_both_routes()
     {
         // After the reveal the film is in people's libraries; changing it would rewrite what they own.

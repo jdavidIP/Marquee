@@ -411,8 +411,13 @@ public sealed class AdminService(
 
     /// <summary>
     /// Swap a Premiere's hidden movie for a different one, using the same §4.6 filters and the same
-    /// global no-repeats rule. Only meaningful before the reveal — afterwards the movie is already
-    /// in people's libraries.
+    /// global no-repeats rule.
+    ///
+    /// Scheduled only, and not merely because the film is public afterwards. A running Premiere can
+    /// cross its threshold at any moment, and the open path takes its MovieId from the Redis meta
+    /// snapshot the crossing clap already read — so a swap committing between that read and the
+    /// open's own guarded update would leave Premiere.MovieId naming a film that was never revealed
+    /// and never reached a single library. The record would disagree with what people actually got.
     /// </summary>
     public async Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(
         Guid premiereId, MovieFilter? filter, CancellationToken ct)
@@ -420,7 +425,7 @@ public sealed class AdminService(
         var premiere = await LoadAsync(premiereId, ct);
         if (premiere is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NotFound);
-        if (premiere.IsTerminal)
+        if (premiere.Status != PremiereStatus.Scheduled)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
         // Films queued for a Premiere — this one's current pick included — plus anything still
@@ -437,6 +442,8 @@ public sealed class AdminService(
     /// <summary>
     /// Put a specific film into a Premiere, rather than re-rolling for one.
     ///
+    /// Scheduled only, for the same reason as RegenerateMovieAsync.
+    ///
     /// The §4.6 quality floors are deliberately not re-checked: an explicit pick is a considered
     /// override, and refusing a film the admin deliberately searched for and selected would be
     /// second-guessing them. The no-repeat rule is enforced, because that one is not a preference —
@@ -448,7 +455,7 @@ public sealed class AdminService(
         var premiere = await LoadAsync(premiereId, ct);
         if (premiere is null)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.NotFound);
-        if (premiere.IsTerminal)
+        if (premiere.Status != PremiereStatus.Scheduled)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
         var availability = await movies.AvailabilityAsync(tmdbId, ct);

@@ -276,19 +276,28 @@ export class AdminPremieresComponent {
   }
 
   /**
-   * The film can still change while a Premiere is running, unlike its time or threshold: nobody has
-   * seen it yet, so swapping it is only a change of what will be revealed. Once it has opened the
-   * film is in people's libraries and the question is closed.
+   * Scheduled only, matching the server.
+   *
+   * It is tempting to allow this while a Premiere is running, since nobody has seen the film yet —
+   * but a running Premiere can cross its threshold at any moment, and the open path reads its
+   * MovieId from a Redis snapshot taken before the swap could land. The record would end up naming
+   * a film nobody actually received.
    */
   protected canChangeMovie(p: AdminPremiereDto): boolean {
-    return p.status === 'Scheduled' || p.status === 'Active';
+    return p.status === 'Scheduled';
   }
 
   protected movieDisabledReason(p: AdminPremiereDto): string {
-    if (this.canChangeMovie(p)) return '';
-    return p.status === 'Missed'
-      ? 'This Premiere never ran, so its film was never used.'
-      : 'The film is already in people’s libraries.';
+    switch (p.status) {
+      case 'Scheduled':
+        return '';
+      case 'Active':
+        return 'This Premiere is running — its film is fixed now that people can clap for it.';
+      case 'Missed':
+        return 'This Premiere never ran, so its film was never used.';
+      default:
+        return 'The film is already in people’s libraries.';
+    }
   }
 
   protected activateDisabledReason(p: AdminPremiereDto): string {

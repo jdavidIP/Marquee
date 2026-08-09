@@ -114,7 +114,8 @@
           >
             {{ isEditing(p, 'threshold') ? 'Cancel' : 'Threshold' }}
           </button>
-          <!-- Enabled while Active too: until a Premiere opens, nobody has seen the film. -->
+          <!-- Scheduled only: a running Premiere's film is fixed, because the open path reads it
+               from a snapshot a late swap could not reach. -->
           <button
             class="action"
             type="button"
@@ -214,9 +215,6 @@
           <div class="editor">
             <p class="editor__hint">
               Currently holding <strong>{{ p.movieTitle || '(no film)' }}</strong>.
-              @if (p.status === 'Active') {
-                This Premiere is running — swapping now changes what people receive when it opens.
-              }
             </p>
             <app-admin-movie-picker
               [premiereId]="p.id"

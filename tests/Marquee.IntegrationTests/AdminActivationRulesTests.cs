@@ -172,17 +172,22 @@ public class AdminActivationRulesTests(MarqueeAppFactory factory)
         // broadcasts PremiereActivated, and an admin start has to reach the same clients: the
         // browser's fallback poll only runs while the socket is *down*, so a healthy connection
         // would otherwise sit on "check back soon" until someone happened to reload.
-        var start = new TimeOnly(Schedule.DayStartHour, 0);
-        var end = new TimeOnly(Schedule.DayEndHour, 0);
-        if (NowLocal < start || NowLocal > end)
-            return;
-
         await ClearTodayAsync(46);
 
         var id = await ScheduledAtAsync(Today, NowLocal);
         factory.Broadcasts.Clear();
 
         var result = await ActivateAsync(id);
+
+        if (!WithinDayWindow)
+        {
+            // The last hour of the day, when nothing may start. Still worth asserting rather than
+            // skipping: a refusal must be silent, and announcing a Premiere that never began would
+            // be the worse bug of the two.
+            result.Outcome.Should().Be(AdminOutcome.Invalid);
+            factory.Broadcasts.Activated.Should().BeEmpty("nothing started, so nothing may be announced");
+            return;
+        }
 
         result.Outcome.Should().Be(AdminOutcome.Ok);
         factory.Broadcasts.Activated.Should().ContainSingle(p => p.Id == id,
@@ -194,16 +199,19 @@ public class AdminActivationRulesTests(MarqueeAppFactory factory)
     {
         // The conditional update earning its keep: a double-click, or this request racing the
         // scheduler's own tick, must not have both callers compute a window and write.
-        var start = new TimeOnly(Schedule.DayStartHour, 0);
-        var end = new TimeOnly(Schedule.DayEndHour, 0);
-        if (NowLocal < start || NowLocal > end)
-            return;
-
         await ClearTodayAsync(46);
 
         var id = await ScheduledAtAsync(Today, NowLocal);
 
         var both = await Task.WhenAll(ActivateAsync(id), ActivateAsync(id));
+
+        if (!WithinDayWindow)
+        {
+            // Outside the window neither may start — which is still the property under test: two
+            // callers must never both succeed.
+            both.Should().OnlyContain(r => r.Outcome == AdminOutcome.Invalid);
+            return;
+        }
 
         both.Count(r => r.Outcome == AdminOutcome.Ok).Should().Be(1, "exactly one may win");
         both.Count(r => r.Outcome == AdminOutcome.AlreadyActive).Should().Be(1);

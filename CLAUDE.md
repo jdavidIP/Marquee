@@ -225,6 +225,8 @@ Because a film may premiere more than once, `Movie` rows are reused rather than 
 
 An admin choosing a film explicitly may override the cooldown, but only with an explicit acknowledgement — they are shown when it last premiered and when it comes free. Rule 1 has no override: the same film in two pending Premieres is a scheduling mistake, not a judgement about freshness.
 
+**A Premiere's film can only be changed while it is `Scheduled`.** Not merely because the film is public afterwards — a *running* Premiere can cross its threshold at any moment, and the open path takes its `MovieId` from the Redis `PremiereMeta` snapshot the crossing clap already read. A swap committing between that read and the open's own guarded update would leave `Premiere.MovieId` naming a film that was never revealed and never reached a single library.
+
 ---
 
 ## 5. Design for later, build for now
