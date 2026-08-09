@@ -2,90 +2,61 @@ using FluentAssertions;
 using Marquee.Api.Dtos;
 using Marquee.Api.Services;
 using Marquee.Domain.Entities;
-using Marquee.Domain.Options;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Marquee.IntegrationTests;
 
 /// <summary>
-/// A Scheduled-only edit (film, threshold, schedule) racing a manual activation.
+/// A Scheduled-only edit (film, threshold, schedule) racing an activation.
 ///
 /// §4.6 restricts film changes to Scheduled Premieres precisely because the open path reads MovieId
 /// from the Redis PremiereMeta snapshot, not from Postgres — a write that lands between that snapshot
-/// being taken and the row actually leaving Scheduled would leave the two disagreeing. Each of these
-/// edits enforces "Scheduled only" with a plain in-memory check that is stale the instant it passes;
-/// ActivateAsync's own status flip is the only thing that can actually invalidate it, and that flip is
-/// atomic (an ExecuteUpdateAsync guarded on Status). Fixed by giving each edit's write the same
-/// guard, and by having ActivateAsync reload from Postgres — rather than trust the copy it loaded at
-/// the top of the method — before writing what it caches.
+/// being taken and the row actually leaving Scheduled would leave the two disagreeing.
+/// RescheduleAsync/SetThresholdAsync/RegenerateMovieAsync/SetMovieAsync each enforced "Scheduled only"
+/// with a plain in-memory check that is stale the instant it passes; an activation's own status flip
+/// is the only thing that can actually invalidate it. Fixed by giving each edit's write the same
+/// atomic guard the flip already uses, and by having the activator reload from Postgres — rather than
+/// trust the copy it loaded earlier — before writing what it caches.
 ///
-/// These tests race the two for real, via Task.WhenAll against separate DI scopes (separate
-/// DbContexts, separate connections — the same shape as two concurrent requests), and assert the one
-/// property that has to hold regardless of which side wins: whatever Postgres ends up saying, Redis
-/// agrees with it exactly. See issue #19.
+/// There are two activators with the identical shape: AdminService.ActivateAsync (an admin's "start
+/// now") and PremiereScheduleService.ActivateDueAsync (the scheduler's own tick). These tests race
+/// against the scheduler's path specifically, not the admin one — ActivateDueAsync has no day-window
+/// gate (§4.4's "activate now" restriction is an admin-only safety check), so a Premiere backdated to
+/// be due activates unconditionally every time, regardless of what hour the suite happens to run at.
+/// The race mechanism under test — the guarded writers, the reload-after-flip — is identical either
+/// way, since both activators share it; racing the deterministic one is strictly more useful as a
+/// regression proof than one that can silently skip its own assertions depending on the clock.
+///
+/// Each test asserts the property that has to hold regardless of which side wins: whatever Postgres
+/// ends up saying, Redis agrees with it exactly. See issue #19.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public class AdminMutationRaceTests(MarqueeAppFactory factory)
 {
-    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
-    private static TimeOnly NowLocal => TimeOnly.FromDateTime(DateTime.Now);
-
-    private MarqueeScheduleOptions Schedule =>
-        factory.Services.GetRequiredService<IOptions<MarqueeScheduleOptions>>().Value;
-
-    /// <summary>
-    /// Same reasoning as AdminActivationRulesTests: a test that quietly no-ops outside the day window
-    /// is worse than no test, so both branches below assert something.
-    /// </summary>
-    private bool WithinDayWindow =>
-        NowLocal >= new TimeOnly(Schedule.DayStartHour, 0)
-        && NowLocal <= new TimeOnly(Schedule.DayEndHour, 0);
-
-    private async Task ClearTodayAsync(int parkDaysAhead)
+    /// <summary>A Scheduled Premiere backdated to be due, without going near the wall clock's hour.</summary>
+    private async Task<Guid> DueNowAsync(int minutesAgo = 1)
     {
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
-        var (dayStart, dayEnd) = LocalDayBoundsUtc(Today);
-        var parked = DateTime.UtcNow.AddDays(parkDaysAhead);
-
-        await db.Premieres
-            .Where(p => (p.OpensAt ?? p.ScheduledFor) >= dayStart && (p.OpensAt ?? p.ScheduledFor) < dayEnd)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(p => p.ScheduledFor, parked)
-                .SetProperty(p => p.OpensAt, (DateTime?)null), default);
-    }
-
-    private static (DateTime StartUtc, DateTime EndUtc) LocalDayBoundsUtc(DateOnly localDate) =>
-        (DateTime.SpecifyKind(localDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime(),
-         DateTime.SpecifyKind(localDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime());
-
-    /// <summary>A Premiere scheduled for right now, today, clear of neighbours — activatable and editable.</summary>
-    private async Task<Guid> ActivatableTodayAsync(int parkDaysAhead)
-    {
-        await ClearTodayAsync(parkDaysAhead);
-
         using var scope = factory.Services.CreateScope();
         var premiereFactory = scope.ServiceProvider.GetRequiredService<IPremiereFactory>();
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
 
         var premiere = await premiereFactory.CreateAsync(
-            DateTime.UtcNow.AddDays(30), activateNow: false, TimeSpan.FromMinutes(60), default);
+            DateTime.UtcNow.AddHours(6), activateNow: false, TimeSpan.FromMinutes(60), default);
 
-        var target = DateTime.SpecifyKind(Today.ToDateTime(NowLocal), DateTimeKind.Local).ToUniversalTime();
         await db.Premieres.Where(p => p.Id == premiere.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(p => p.ScheduledFor, target), default);
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(p => p.ScheduledFor, DateTime.UtcNow.AddMinutes(-minutesAgo)), default);
 
         return premiere.Id;
     }
 
-    private async Task<AdminResult<AdminPremiereDto>> ActivateAsync(Guid id)
+    private async Task ActivateDueAsync()
     {
         using var scope = factory.Services.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<IAdminService>().ActivateAsync(id, default);
+        await scope.ServiceProvider.GetRequiredService<IPremiereScheduleService>().ActivateDueAsync(default);
     }
 
     private async Task<AdminResult<AdminPremiereDto>> RegenerateMovieAsync(Guid id)
@@ -132,26 +103,21 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
     public async Task A_film_re_roll_racing_activation_never_leaves_Redis_disagreeing_with_Postgres()
     {
         factory.Tmdb.IsDown = false;
-        var id = await ActivatableTodayAsync(parkDaysAhead: 47);
+        var id = await DueNowAsync();
 
-        var results = await Task.WhenAll(ActivateAsync(id), RegenerateMovieAsync(id));
-        var (activate, regenerate) = (results[0], results[1]);
+        var regenerateTask = RegenerateMovieAsync(id);
+        await Task.WhenAll(ActivateDueAsync(), regenerateTask);
+        var regenerate = await regenerateTask;
 
-        if (!WithinDayWindow)
-        {
-            activate.Outcome.Should().Be(AdminOutcome.Invalid, "outside the window nothing may start");
-            return;
-        }
-
-        // The re-roll never blocks activation — it does not touch Status — so activation wins its own
-        // race regardless of ordering.
-        activate.Outcome.Should().Be(AdminOutcome.Ok);
+        // The re-roll never blocks activation — it does not touch Status — so activation always wins
+        // its own race regardless of ordering.
+        var (stored, meta) = await CurrentStateAsync(id);
+        stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
 
         // The re-roll either committed before the flip (Ok) or after (AlreadyTerminal, correctly
         // refused rather than silently landing on a Premiere that is no longer Scheduled).
         regenerate.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
 
-        var (stored, meta) = await CurrentStateAsync(id);
         meta.Should().NotBeNull();
         meta!.MovieId.Should().Be(stored.MovieId,
             "the open path reads MovieId from Redis — a mismatch here means the wrong film reaches libraries");
@@ -166,23 +132,17 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
     [Fact]
     public async Task A_threshold_change_racing_activation_never_leaves_Redis_disagreeing_with_Postgres()
     {
-        factory.Tmdb.IsDown = false;
-        var id = await ActivatableTodayAsync(parkDaysAhead: 48);
+        var id = await DueNowAsync();
         var target = await ValidThresholdAsync(id);
 
-        var results = await Task.WhenAll(ActivateAsync(id), SetThresholdAsync(id, target));
-        var (activate, retune) = (results[0], results[1]);
-
-        if (!WithinDayWindow)
-        {
-            activate.Outcome.Should().Be(AdminOutcome.Invalid);
-            return;
-        }
-
-        activate.Outcome.Should().Be(AdminOutcome.Ok);
-        retune.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
+        var retuneTask = SetThresholdAsync(id, target);
+        await Task.WhenAll(ActivateDueAsync(), retuneTask);
+        var retune = await retuneTask;
 
         var (stored, meta) = await CurrentStateAsync(id);
+        stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
+        retune.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
+
         meta.Should().NotBeNull();
         meta!.Threshold.Should().Be(stored.Threshold,
             "the clap path enforces the threshold and caps it reads from Redis, not Postgres");
@@ -199,25 +159,48 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
         // No Redis consequence here — ScheduledFor is not part of PremiereMeta — but the same TOCTOU
         // shape existed and deserves the same guard: a reschedule must not silently succeed against a
         // Premiere that has already started.
-        var id = await ActivatableTodayAsync(parkDaysAhead: 49);
-        var proposed = DateTime.SpecifyKind(
-            Today.ToDateTime(NowLocal.AddMinutes(1)), DateTimeKind.Local).ToUniversalTime();
+        //
+        // RescheduleAsync also checks the minimum gap against same-day neighbours (§4.4), which is
+        // orthogonal to the race this test is about, so today is parked clear first. The proposed
+        // time is kept close to now (rather than hours out) so it reliably lands on the same local
+        // day as the Premiere it is targeting — a multi-hour offset would risk crossing midnight and
+        // failing on the unrelated day-boundary rule instead of exercising the race.
+        await ParkOtherPremieresTodayAsync();
 
-        var results = await Task.WhenAll(ActivateAsync(id), RescheduleAsync(id, proposed));
-        var (activate, reschedule) = (results[0], results[1]);
+        var id = await DueNowAsync();
+        var proposed = DateTime.UtcNow.AddMinutes(2);
 
-        if (!WithinDayWindow)
-        {
-            activate.Outcome.Should().Be(AdminOutcome.Invalid);
-            return;
-        }
+        var rescheduleTask = RescheduleAsync(id, proposed);
+        await Task.WhenAll(ActivateDueAsync(), rescheduleTask);
+        var reschedule = await rescheduleTask;
 
-        activate.Outcome.Should().Be(AdminOutcome.Ok);
-        // Ok if it beat the flip; AlreadyTerminal if it lost the race; Invalid if the proposed time
-        // itself violated §4.4 (e.g. now + 1 minute pushed past the day window) — any of these is a
-        // correctly-handled outcome. What must never happen is the write landing after activation
-        // without being caught, which AdminOutcome.Ok both here and in Postgres would not prove wrong
-        // on its own — the point of this guard is exactly that AlreadyTerminal is available at all.
-        reschedule.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal, AdminOutcome.Invalid);
+        var (stored, _) = await CurrentStateAsync(id);
+        stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
+
+        // Ok if the reschedule beat the flip; AlreadyTerminal if it lost the race. Either is a
+        // correctly-handled outcome — what must never happen is the write landing after activation
+        // without being caught, which is exactly what AlreadyTerminal being reachable at all proves.
+        reschedule.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
+
+        if (reschedule.Outcome == AdminOutcome.Ok)
+            stored.ScheduledFor.Should().Be(proposed);
     }
+
+    private async Task ParkOtherPremieresTodayAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var (dayStart, dayEnd) = LocalDayBoundsUtc(DateOnly.FromDateTime(DateTime.Now));
+        var parked = DateTime.UtcNow.AddDays(50);
+
+        await db.Premieres
+            .Where(p => (p.OpensAt ?? p.ScheduledFor) >= dayStart && (p.OpensAt ?? p.ScheduledFor) < dayEnd)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.ScheduledFor, parked)
+                .SetProperty(p => p.OpensAt, (DateTime?)null), default);
+    }
+
+    private static (DateTime StartUtc, DateTime EndUtc) LocalDayBoundsUtc(DateOnly localDate) =>
+        (DateTime.SpecifyKind(localDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime(),
+         DateTime.SpecifyKind(localDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime());
 }
