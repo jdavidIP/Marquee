@@ -108,6 +108,102 @@ public class PremiereScheduleGeneratorTests
         act.Should().Throw<ArgumentException>();
     }
 
+    // --- PickWithin: filling a gap in a day that is already partly scheduled ---
+
+    [Fact]
+    public void PickWithin_returns_nothing_when_there_is_no_room()
+    {
+        // A real answer, not an error: a day can be spaced so nothing further fits, and it should
+        // stay short rather than break the gap to reach a count.
+        PremiereScheduleGenerator.PickWithin([], new SequenceRandomSource(0)).Should().BeNull();
+    }
+
+    [Fact]
+    public void PickWithin_stays_inside_the_window_it_is_given()
+    {
+        var window = new ScheduleWindow(new TimeOnly(15, 0), new TimeOnly(17, 0));
+        var rng = new SystemRandomSource(new Random(4));
+
+        for (var i = 0; i < 200; i++)
+        {
+            var pick = PremiereScheduleGenerator.PickWithin([window], rng);
+            pick.Should().NotBeNull();
+            pick!.Value.Should().BeOnOrAfter(window.Start).And.BeOnOrBefore(window.End);
+        }
+    }
+
+    [Fact]
+    public void PickWithin_can_return_either_end_of_a_window()
+    {
+        // Both bounds are legal times, so neither may be quietly excluded by off-by-one.
+        var window = new ScheduleWindow(new TimeOnly(9, 0), new TimeOnly(9, 2));
+        var rng = new SystemRandomSource(new Random(11));
+
+        var seen = new HashSet<TimeOnly>();
+        for (var i = 0; i < 200; i++)
+            seen.Add(PremiereScheduleGenerator.PickWithin([window], rng)!.Value);
+
+        seen.Should().Contain(new TimeOnly(9, 0)).And.Contain(new TimeOnly(9, 2));
+    }
+
+    [Fact]
+    public void PickWithin_handles_a_zero_width_window()
+    {
+        // One minute of the day is legal; that is still a pick, not "no room".
+        var window = new ScheduleWindow(new TimeOnly(11, 0), new TimeOnly(11, 0));
+
+        PremiereScheduleGenerator.PickWithin([window], new SequenceRandomSource(0))
+            .Should().Be(new TimeOnly(11, 0));
+    }
+
+    [Fact]
+    public void PickWithin_weights_windows_by_length()
+    {
+        // Choosing a window first and a minute second would treat a one-minute gap as equal to a
+        // six-hour one, crowding the narrow slots. Picks should land roughly in proportion.
+        var narrow = new ScheduleWindow(new TimeOnly(7, 0), new TimeOnly(7, 10));
+        var wide = new ScheduleWindow(new TimeOnly(12, 0), new TimeOnly(20, 0));
+        var rng = new SystemRandomSource(new Random(99));
+
+        var inNarrow = 0;
+        for (var i = 0; i < 2_000; i++)
+        {
+            var pick = PremiereScheduleGenerator.PickWithin([narrow, wide], rng)!.Value;
+            if (pick <= narrow.End) inNarrow++;
+        }
+
+        // 11 minutes against 481: a couple of percent, nowhere near the 50% a per-window draw gives.
+        (inNarrow / 2000.0).Should().BeLessThan(0.10);
+    }
+
+    [Fact]
+    public void A_gap_filled_by_PickWithin_still_respects_the_two_hour_rule()
+    {
+        // The property the top-up path depends on: repeatedly filling a day never produces two
+        // Premieres closer than the minimum gap.
+        var rng = new SystemRandomSource(new Random(2026));
+
+        for (var run = 0; run < 200; run++)
+        {
+            var times = new List<TimeOnly> { new(9, 0) };
+
+            for (var i = 0; i < 3; i++)
+            {
+                var windows = PremiereScheduleValidator.AllowedWindows(times, Schedule);
+                var pick = PremiereScheduleGenerator.PickWithin(windows, rng);
+                if (pick is null) break;
+                times.Add(pick.Value);
+            }
+
+            var ordered = times.OrderBy(t => t).ToList();
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                var gap = ordered[i].ToTimeSpan() - ordered[i - 1].ToTimeSpan();
+                gap.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMinutes(Schedule.MinimumGapMinutes));
+            }
+        }
+    }
+
     [Fact]
     public void A_schedule_that_cannot_fit_its_gaps_is_rejected()
     {

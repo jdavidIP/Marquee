@@ -59,17 +59,49 @@ public sealed class PremiereScheduleService(
         // Filtering here keeps this in step with the rest of the lifecycle, which is already
         // scope-namespaced end to end (Redis keys, SignalR groups), so a future scope doesn't
         // silently count against global's daily quota.
-        var existing = await db.Premieres
-            .CountAsync(p => p.ScopeId == Scopes.Global &&
-                              p.ScheduledFor >= dayStartUtc && p.ScheduledFor < dayEndUtc, ct);
-        if (existing >= _schedule.PremieresPerDay)
+        //
+        // Taken at each Premiere's effective time, OpensAt ?? ScheduledFor: one an admin started
+        // early occupies the slot it actually ran in, and that is what a new draw must keep clear of.
+        var existingUtc = await db.Premieres
+            .Where(p => p.ScopeId == Scopes.Global
+                        && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
+                        && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
+            .Select(p => p.OpensAt ?? p.ScheduledFor)
+            .ToListAsync(ct);
+
+        if (existingUtc.Count >= _schedule.PremieresPerDay)
         {
-            logger.LogInformation("{Date} already has {Count} Premieres — nothing to generate.", localDate, existing);
+            logger.LogInformation(
+                "{Date} already has {Count} Premieres — nothing to generate.", localDate, existingUtc.Count);
             return 0;
         }
 
-        var times = PremiereScheduleGenerator.Draw(_schedule, rng);
         var now = DateTime.UtcNow;
+
+        // Nothing may be scheduled into the past, and only today has any past to speak of.
+        var notBefore = localDate == DateOnly.FromDateTime(DateTime.Now)
+            ? TimeOnly.FromDateTime(DateTime.Now)
+            : (TimeOnly?)null;
+
+        return existingUtc.Count == 0
+            ? await GenerateWholeDayAsync(localDate, now, duration, ct)
+            : await FillDayAsync(
+                localDate,
+                existingUtc.Select(t => TimeOnly.FromDateTime(t.ToLocalTime())).ToList(),
+                notBefore, duration, ct);
+    }
+
+    /// <summary>
+    /// The normal path: an untouched day, laid out in one draw.
+    ///
+    /// Kept distinct from the top-up because <see cref="PremiereScheduleGenerator.Draw"/> spreads
+    /// N times evenly across the window by construction, which is a better distribution than
+    /// placing them one at a time could give.
+    /// </summary>
+    private async Task<int> GenerateWholeDayAsync(
+        DateOnly localDate, DateTime now, TimeSpan duration, CancellationToken ct)
+    {
+        var times = PremiereScheduleGenerator.Draw(_schedule, rng);
         var created = 0;
         var skipped = 0;
 
@@ -78,7 +110,8 @@ public sealed class PremiereScheduleService(
             var scheduledForUtc = ToUtc(localDate, time);
 
             // A time that has already passed cannot be run retroactively — generating for today
-            // partway through the day legitimately yields fewer than PremieresPerDay.
+            // partway through the day legitimately yields fewer than PremieresPerDay. A later run
+            // tops the day up through FillDayAsync.
             if (scheduledForUtc <= now)
             {
                 skipped++;
@@ -92,6 +125,49 @@ public sealed class PremiereScheduleService(
         logger.LogInformation(
             "Generated {Created} Premiere(s) for {Date} ({Skipped} already-passed slot(s) skipped): {Times}.",
             created, localDate, skipped, string.Join(", ", times));
+        return created;
+    }
+
+    /// <summary>
+    /// Tops a partly-scheduled day up to its full complement, one Premiere at a time.
+    ///
+    /// This exists because drawing a fresh day and adding all of it was wrong: a day holding three
+    /// would gain four more and finish with seven. Only the shortfall is created, and each new time
+    /// is chosen from the room genuinely left — recomputed after every pick, so the §4.4 gap holds
+    /// between the new Premieres as well as against the ones already there.
+    ///
+    /// A day can legitimately have no room left, in which case it stays short rather than breaking
+    /// the spacing rule to hit a count.
+    /// </summary>
+    private async Task<int> FillDayAsync(
+        DateOnly localDate, List<TimeOnly> existing, TimeOnly? notBefore, TimeSpan duration,
+        CancellationToken ct)
+    {
+        var shortfall = _schedule.PremieresPerDay - existing.Count;
+        var created = 0;
+
+        for (var i = 0; i < shortfall; i++)
+        {
+            var windows = PremiereScheduleValidator.AllowedWindows(existing, _schedule, notBefore);
+            var pick = PremiereScheduleGenerator.PickWithin(windows, rng);
+            if (pick is null)
+            {
+                logger.LogInformation(
+                    "{Date} has room for no more Premieres: {Count} scheduled, {Short} short of " +
+                    "{Target}, and nothing fits the {Gap}-minute gap.",
+                    localDate, existing.Count, shortfall - created, _schedule.PremieresPerDay,
+                    _schedule.MinimumGapMinutes);
+                break;
+            }
+
+            existing.Add(pick.Value);
+            await factory.CreateAsync(ToUtc(localDate, pick.Value), activateNow: false, duration, ct);
+            created++;
+        }
+
+        logger.LogInformation(
+            "Topped {Date} up with {Created} Premiere(s) to reach {Total}.",
+            localDate, created, existing.Count);
         return created;
     }
 
