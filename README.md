@@ -139,6 +139,19 @@ ever** for a given database. That is plenty for a demo but runs out quickly unde
 testing; set a real `Tmdb__ApiKey`, or clear `premieres`/`movies` in the dev database, before a long
 test session.
 
+### Building or testing while the API or Worker is running
+
+`dotnet build`/`dotnet test` fail with `MSB3027`/`MSB3026` — "could not copy ... The file is locked
+by" `Marquee.Domain.dll` or `Marquee.Infrastructure.dll` — if `Marquee.Api` or `Marquee.Worker` is
+already running. The running host keeps its copies of those DLLs open, so the copy step into its own
+`bin` folder can't replace them; it fires even for a test-only change, because the referenced
+projects are still part of the build graph.
+
+Two ways around it:
+
+- `dotnet test --no-build`, when the last full build is already current
+- Stop both hosts, build or test, then restart them
+
 ## Testing
 
 ```bash
