@@ -202,8 +202,19 @@ public sealed class AdminService(
         if (violation != ScheduleViolation.None)
             return Invalid(Describe(violation));
 
+        // Conditional on the current status, the same guard ActivateAsync uses for its own status
+        // flip — the Scheduled check above was already stale by the time it passed; this is what
+        // actually stops the write from landing on a Premiere a concurrent activation just started.
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.ScheduledFor, proposedUtc)
+                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), ct);
+
+        if (rows == 0)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
+
         premiere.ScheduledFor = proposedUtc;
-        await db.SaveChangesAsync(ct);
 
         // No cache write on purpose: PremiereMeta carries threshold, caps, status, movie and expiry
         // — not ScheduledFor — so nothing the clap path reads has changed. The activation job picks
@@ -243,10 +254,24 @@ public sealed class AdminService(
         }
 
         var caps = ClapCapCalculator.Compute(totalUsers, threshold, _rules);
+
+        // Conditional on the current status, the same guard ActivateAsync uses for its own status
+        // flip — the Scheduled check above was already stale by the time it passed; this is what
+        // actually stops the write from landing on a Premiere a concurrent activation just started.
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Threshold, threshold)
+                .SetProperty(p => p.RegisteredClapCap, caps.RegisteredCap)
+                .SetProperty(p => p.AnonymousClapCap, caps.AnonymousCap)
+                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), ct);
+
+        if (rows == 0)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
+
         premiere.Threshold = threshold;
         premiere.RegisteredClapCap = caps.RegisteredCap;
         premiere.AnonymousClapCap = caps.AnonymousCap;
-        await db.SaveChangesAsync(ct);
 
         // Mandatory here, unlike the reschedule above: the cached meta carries all three of these and
         // the clap path reads them from Redis, so a stale entry would keep enforcing the old numbers.
@@ -493,14 +518,39 @@ public sealed class AdminService(
     /// The half both movie changes share: cache the new film, repoint the Premiere, and refresh the
     /// Redis meta — which carries MovieId, so a stale entry would announce the previous film at the
     /// reveal.
+    ///
+    /// The write is conditional on the current status, the same guard <see cref="ActivateAsync"/>
+    /// uses for its own status flip. The callers above already checked Scheduled against the copy
+    /// loaded at the top of the request, but that check is stale the moment it passes — a plain
+    /// tracked-entity SaveChanges here carries no Status condition of its own, so an activation
+    /// racing in behind that check would let this write land on a Premiere that is, by the time it
+    /// commits, already Active. The row-count guard below is the real enforcement; the earlier check
+    /// is only a cheap early exit that saves a wasted TMDB call.
     /// </summary>
     private async Task<AdminResult<AdminPremiereDto>> SwapMovieAsync(
         Premiere premiere, TmdbMovie chosen, CancellationToken ct)
     {
         var movie = await movies.GetOrAddAsync(chosen, ct);
+
+        // GetOrAddAsync only tracks a newly-cached film; it does not persist it. ExecuteUpdateAsync
+        // below bypasses the change tracker and runs immediately against the database, so a pending,
+        // unsaved Movie insert would not yet exist for the FK the premiere row is about to point at.
+        // A plain SaveChanges here is safe: nothing else is dirty on this DbContext at this point —
+        // premiere.MovieId has not been touched yet — so this can only insert the movie (or no-op if
+        // GetOrAddAsync returned one that already existed).
+        await db.SaveChangesAsync(ct);
+
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.MovieId, movie.Id)
+                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), ct);
+
+        if (rows == 0)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
+
         premiere.Movie = movie;
         premiere.MovieId = movie.Id;
-        await db.SaveChangesAsync(ct);
 
         // The cached meta carries MovieId, which the reveal reads — a stale one would announce the
         // previous film.
@@ -579,9 +629,16 @@ public sealed class AdminService(
         if (rows == 0)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyActive);
 
-        premiere.Status = PremiereStatus.Active;
-        premiere.OpensAt = now;
-        premiere.ExpiresAt = expiresAt;
+        // Refresh the whole tracked entity from Postgres rather than trusting the copy loaded at the
+        // top of this method — a plain second query would not do this, since EF's identity map
+        // returns the already-tracked instance without re-reading columns it already has. Threshold,
+        // the caps and MovieId are exactly what a concurrent SetThresholdAsync or RegenerateMovieAsync
+        // could have changed in the gap between our own load and this point. Their own guard (above,
+        // in each of those methods) means such a write could only have committed while this Premiere
+        // was still Scheduled — strictly before the flip just above — so this reload is guaranteed to
+        // observe it rather than racing it further.
+        await db.Entry(premiere).ReloadAsync(ct);
+        await db.Entry(premiere).Reference(p => p.Movie).LoadAsync(ct);
 
         // Refresh the hot-path cache before anyone can clap, then tell the scope it is live —
         // mirroring PremiereScheduleService.ActivateDueAsync. Without the broadcast an admin
