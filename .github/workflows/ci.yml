@@ -30,12 +30,19 @@ jobs:
       - name: Unit tests
         run: dotnet test tests/Marquee.UnitTests/Marquee.UnitTests.csproj --no-build --configuration Release --logger "trx;LogFileName=unit-tests.trx"
 
+      # Postgres and Redis are Testcontainers, started per-run against the runner's own Docker
+      # daemon (present by default on ubuntu-latest) — no services: block needed. RabbitMQ is
+      # deliberately left unreachable by MarqueeAppFactory (see #8), so this is safe to run
+      # alongside anything else touching the real broker.
+      - name: Integration tests
+        run: dotnet test tests/Marquee.IntegrationTests/Marquee.IntegrationTests.csproj --no-build --configuration Release --logger "trx;LogFileName=integration-tests.trx"
+
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-test-results
-          path: tests/Marquee.UnitTests/TestResults/*.trx
+          path: tests/**/TestResults/*.trx
 
   angular:
     name: Angular build
