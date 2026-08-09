@@ -1,3 +1,4 @@
+using Marquee.Api.Realtime;
 using Marquee.Infrastructure.Tmdb;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -80,6 +81,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         // state the assertions depend on. Tests drive the lifecycle explicitly.
         yield return ("Scheduler__Enabled", "false");
 
+        // Widen the day window so the hour the suite happens to run at does not decide whether a
+        // test asserts anything. Activation is checked against the wall clock, which no test can
+        // move, so with the default 07:00-23:00 an overnight run would silently skip every case
+        // that needs a Premiere to actually start. The window rule itself is covered without a
+        // clock by PremiereScheduleValidatorTests.
+        yield return ("MarqueeSchedule__DayStartHour", "0");
+
         // These tests fire hundreds of claps from one account in milliseconds, which is precisely
         // what the anti-abuse guards exist to stop. Both are switched off so the subject under test
         // is the counter; each has its own dedicated coverage elsewhere.
@@ -117,6 +125,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<ITmdbClient>();
             services.AddSingleton<ControllableTmdbClient>();
             services.AddSingleton<ITmdbClient>(sp => sp.GetRequiredService<ControllableTmdbClient>());
+
+            // Record what would have been announced. A hub is not needed to assert that a code path
+            // announces itself, and "it went live silently" is a real failure — every client with a
+            // working socket would never hear about it.
+            services.RemoveAll<IPremiereBroadcaster>();
+            services.AddSingleton<RecordingBroadcaster>();
+            services.AddSingleton<IPremiereBroadcaster>(sp => sp.GetRequiredService<RecordingBroadcaster>());
         });
     }
 
@@ -125,6 +140,9 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
     /// <summary>The TMDB double, so a test can make it start or stop failing.</summary>
     public ControllableTmdbClient Tmdb => Services.GetRequiredService<ControllableTmdbClient>();
+
+    /// <summary>What has been announced over the hub, for asserting that something was.</summary>
+    public RecordingBroadcaster Broadcasts => Services.GetRequiredService<RecordingBroadcaster>();
 
     /// <summary>
     /// Fails loudly if the running app is not actually pointed at the throwaway containers.

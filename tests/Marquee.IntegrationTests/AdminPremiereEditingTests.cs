@@ -5,10 +5,12 @@ using FluentAssertions;
 using Marquee.Api.Services;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
+using Marquee.Domain.Options;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Marquee.IntegrationTests;
 
@@ -84,23 +86,45 @@ public class AdminPremiereEditingTests(MarqueeAppFactory factory)
         (await ReloadAsync(premiere.Id)).ScheduledFor.Should().BeCloseTo(target.ToUniversalTime(), TimeSpan.FromSeconds(1));
     }
 
-    [Theory]
-    [InlineData(6, 30)]  // before 07:00
-    [InlineData(23, 30)] // after 23:00
-    public async Task A_time_outside_the_day_window_is_refused(int hour, int minute)
+    /// <summary>
+    /// The window from configuration, not the spec defaults. The test host widens the day so that
+    /// activation cases are not decided by the hour the suite runs at, so hardcoding 07:00-23:00
+    /// here would test a window the API is not actually using.
+    /// </summary>
+    private MarqueeScheduleOptions Schedule =>
+        factory.Services.GetRequiredService<IOptions<MarqueeScheduleOptions>>().Value;
+
+    [Fact]
+    public async Task A_time_outside_the_day_window_is_refused()
     {
         factory.Tmdb.IsDown = false;
         var day = IsolatedDay(2);
         var premiere = await ScheduleAtAsync(LocalAt(day, 12));
         var client = await AuthedClientAsync();
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/admin/premieres/{premiere.Id}/schedule",
-            new { scheduledForUtc = LocalAt(day, hour, minute).ToUniversalTime() });
+        // Derived from the configured bounds. A start hour of zero leaves no "before the window"
+        // time to express, so only the cases that exist are asserted; the boundary itself is
+        // covered without a clock by PremiereScheduleValidatorTests.
+        var outside = new List<DateTime>();
+        if (Schedule.DayStartHour > 0)
+            outside.Add(LocalAt(day, Schedule.DayStartHour - 1, 30));
+        if (Schedule.DayEndHour < 23)
+            outside.Add(LocalAt(day, Schedule.DayEndHour + 1, 0));
+        else
+            outside.Add(LocalAt(day, Schedule.DayEndHour, 30));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var body = await response.Content.ReadFromJsonAsync<ErrorBody>();
-        body!.Error.Should().Contain("07:00").And.Contain("23:00");
+        outside.Should().NotBeEmpty("the window must leave something outside it to test");
+
+        foreach (var target in outside)
+        {
+            var response = await client.PatchAsJsonAsync(
+                $"/api/admin/premieres/{premiere.Id}/schedule",
+                new { scheduledForUtc = target.ToUniversalTime() });
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest, "{0} is outside the day window", target);
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>();
+            body!.Error.Should().Contain("Premieres run between");
+        }
     }
 
     [Fact]

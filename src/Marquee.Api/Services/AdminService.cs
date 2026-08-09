@@ -1,4 +1,5 @@
 using Marquee.Api.Dtos;
+using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
@@ -77,6 +78,7 @@ public sealed class AdminService(
     ITmdbClient tmdb,
     IMovieCatalog movies,
     IPremiereCache cache,
+    IPremiereBroadcaster broadcaster,
     IUserBlockCache blockCache,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<MarqueeRulesOptions> rules,
@@ -550,18 +552,61 @@ public sealed class AdminService(
                 return Invalid(DescribeActivation(violation, nowLocal));
         }
 
-        premiere.Status = PremiereStatus.Active;
-        premiere.OpensAt = now;
         // The window is measured from activation, not from ScheduledFor, so a manual start still
         // gets its full 60 minutes (§4.4).
-        premiere.ExpiresAt = now.AddMinutes(_schedule.DurationMinutes);
-        await db.SaveChangesAsync(ct);
+        var expiresAt = now.AddMinutes(_schedule.DurationMinutes);
 
+        // Conditional on the current status, the same guard the scheduler's activation and the open
+        // path both use. Without it two callers — an impatient double-click, or this request racing
+        // the scheduler's own tick against the same due Premiere — could each pass the status check
+        // above, compute their own window, and both write, leaving the last one to win and two
+        // disagreeing cache entries behind it.
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Status, PremiereStatus.Active)
+                .SetProperty(p => p.OpensAt, now)
+                .SetProperty(p => p.ExpiresAt, expiresAt)
+                .SetProperty(p => p.UpdatedAt, now), ct);
+
+        if (rows == 0)
+            return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyActive);
+
+        premiere.Status = PremiereStatus.Active;
+        premiere.OpensAt = now;
+        premiere.ExpiresAt = expiresAt;
+
+        // Refresh the hot-path cache before anyone can clap, then tell the scope it is live —
+        // mirroring PremiereScheduleService.ActivateDueAsync. Without the broadcast an admin
+        // starting a Premiere reaches nobody: the client's fallback poll only runs while the socket
+        // is *down*, so every healthy connection would sit on "check back soon" until it happened
+        // to reload, which is precisely what starting one on demand is supposed to avoid.
         await cache.SetAsync(premiere.ToMeta(), ct);
+        await SafeBroadcastAsync(
+            () => broadcaster.PremiereActivatedAsync(
+                premiere.ScopeId,
+                premiere.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdbOptions), ct),
+            premiere.Id);
 
         logger.LogInformation("Premiere {PremiereId} manually activated; expires {ExpiresAt:u}.",
             premiere.Id, premiere.ExpiresAt);
         return new AdminResult<AdminPremiereDto>(AdminOutcome.Ok, ToDto(premiere, contributors: 0));
+    }
+
+    /// <summary>
+    /// A dropped announcement must not roll back a state change that already committed — the
+    /// Premiere is live whether or not the hub heard about it. Mirrors the scheduler's own handling.
+    /// </summary>
+    private async Task SafeBroadcastAsync(Func<Task> send, Guid premiereId)
+    {
+        try
+        {
+            await send();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Broadcast for Premiere {PremiereId} failed.", premiereId);
+        }
     }
 
     private async Task<Premiere?> LoadAsync(Guid premiereId, CancellationToken ct) =>

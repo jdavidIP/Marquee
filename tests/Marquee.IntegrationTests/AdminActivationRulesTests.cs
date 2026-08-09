@@ -50,6 +50,27 @@ public class AdminActivationRulesTests(MarqueeAppFactory factory)
     private static TimeOnly NowLocal => TimeOnly.FromDateTime(DateTime.Now);
 
     /// <summary>
+    /// Empties today so only the Premiere under test is in play.
+    ///
+    /// Moves OpensAt as well as ScheduledFor, and that is the whole point: the gap is measured
+    /// against each Premiere's effective time, OpensAt ?? ScheduledFor, so a neighbour another test
+    /// left Active keeps occupying today's window however far its ScheduledFor is pushed out.
+    /// </summary>
+    private async Task ClearTodayAsync(int parkDaysAhead)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var (dayStart, dayEnd) = LocalDayBoundsUtc(Today);
+        var parked = DateTime.UtcNow.AddDays(parkDaysAhead);
+
+        await db.Premieres
+            .Where(p => (p.OpensAt ?? p.ScheduledFor) >= dayStart && (p.OpensAt ?? p.ScheduledFor) < dayEnd)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.ScheduledFor, parked)
+                .SetProperty(p => p.OpensAt, (DateTime?)null), default);
+    }
+
+    /// <summary>
     /// The day window from configuration, so these read against the same bounds the rule uses
     /// rather than hardcoding 07:00-23:00 and drifting if it is ever retuned.
     /// </summary>
@@ -120,17 +141,7 @@ public class AdminActivationRulesTests(MarqueeAppFactory factory)
     [Fact]
     public async Task A_Premiere_belonging_to_today_and_clear_of_its_neighbours_starts()
     {
-        // A clean day: everything else is moved far away, so only this Premiere is in play.
-        using (var scope = factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
-            var (dayStart, dayEnd) = LocalDayBoundsUtc(Today);
-            await db.Premieres
-                .Where(p => (p.OpensAt ?? p.ScheduledFor) >= dayStart
-                            && (p.OpensAt ?? p.ScheduledFor) < dayEnd)
-                .ExecuteUpdateAsync(
-                    s => s.SetProperty(p => p.ScheduledFor, DateTime.UtcNow.AddDays(45)), default);
-        }
+        await ClearTodayAsync(45);
 
         var id = await ScheduledAtAsync(Today, NowLocal);
 
@@ -152,6 +163,50 @@ public class AdminActivationRulesTests(MarqueeAppFactory factory)
             .Premieres.AsNoTracking().FirstAsync(p => p.Id == id);
         stored.Status.Should().Be(PremiereStatus.Active);
         stored.OpensAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Starting_one_early_announces_it_the_same_way_the_scheduler_does()
+    {
+        // The point of "start it now" is that people see it. The scheduler's own activation
+        // broadcasts PremiereActivated, and an admin start has to reach the same clients: the
+        // browser's fallback poll only runs while the socket is *down*, so a healthy connection
+        // would otherwise sit on "check back soon" until someone happened to reload.
+        var start = new TimeOnly(Schedule.DayStartHour, 0);
+        var end = new TimeOnly(Schedule.DayEndHour, 0);
+        if (NowLocal < start || NowLocal > end)
+            return;
+
+        await ClearTodayAsync(46);
+
+        var id = await ScheduledAtAsync(Today, NowLocal);
+        factory.Broadcasts.Clear();
+
+        var result = await ActivateAsync(id);
+
+        result.Outcome.Should().Be(AdminOutcome.Ok);
+        factory.Broadcasts.Activated.Should().ContainSingle(p => p.Id == id,
+            "an admin start must announce itself exactly as the scheduler's does");
+    }
+
+    [Fact]
+    public async Task Two_activations_of_the_same_Premiere_do_not_both_apply()
+    {
+        // The conditional update earning its keep: a double-click, or this request racing the
+        // scheduler's own tick, must not have both callers compute a window and write.
+        var start = new TimeOnly(Schedule.DayStartHour, 0);
+        var end = new TimeOnly(Schedule.DayEndHour, 0);
+        if (NowLocal < start || NowLocal > end)
+            return;
+
+        await ClearTodayAsync(46);
+
+        var id = await ScheduledAtAsync(Today, NowLocal);
+
+        var both = await Task.WhenAll(ActivateAsync(id), ActivateAsync(id));
+
+        both.Count(r => r.Outcome == AdminOutcome.Ok).Should().Be(1, "exactly one may win");
+        both.Count(r => r.Outcome == AdminOutcome.AlreadyActive).Should().Be(1);
     }
 
     private static (DateTime StartUtc, DateTime EndUtc) LocalDayBoundsUtc(DateOnly localDate) =>

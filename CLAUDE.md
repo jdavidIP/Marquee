@@ -142,6 +142,15 @@ The floor is itself randomised in the 30–50 range, so a tiny user base still g
 Worked example: 1,000 registered users, peak hours, roll of 50% → threshold = 500.
 Worked example: 40 registered users, off-peak, roll of 35% → raw = 14 → below floor → threshold = random(30, 50).
 
+**An admin may retune a Scheduled Premiere's threshold**, but only within the band the formula itself could have produced:
+
+```
+adminBand.min = FloorMin                                        (30)
+adminBand.max = max(round(PeakMaxPct * totalRegisteredUsers), FloorMax)
+```
+
+The `max(...)` guard matters at small user counts: with 40 users `0.55 × 40 = 22`, which is *below* the 30–50 floor range, and without it the band would come out inverted. An admin can therefore re-roll the dice but never leave the table. The caps are always re-derived from the chosen threshold via §4.2 rather than set by hand, so the participation guarantee holds by construction. Once a Premiere is Active the threshold is fixed: it is the target people are already clapping towards, and the caps are limits some of them have already spent.
+
 ### 4.2 Per-participant clap cap
 
 Also computed once at creation. The intent: **even if every participant maxes out their cap, at least 8% of the registered user base must still be needed to reach the threshold.**
