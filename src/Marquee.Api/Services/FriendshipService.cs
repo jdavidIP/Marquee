@@ -87,13 +87,34 @@ public sealed class FriendshipService(
                 // A previous rejection is not permanent. Reopen the existing row in the new
                 // direction rather than inserting — the pair already has a row, and the unique
                 // index is on the pair.
+                //
+                // Guarded on Rejected for the same reason the accept and reject paths are guarded:
+                // both halves of a pair can reach this branch at once, each having read the same
+                // rejected row, and an unconditional write would let the second silently flip the
+                // direction out from under the answer the first was given. The loser is told the
+                // request is already pending, which is now true — whichever way it points.
                 case FriendshipStatus.Rejected:
+                {
+                    var reopenedAt = DateTime.UtcNow;
+                    var reopened = await db.Friendships
+                        .Where(f => f.Id == existing.Id && f.Status == FriendshipStatus.Rejected)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(f => f.RequesterId, requesterId)
+                            .SetProperty(f => f.AddresseeId, addressee.Id)
+                            .SetProperty(f => f.Status, FriendshipStatus.Pending)
+                            .SetProperty(f => f.UpdatedAt, reopenedAt), ct);
+
+                    if (reopened == 0)
+                        return new FriendActionResult(FriendActionOutcome.AlreadyPending);
+
                     existing.RequesterId = requesterId;
                     existing.AddresseeId = addressee.Id;
                     existing.Status = FriendshipStatus.Pending;
-                    await db.SaveChangesAsync(ct);
+                    existing.UpdatedAt = reopenedAt;
+
                     return new FriendActionResult(
                         FriendActionOutcome.Ok, ToRequestDto(existing, addressee.Username, outgoing: true));
+                }
             }
         }
 
@@ -132,11 +153,32 @@ public sealed class FriendshipService(
     {
         // Only the addressee can accept, and only while it is pending. Both halves matter: without
         // the first, anyone holding a request id could befriend themselves to a stranger.
-        if (friendship.AddresseeId != userId || friendship.Status != FriendshipStatus.Pending)
+        //
+        // Both live in the WHERE clause rather than being checked against the copy loaded above, so
+        // the check and the write are one statement. Checked separately, a concurrent Reject could
+        // invalidate the copy between the two — and because a plain SaveChanges carries no condition
+        // of its own, both callers would be told they succeeded while only one outcome survived.
+        //
+        // AddresseeId is in the condition too, not just Status: it is mutable — the reopen branch in
+        // SendRequestAsync rewrites both participants — so a loaded value is not safe to trust as
+        // still true at write time. UpdatedAt is set by hand because ExecuteUpdateAsync bypasses the
+        // change tracker, and with it the audit stamping in MarqueeDbContext.SaveChangesAsync.
+        var now = DateTime.UtcNow;
+        var rows = await db.Friendships
+            .Where(f => f.Id == friendship.Id
+                        && f.AddresseeId == userId
+                        && f.Status == FriendshipStatus.Pending)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(f => f.Status, FriendshipStatus.Accepted)
+                .SetProperty(f => f.UpdatedAt, now), ct);
+
+        if (rows == 0)
             return new FriendActionResult(FriendActionOutcome.NotAllowed);
 
+        // The row is committed; bring the loaded copy in step so the DTO below describes what is
+        // actually stored rather than what was read a moment ago.
         friendship.Status = FriendshipStatus.Accepted;
-        await db.SaveChangesAsync(ct);
+        friendship.UpdatedAt = now;
 
         // Postgres committed first, so the cache can only ever be behind the record, never ahead of
         // it. A failure here leaves a warm-but-stale set, which the TTL and the loaded-marker
@@ -155,11 +197,24 @@ public sealed class FriendshipService(
         var friendship = await db.Friendships.FirstOrDefaultAsync(f => f.Id == requestId, ct);
         if (friendship is null)
             return new FriendActionResult(FriendActionOutcome.RequestNotFound);
-        if (friendship.AddresseeId != userId || friendship.Status != FriendshipStatus.Pending)
+
+        // Guarded the same way as AcceptCoreAsync, and for the same reason: these two are each
+        // other's race. The load above is now only a cheap early exit and a source of the requester
+        // id for the response — the WHERE clause is what actually enforces the rule.
+        var now = DateTime.UtcNow;
+        var rows = await db.Friendships
+            .Where(f => f.Id == friendship.Id
+                        && f.AddresseeId == userId
+                        && f.Status == FriendshipStatus.Pending)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(f => f.Status, FriendshipStatus.Rejected)
+                .SetProperty(f => f.UpdatedAt, now), ct);
+
+        if (rows == 0)
             return new FriendActionResult(FriendActionOutcome.NotAllowed);
 
         friendship.Status = FriendshipStatus.Rejected;
-        await db.SaveChangesAsync(ct);
+        friendship.UpdatedAt = now;
 
         var otherName = await UsernameAsync(friendship.RequesterId, ct);
         return new FriendActionResult(FriendActionOutcome.Ok, ToRequestDto(friendship, otherName, outgoing: false));
@@ -167,16 +222,23 @@ public sealed class FriendshipService(
 
     public async Task<FriendActionResult> RemoveFriendAsync(Guid userId, Guid otherUserId, CancellationToken ct)
     {
-        var friendship = await db.Friendships.FirstOrDefaultAsync(
-            f => f.Status == FriendshipStatus.Accepted
-                 && ((f.RequesterId == userId && f.AddresseeId == otherUserId)
-                     || (f.RequesterId == otherUserId && f.AddresseeId == userId)), ct);
+        // One statement rather than load, Remove, SaveChanges. Two people unfriending each other at
+        // the same moment would both load the row, and the loser's tracked DELETE would then match
+        // nothing — which EF reports as DbUpdateConcurrencyException, surfacing as an unhandled 500
+        // for something that is not an error at all: the friendship they wanted gone is gone.
+        //
+        // ExecuteDeleteAsync removes that failure mode rather than catching it. The row count is the
+        // answer to "was there one to delete", and it is correct whether this caller deleted it or
+        // simply arrived second.
+        var rows = await db.Friendships
+            .Where(f => f.Status == FriendshipStatus.Accepted
+                        && ((f.RequesterId == userId && f.AddresseeId == otherUserId)
+                            || (f.RequesterId == otherUserId && f.AddresseeId == userId)))
+            .ExecuteDeleteAsync(ct);
 
-        if (friendship is null)
+        if (rows == 0)
             return new FriendActionResult(FriendActionOutcome.RequestNotFound);
 
-        db.Friendships.Remove(friendship);
-        await db.SaveChangesAsync(ct);
         await friendGraph.UnlinkAsync(userId, otherUserId, ct);
 
         return new FriendActionResult(FriendActionOutcome.Ok);
