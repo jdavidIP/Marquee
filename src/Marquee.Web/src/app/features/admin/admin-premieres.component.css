@@ -123,3 +123,69 @@
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+.card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.card__error {
+  margin: 10px 0 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+/* The inline editor sits inside its card rather than in a modal: these are reversible edits on a
+   Premiere that has not started, so they do not warrant interrupting the page. */
+.editor {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.editor__hint {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.editor__hint--warn { color: var(--gold); }
+
+.editor__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.editor__field span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.editor__field input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 7px 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__note {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}

@@ -92,6 +92,109 @@
           <div><dt>Caps</dt><dd>{{ p.registeredClapCap }} registered · {{ p.anonymousClapCap }} anonymous</dd></div>
           <div><dt>Scope</dt><dd>{{ p.scopeId }}</dd></div>
         </dl>
+
+        <!-- Disabled with a reason rather than hidden: a greyed control that explains itself teaches
+             the lifecycle, where a vanishing one reads as a missing feature. -->
+        <div class="card__actions">
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'schedule')"
+            [disabled]="!canEdit(p) || saving()"
+            [title]="disabledReason(p)"
+          >
+            {{ isEditing(p, 'schedule') ? 'Cancel' : 'Reschedule' }}
+          </button>
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'threshold')"
+            [disabled]="!canEdit(p) || saving()"
+            [title]="disabledReason(p)"
+          >
+            {{ isEditing(p, 'threshold') ? 'Cancel' : 'Threshold' }}
+          </button>
+          <button
+            class="action action--danger"
+            type="button"
+            (click)="askToActivate(p)"
+            [disabled]="!canActivate(p) || saving()"
+            [title]="activateDisabledReason(p)"
+          >
+            Activate now
+          </button>
+        </div>
+
+        @if (errorFor(p); as rowError) {
+          <p class="card__error">{{ rowError }}</p>
+        }
+
+        @if (isEditing(p, 'schedule')) {
+          <div class="editor">
+            @if (optionsLoading()) {
+              <p class="editor__hint">Checking what this Premiere allows…</p>
+            } @else if (options(); as o) {
+              @if (windowSummary(); as windows) {
+                <p class="editor__hint">Can move to {{ windows }} — local time, stored as UTC.</p>
+              } @else {
+                <p class="editor__hint editor__hint--warn">
+                  No free slot today: the other Premieres leave nowhere at least
+                  two hours clear.
+                </p>
+              }
+              <div class="editor__row">
+                <label class="editor__field">
+                  <span>New time</span>
+                  <input
+                    type="datetime-local"
+                    [(ngModel)]="scheduleInput"
+                    [min]="dayMin()"
+                    [max]="dayMax()"
+                    [disabled]="saving()"
+                  />
+                </label>
+                <button class="action" type="button" (click)="saveSchedule(p)" [disabled]="saving()">
+                  {{ saving() ? 'Saving…' : 'Move it' }}
+                </button>
+              </div>
+              <p class="editor__note">
+                It stays on {{ o.localDate }} — each day holds exactly four Premieres.
+              </p>
+            }
+          </div>
+        }
+
+        @if (isEditing(p, 'threshold')) {
+          <div class="editor">
+            @if (optionsLoading()) {
+              <p class="editor__hint">Checking what this Premiere allows…</p>
+            } @else if (options(); as o) {
+              <p class="editor__hint">
+                Between {{ o.thresholdMin | number }} and {{ o.thresholdMax | number }} —
+                the range the scheduler itself draws from for
+                {{ o.registeredUsers | number }} registered users.
+              </p>
+              <div class="editor__row">
+                <label class="editor__field">
+                  <span>Claps needed</span>
+                  <input
+                    type="number"
+                    [(ngModel)]="thresholdInput"
+                    [min]="o.thresholdMin"
+                    [max]="o.thresholdMax"
+                    [disabled]="saving()"
+                  />
+                </label>
+                <button class="action" type="button" (click)="saveThreshold(p)" [disabled]="saving()">
+                  {{ saving() ? 'Saving…' : 'Set threshold' }}
+                </button>
+              </div>
+              <p class="editor__note">
+                The clap caps are recomputed from this, so the participation rule still holds.
+              </p>
+            }
+          </div>
+        }
       </article>
     }
   </div>
@@ -120,4 +223,20 @@
       Next
     </button>
   </div>
+}
+
+@if (pendingActivate(); as target) {
+  <app-confirm-dialog
+    title="Start this Premiere now?"
+    [body]="
+      'It opens for everyone immediately and runs for the full window — real people will see ' +
+      &quot;'&quot; + target.movieTitle + &quot;'&quot; +
+      ' and can start clapping. This cannot be undone.'
+    "
+    confirmLabel="Start it now"
+    tone="danger"
+    [busy]="saving()"
+    (confirmed)="confirmActivate()"
+    (cancelled)="pendingActivate.set(null)"
+  />
 }
