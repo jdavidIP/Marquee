@@ -11,6 +11,7 @@ using Marquee.Domain.Enums;
 using Marquee.Infrastructure;
 using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
+using Marquee.Infrastructure.Tmdb;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -124,6 +125,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
     await db.Database.MigrateAsync();
     await SeedAdminAsync(scope.ServiceProvider, app.Configuration, app.Logger);
+    await SeedGenresAsync(scope.ServiceProvider, app.Logger);
+    await SeedCountriesAsync(scope.ServiceProvider, app.Logger);
 }
 
 if (app.Environment.IsDevelopment())
@@ -179,6 +182,110 @@ static async Task SeedAdminAsync(
     db.Users.Add(admin);
     await db.SaveChangesAsync();
     logger.LogInformation("Seeded admin user '{Username}' (password from config or default).", username);
+}
+
+// Mirrors TMDB's genre list locally so genre names are data rather than a hardcoded map.
+//
+// Best-effort by design: an unreachable TMDB must not stop the API from starting, and nothing here
+// is on a request path. Films whose genres arrived before their names get placeholder rows from
+// MovieCatalog, which this corrects on the next successful start — so the only cost of a failed
+// fetch is a temporarily ugly genre name, never a lost relationship.
+static async Task SeedGenresAsync(IServiceProvider sp, Microsoft.Extensions.Logging.ILogger logger)
+{
+    var db = sp.GetRequiredService<MarqueeDbContext>();
+    var tmdb = sp.GetRequiredService<ITmdbClient>();
+
+    IReadOnlyList<TmdbGenre> genres;
+    try
+    {
+        genres = await tmdb.GetGenresAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not fetch the TMDB genre list; genre names will be filled in on a later start.");
+        return;
+    }
+
+    if (genres.Count == 0)
+        return;
+
+    var existing = await db.Genres.ToDictionaryAsync(g => g.TmdbId);
+    var added = 0;
+    var renamed = 0;
+
+    foreach (var genre in genres)
+    {
+        if (existing.TryGetValue(genre.Id, out var row))
+        {
+            if (row.Name == genre.Name)
+                continue;
+
+            row.Name = genre.Name;
+            renamed++;
+        }
+        else
+        {
+            db.Genres.Add(new Genre { TmdbId = genre.Id, Name = genre.Name });
+            added++;
+        }
+    }
+
+    if (added == 0 && renamed == 0)
+        return;
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("Seeded {Added} genre(s) and corrected {Renamed} name(s).", added, renamed);
+}
+
+// The country equivalent of SeedGenresAsync, and best-effort for the same reasons. MovieCatalog
+// falls back to using the ISO code as the name, so a failed fetch shows "KR" instead of
+// "South Korea" until the next successful start — never a missing relationship.
+static async Task SeedCountriesAsync(IServiceProvider sp, Microsoft.Extensions.Logging.ILogger logger)
+{
+    var db = sp.GetRequiredService<MarqueeDbContext>();
+    var tmdb = sp.GetRequiredService<ITmdbClient>();
+
+    IReadOnlyList<TmdbCountry> countries;
+    try
+    {
+        countries = await tmdb.GetCountriesAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not fetch the TMDB country list; names will be filled in on a later start.");
+        return;
+    }
+
+    if (countries.Count == 0)
+        return;
+
+    var existing = await db.Countries.ToDictionaryAsync(c => c.Iso3166Code);
+    var added = 0;
+    var renamed = 0;
+
+    foreach (var country in countries)
+    {
+        var code = country.Iso3166Code.ToUpperInvariant();
+        if (existing.TryGetValue(code, out var row))
+        {
+            if (row.Name == country.Name)
+                continue;
+
+            row.Name = country.Name;
+            renamed++;
+        }
+        else
+        {
+            db.Countries.Add(new Country { Iso3166Code = code, Name = country.Name });
+            added++;
+        }
+    }
+
+    if (added == 0 && renamed == 0)
+        return;
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("Seeded {Added} country/countries and corrected {Renamed} name(s).", added, renamed);
 }
 
 // Exposed so the integration test project can drive the API with WebApplicationFactory.

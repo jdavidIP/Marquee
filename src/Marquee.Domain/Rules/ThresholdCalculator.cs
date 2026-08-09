@@ -42,4 +42,25 @@ public static class ThresholdCalculator
         var floor = rng.NextInt(rules.FloorMin, rules.FloorMax);
         return Compute(totalRegisteredUsers, pct, floor);
     }
+
+    /// <summary>
+    /// The range an admin may retune a Scheduled Premiere's threshold to: exactly the set of values
+    /// <see cref="Draw"/> could itself have produced for this user base. An admin can therefore
+    /// re-roll the dice but never leave the table — every Premiere stays a Premiere the formula
+    /// would recognise.
+    ///
+    /// Min is the lowest floor roll, since the floor is the clamp that binds whenever the percentage
+    /// term is small. Max takes the peak ceiling, but never below FloorMax: with a small user base
+    /// the percentage term lands under the floor range (40 users -> 0.55 * 40 = 22, below the 30-50
+    /// floor), and without the guard the band would come out inverted.
+    ///
+    /// The caller must feed the chosen threshold back through
+    /// <see cref="ClapCapCalculator.Compute"/>. That is what keeps the §4.2 participation guarantee
+    /// true — the caps are always derived, never set by hand.
+    /// </summary>
+    public static (int Min, int Max) AdminBand(int totalRegisteredUsers, MarqueeRulesOptions rules)
+    {
+        var peakCeiling = (int)Math.Round(rules.PeakMaxPct * totalRegisteredUsers, MidpointRounding.AwayFromZero);
+        return (rules.FloorMin, Math.Max(peakCeiling, rules.FloorMax));
+    }
 }

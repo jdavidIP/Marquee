@@ -22,10 +22,16 @@ export interface MovieDto {
   voteCount: number;
 }
 
+/**
+ * Missed means the Premiere's moment passed while the scheduler was not running, so it was retired
+ * rather than started late. Unlike AutoOpened it never revealed its film.
+ */
+export type PremiereStatus = 'Scheduled' | 'Active' | 'Opened' | 'AutoOpened' | 'Missed';
+
 export interface PremiereDto {
   id: string;
   scopeId: string;
-  status: 'Scheduled' | 'Active' | 'Opened' | 'AutoOpened';
+  status: PremiereStatus;
   scheduledFor: string;
   threshold: number;
   totalClaps: number;
@@ -94,6 +100,106 @@ export interface LibraryEntryDto {
   premiereId: string;
   acquiredAt: string;
   emblemTier: number | null;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminUserDto {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  isBlocked: boolean;
+  isPrivate: boolean;
+  createdAt: string;
+  moviesCollected: number;
+}
+
+/**
+ * A Premiere as an admin sees it. Unlike PremiereDto the movie is always present, even before the
+ * reveal — an admin has to see what a Premiere is holding to decide whether to change it.
+ */
+export interface AdminPremiereDto {
+  id: string;
+  scopeId: string;
+  status: PremiereStatus;
+  scheduledFor: string;
+  opensAt: string | null;
+  expiresAt: string | null;
+  openedAt: string | null;
+  threshold: number;
+  registeredClapCap: number;
+  anonymousClapCap: number;
+  totalClaps: number;
+  contributors: number;
+  movieId: string;
+  movieTmdbId: number;
+  movieTitle: string;
+}
+
+/** An inclusive range of local times, "HH:mm", a Premiere may be moved to. */
+export interface ScheduleWindowDto {
+  start: string;
+  end: string;
+}
+
+/** What an admin may change about a Premiere — shown up front rather than discovered by rejection. */
+export interface PremiereEditOptionsDto {
+  premiereId: string;
+  status: PremiereStatus;
+  canEdit: boolean;
+  localDate: string;
+  allowedWindows: ScheduleWindowDto[];
+  thresholdMin: number;
+  thresholdMax: number;
+  currentThreshold: number;
+  registeredUsers: number;
+}
+
+/** An admin's narrowing for one re-roll. Every field only narrows; §4.6's floors always apply. */
+export interface MovieFilterRequest {
+  minVoteAverage?: number | null;
+  minYear?: number | null;
+  maxYear?: number | null;
+  genreId?: number | null;
+  originalLanguage?: string | null;
+  minRuntime?: number | null;
+  maxRuntime?: number | null;
+  originCountry?: string | null;
+}
+
+export interface MovieSearchResultDto {
+  tmdbId: number;
+  title: string;
+  originalTitle: string | null;
+  posterUrl: string | null;
+  releaseYear: number | null;
+  overview: string | null;
+  voteAverage: number;
+  voteCount: number;
+  /** When this film was last revealed, or null if it never has been. */
+  lastPremieredAt: string | null;
+  /** When it becomes freely selectable again. */
+  eligibleFrom: string | null;
+  /** Still resting — pickable, but only with an explicit acknowledgement. */
+  inCooldown: boolean;
+  /** Already lined up for a Premiere that has not run. Not pickable at all. */
+  alreadyQueued: boolean;
+}
+
+export interface GenreDto {
+  tmdbId: number;
+  name: string;
+}
+
+export interface CountryDto {
+  iso3166Code: string;
+  name: string;
 }
 
 /** Live operational numbers for the admin dashboard (Iteration 6). */

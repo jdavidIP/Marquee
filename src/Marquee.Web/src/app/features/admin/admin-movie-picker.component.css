@@ -1,0 +1,151 @@
+/* Lives inside a card's editor panel, so it inherits that background and adds no chrome of its own
+   beyond what separates the two modes. */
+
+.picker__modes {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.picker__mode {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 4px 14px;
+  font-size: 0.8rem;
+}
+
+.picker__mode.active {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--muted);
+  font-weight: 600;
+}
+
+.picker__search {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.picker__hint {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.picker__error {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.picker__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* --- search hits --- */
+
+.hits {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  /* Long result lists scroll here rather than pushing the rest of the page around. */
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.hit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.hit--blocked { opacity: 0.55; }
+
+.hit__poster {
+  width: 40px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.hit__poster--none { background: var(--panel-2); }
+
+.hit__body { min-width: 0; flex: 1; }
+
+.hit__title {
+  margin: 0 0 2px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.hit__year {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.hit__meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flags state a fact rather than only tinting it — colour alone is not the message. */
+.hit__flag {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+}
+
+.hit__flag--blocked { color: var(--muted); }
+.hit__flag--resting { color: var(--gold); }
+
+/* --- filters --- */
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filters__field span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.filters__field input,
+.filters__field select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 0.85rem;
+}

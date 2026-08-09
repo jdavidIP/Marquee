@@ -5,7 +5,7 @@ import {
   provideZoneChangeDetection,
   inject,
 } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 
 import { routes } from './app.routes';
@@ -17,7 +17,9 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZoneChangeDetection({ eventCoalescing: true }),
-    provideRouter(routes),
+    // Query params arrive as signal inputs on the routed component, so a screen's search term,
+    // filter and page can live in the URL without an ActivatedRoute subscription.
+    provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(withInterceptors([authInterceptor])),
     // "Issue a lightweight, short-lived session token on first page load" (MARQUEE_PLAN.md,
     // Iteration 5). Only for visitors who are not signed in — a signed-in user already has an

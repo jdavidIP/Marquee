@@ -65,6 +65,36 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.ToTable("contributions", (string)null);
                 });
 
+            modelBuilder.Entity("Marquee.Domain.Entities.Country", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Iso3166Code")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Iso3166Code")
+                        .IsUnique();
+
+                    b.ToTable("countries", (string)null);
+                });
+
             modelBuilder.Entity("Marquee.Domain.Entities.Friendship", b =>
                 {
                     b.Property<Guid>("Id")
@@ -96,6 +126,34 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("friendships", (string)null);
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.Genre", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("TmdbId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TmdbId")
+                        .IsUnique();
+
+                    b.ToTable("genres", (string)null);
                 });
 
             modelBuilder.Entity("Marquee.Domain.Entities.LibraryEntry", b =>
@@ -146,6 +204,14 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("OriginalLanguage")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("OriginalTitle")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Overview")
                         .HasColumnType("text");
 
@@ -153,7 +219,13 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("date");
+
                     b.Property<int?>("ReleaseYear")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Runtime")
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
@@ -175,10 +247,70 @@ namespace Marquee.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OriginalLanguage");
+
+                    b.HasIndex("ReleaseYear");
+
                     b.HasIndex("TmdbId")
                         .IsUnique();
 
                     b.ToTable("movies", (string)null);
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.MovieCountry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CountryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MovieId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CountryId");
+
+                    b.HasIndex("MovieId", "CountryId")
+                        .IsUnique();
+
+                    b.ToTable("movie_countries", (string)null);
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.MovieGenre", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("GenreId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MovieId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GenreId");
+
+                    b.HasIndex("MovieId", "GenreId")
+                        .IsUnique();
+
+                    b.ToTable("movie_genres", (string)null);
                 });
 
             modelBuilder.Entity("Marquee.Domain.Entities.Premiere", b =>
@@ -521,6 +653,44 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Marquee.Domain.Entities.MovieCountry", b =>
+                {
+                    b.HasOne("Marquee.Domain.Entities.Country", "Country")
+                        .WithMany("MovieCountries")
+                        .HasForeignKey("CountryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Marquee.Domain.Entities.Movie", "Movie")
+                        .WithMany("MovieCountries")
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Country");
+
+                    b.Navigation("Movie");
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.MovieGenre", b =>
+                {
+                    b.HasOne("Marquee.Domain.Entities.Genre", "Genre")
+                        .WithMany("MovieGenres")
+                        .HasForeignKey("GenreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Marquee.Domain.Entities.Movie", "Movie")
+                        .WithMany("MovieGenres")
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Genre");
+
+                    b.Navigation("Movie");
+                });
+
             modelBuilder.Entity("Marquee.Domain.Entities.Premiere", b =>
                 {
                     b.HasOne("Marquee.Domain.Entities.Movie", "Movie")
@@ -542,6 +712,23 @@ namespace Marquee.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("InboxMessageId", "InboxConsumerId")
                         .HasPrincipalKey("MessageId", "ConsumerId");
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.Country", b =>
+                {
+                    b.Navigation("MovieCountries");
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.Genre", b =>
+                {
+                    b.Navigation("MovieGenres");
+                });
+
+            modelBuilder.Entity("Marquee.Domain.Entities.Movie", b =>
+                {
+                    b.Navigation("MovieCountries");
+
+                    b.Navigation("MovieGenres");
                 });
 
             modelBuilder.Entity("Marquee.Domain.Entities.Premiere", b =>

@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
 using Marquee.Api.Services;
 using Marquee.Domain.Enums;
+using Marquee.Infrastructure.Tmdb;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -72,16 +73,95 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
         return Ok(result);
     }
 
+    /// <summary>
+    /// What this Premiere may be changed to — the times it can move to within its day, and the band
+    /// its threshold may sit in. Read this before rendering the editors, so the constraints are shown
+    /// rather than discovered.
+    /// </summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("premieres/{id:guid}/edit-options")]
+    public async Task<ActionResult<PremiereEditOptionsDto>> EditOptions(Guid id, CancellationToken ct)
+    {
+        var result = await admin.GetEditOptionsAsync(id, ct);
+        return result.Outcome == AdminOutcome.NotFound ? NotFound() : Ok(result.Value);
+    }
+
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPatch("premieres/{id:guid}/schedule")]
     public async Task<ActionResult<AdminPremiereDto>> Reschedule(
         Guid id, UpdatePremiereScheduleRequest request, CancellationToken ct) =>
         Respond(await admin.RescheduleAsync(id, request.ScheduledForUtc, ct));
 
+    /// <summary>
+    /// Retune the threshold. The caps are recomputed from it rather than supplied, so §4.2 holds
+    /// without the caller having to know about it.
+    /// </summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpPatch("premieres/{id:guid}/threshold")]
+    public async Task<ActionResult<AdminPremiereDto>> SetThreshold(
+        Guid id, UpdatePremiereThresholdRequest request, CancellationToken ct) =>
+        Respond(await admin.SetThresholdAsync(id, request.Threshold, ct));
+
+    /// <summary>
+    /// Re-roll the hidden film, optionally within a narrower pool. An absent body means the plain
+    /// §4.6 pool; the filter can only ever narrow it.
+    /// </summary>
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost("premieres/{id:guid}/movie")]
-    public async Task<ActionResult<AdminPremiereDto>> RegenerateMovie(Guid id, CancellationToken ct) =>
-        Respond(await admin.RegenerateMovieAsync(id, ct));
+    public async Task<ActionResult<AdminPremiereDto>> RegenerateMovie(
+        Guid id, RegenerateMovieRequest? request, CancellationToken ct) =>
+        Respond(await admin.RegenerateMovieAsync(id, ToFilter(request), ct));
+
+    /// <summary>Set a specific film the admin chose from a search.</summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpPut("premieres/{id:guid}/movie")]
+    public async Task<ActionResult<AdminPremiereDto>> SetMovie(
+        Guid id, SetPremiereMovieRequest request, CancellationToken ct) =>
+        Respond(await admin.SetMovieAsync(id, request.TmdbId, request.AcknowledgeCooldown, ct));
+
+    /// <summary>Search TMDB for a film to pick. Already-used films come back flagged, not hidden.</summary>
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/search")]
+    public async Task<ActionResult<IReadOnlyList<MovieSearchResultDto>>> SearchMovies(
+        [FromQuery] string? query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Ok(Array.Empty<MovieSearchResultDto>());
+
+        return Ok(await admin.SearchMoviesAsync(query, ct));
+    }
+
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/genres")]
+    public async Task<ActionResult<IReadOnlyList<GenreDto>>> Genres(CancellationToken ct) =>
+        Ok(await admin.ListGenresAsync(ct));
+
+    [Authorize(Policy = AuthPolicies.CanManagePremieres)]
+    [HttpGet("movies/countries")]
+    public async Task<ActionResult<IReadOnlyList<CountryDto>>> Countries(CancellationToken ct) =>
+        Ok(await admin.ListCountriesAsync(ct));
+
+    /// <summary>
+    /// The wire shape carries flat, individually-validatable fields; the domain takes one filter
+    /// object. An entirely empty body is the same as no filter at all.
+    /// </summary>
+    private static MovieFilter? ToFilter(RegenerateMovieRequest? request)
+    {
+        if (request is null)
+            return null;
+
+        var filter = new MovieFilter(
+            request.MinVoteAverage,
+            request.MinYear,
+            request.MaxYear,
+            request.GenreId,
+            request.OriginalLanguage,
+            request.MinRuntime,
+            request.MaxRuntime,
+            request.OriginCountry);
+
+        return filter.IsEmpty ? null : filter;
+    }
 
     [Authorize(Policy = AuthPolicies.CanManagePremieres)]
     [HttpPost("premieres/{id:guid}/activate")]
@@ -91,9 +171,17 @@ public class AdminController(IAdminService admin, IAdminMetricsService metrics) 
     private ActionResult<AdminPremiereDto> Respond(AdminResult<AdminPremiereDto> result) => result.Outcome switch
     {
         AdminOutcome.NotFound => NotFound(),
+        // 400, not 409: the request was understood and the Premiere is in a state that accepts
+        // changes — this particular value just breaks a rule, and the message names which one.
+        AdminOutcome.Invalid => BadRequest(new { error = result.Error }),
         AdminOutcome.AlreadyTerminal => Conflict(
             new { error = "This Premiere has already started or opened and can no longer be changed." }),
         AdminOutcome.AlreadyActive => Conflict(new { error = "This Premiere is already running." }),
+        AdminOutcome.MovieAlreadyQueued => Conflict(
+            new { error = "That film is already lined up for another Premiere that has not run yet." }),
+        // 409 with the reason and the dates, so the client can offer the override rather than just
+        // report a failure. Resending with acknowledgeCooldown succeeds.
+        AdminOutcome.MovieInCooldown => Conflict(new { error = result.Error, cooldown = true }),
         AdminOutcome.NoMovieAvailable => StatusCode(
             StatusCodes.Status503ServiceUnavailable, new { error = "TMDB returned no fresh movie." }),
         _ => Ok(result.Value)

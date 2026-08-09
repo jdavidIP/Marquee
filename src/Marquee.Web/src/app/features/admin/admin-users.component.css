@@ -1,0 +1,10 @@
+/* Table, pill, pager and toolbar styling is shared — see admin-tables.css. Only what is specific
+   to the user list lives here. */
+
+td:nth-child(2) {
+  color: var(--muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

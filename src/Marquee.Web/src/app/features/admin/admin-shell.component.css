@@ -1,0 +1,32 @@
+/* Mirrors the topbar's tab treatment (app.css .nav a) so the operations area reads as part of
+   Marquee rather than a separate tool bolted on. */
+
+.ops h1 {
+  font-size: 1.6rem;
+  margin: 0 0 16px;
+}
+
+.ops__tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops__tabs a {
+  text-decoration: none;
+  color: var(--muted);
+  padding: 8px 2px;
+  border-bottom: 2px solid transparent;
+  /* Holds the width the bold active state will need, so switching tabs does not shift the row. */
+  font-weight: 600;
+}
+
+.ops__tabs a:hover {
+  color: var(--ink);
+}
+
+.ops__tabs a.active {
+  color: var(--ink);
+  border-bottom-color: var(--gold);
+}

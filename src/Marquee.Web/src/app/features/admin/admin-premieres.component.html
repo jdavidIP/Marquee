@@ -1,0 +1,270 @@
+<div class="toolbar">
+  <div class="segmented" role="group" aria-label="Filter by status">
+    @for (filter of filters; track filter.value) {
+      <button
+        type="button"
+        class="segmented__option"
+        [class.active]="activeFilter() === filter.value"
+        [attr.aria-pressed]="activeFilter() === filter.value"
+        (click)="selectFilter(filter.value)"
+      >
+        {{ filter.label }}
+      </button>
+    }
+  </div>
+
+  <button class="action" type="button" (click)="refresh()" [disabled]="refreshing()">
+    {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
+  </button>
+
+  @if (total() > 0) {
+    <span class="toolbar__count">
+      {{ total() | number }} Premiere{{ total() === 1 ? '' : 's' }}
+    </span>
+  }
+</div>
+
+@if (error(); as e) {
+  <p class="error">{{ e }}</p>
+}
+
+@if (loading()) {
+  <p class="empty">Loading Premieres…</p>
+} @else if (premieres().length === 0) {
+  @if (activeFilter()) {
+    <p class="empty">No Premieres with that status.</p>
+  } @else {
+    <p class="empty">No Premieres yet. The scheduler draws four a day.</p>
+  }
+} @else {
+  <div class="cards" [class.is-refreshing]="refreshing()">
+    @for (p of premieres(); track p.id) {
+      <article class="card">
+        <header class="card__head">
+          <span class="pill" [class]="'pill ' + pillClass(p.status)">{{ statusLabel(p.status) }}</span>
+          <!-- The list is ordered by this, so a Premiere that ran late is filed under the day it
+               was drawn for rather than the day it happened. The badge makes that visible. -->
+          @if (lateStartMinutes(p); as late) {
+            <span class="card__late" [title]="'Scheduled for ' + (p.scheduledFor | date: 'medium') + ', started ' + (p.opensAt | date: 'medium')">
+              {{ lateStartLabel(p) }}
+            </span>
+          }
+          <span class="card__when">{{ p.scheduledFor | date: 'EEE d MMM, HH:mm' }}</span>
+        </header>
+
+        <h3 class="card__movie">
+          {{ p.movieTitle || '(no movie)' }}
+          <span class="card__tmdb">tmdb {{ p.movieTmdbId }}</span>
+        </h3>
+
+        <!-- Only meaningful once the Premiere has opened: live counting happens in Redis and
+             TotalClaps is written at open time, so a running Premiere reads 0 here. -->
+        @if (hasDurableCount(p)) {
+          <div class="bar" role="progressbar" [attr.aria-valuenow]="progressPct(p)" aria-valuemin="0" aria-valuemax="100">
+            <div class="bar__fill" [style.width.%]="progressPct(p)"></div>
+          </div>
+          <p class="card__counts">
+            {{ p.totalClaps | number }} of {{ p.threshold | number }} claps ·
+            {{ p.contributors | number }} contributor{{ p.contributors === 1 ? '' : 's' }}
+          </p>
+        } @else if (p.status === 'Missed') {
+          <p class="card__counts">
+            Its time passed while the scheduler was not running, so it was retired rather than
+            started late. Nobody saw it, and its film is still available.
+          </p>
+        } @else {
+          <p class="card__counts">
+            Threshold {{ p.threshold | number }} ·
+            {{ p.contributors | number }} contributor{{ p.contributors === 1 ? '' : 's' }} so far
+            @if (p.status === 'Active') {
+              <span class="card__note">— live count is in Redis until it opens</span>
+            }
+          </p>
+        }
+
+        <dl class="card__meta">
+          @if (p.opensAt) {
+            <div><dt>Window</dt><dd>{{ p.opensAt | date: 'HH:mm' }}–{{ p.expiresAt | date: 'HH:mm' }}</dd></div>
+          }
+          @if (p.openedAt) {
+            <div><dt>Opened</dt><dd>{{ p.openedAt | date: 'd MMM, HH:mm' }}</dd></div>
+          }
+          <div><dt>Caps</dt><dd>{{ p.registeredClapCap }} registered · {{ p.anonymousClapCap }} anonymous</dd></div>
+          <div><dt>Scope</dt><dd>{{ p.scopeId }}</dd></div>
+        </dl>
+
+        <!-- Disabled with a reason rather than hidden: a greyed control that explains itself teaches
+             the lifecycle, where a vanishing one reads as a missing feature. -->
+        <div class="card__actions">
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'schedule')"
+            [disabled]="!canEdit(p) || saving()"
+            [title]="disabledReason(p)"
+          >
+            {{ isEditing(p, 'schedule') ? 'Cancel' : 'Reschedule' }}
+          </button>
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'threshold')"
+            [disabled]="!canEdit(p) || saving()"
+            [title]="disabledReason(p)"
+          >
+            {{ isEditing(p, 'threshold') ? 'Cancel' : 'Threshold' }}
+          </button>
+          <!-- Scheduled only: a running Premiere's film is fixed, because the open path reads it
+               from a snapshot a late swap could not reach. -->
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'movie')"
+            [disabled]="!canChangeMovie(p) || saving()"
+            [title]="movieDisabledReason(p)"
+          >
+            {{ isEditing(p, 'movie') ? 'Cancel' : 'Film' }}
+          </button>
+          <button
+            class="action action--danger"
+            type="button"
+            (click)="askToActivate(p)"
+            [disabled]="!canActivate(p) || saving()"
+            [title]="activateDisabledReason(p)"
+          >
+            Activate now
+          </button>
+        </div>
+
+        @if (errorFor(p); as rowError) {
+          <p class="card__error">{{ rowError }}</p>
+        }
+
+        @if (isEditing(p, 'schedule')) {
+          <div class="editor">
+            @if (optionsLoading()) {
+              <p class="editor__hint">Checking what this Premiere allows…</p>
+            } @else if (options(); as o) {
+              @if (windowSummary(); as windows) {
+                <p class="editor__hint">Can move to {{ windows }} — local time, stored as UTC.</p>
+              } @else {
+                <p class="editor__hint editor__hint--warn">
+                  No free slot today: the other Premieres leave nowhere at least
+                  two hours clear.
+                </p>
+              }
+              <div class="editor__row">
+                <label class="editor__field">
+                  <!-- A time, not a date-time: the day is fixed, so it should not be offered.
+                       The server enforces the same rule, but a control that cannot express an
+                       invalid change beats one that can and is then refused. -->
+                  <span>New time on {{ o.localDate }}</span>
+                  <input
+                    type="time"
+                    [(ngModel)]="scheduleInput"
+                    [min]="timeMin()"
+                    [max]="timeMax()"
+                    [disabled]="saving()"
+                  />
+                </label>
+                <button class="action" type="button" (click)="saveSchedule(p)" [disabled]="saving()">
+                  {{ saving() ? 'Saving…' : 'Move it' }}
+                </button>
+              </div>
+              <p class="editor__note">
+                The date is fixed — each day holds exactly four Premieres, so moving one to another
+                day would leave that day short and this one over.
+              </p>
+            }
+          </div>
+        }
+
+        @if (isEditing(p, 'threshold')) {
+          <div class="editor">
+            @if (optionsLoading()) {
+              <p class="editor__hint">Checking what this Premiere allows…</p>
+            } @else if (options(); as o) {
+              <p class="editor__hint">
+                Between {{ o.thresholdMin | number }} and {{ o.thresholdMax | number }} —
+                the range the scheduler itself draws from for
+                {{ o.registeredUsers | number }} registered users.
+              </p>
+              <div class="editor__row">
+                <label class="editor__field">
+                  <span>Claps needed</span>
+                  <input
+                    type="number"
+                    [(ngModel)]="thresholdInput"
+                    [min]="o.thresholdMin"
+                    [max]="o.thresholdMax"
+                    [disabled]="saving()"
+                  />
+                </label>
+                <button class="action" type="button" (click)="saveThreshold(p)" [disabled]="saving()">
+                  {{ saving() ? 'Saving…' : 'Set threshold' }}
+                </button>
+              </div>
+              <p class="editor__note">
+                The clap caps are recomputed from this, so the participation rule still holds.
+              </p>
+            }
+          </div>
+        }
+
+        @if (isEditing(p, 'movie')) {
+          <div class="editor">
+            <p class="editor__hint">
+              Currently holding <strong>{{ p.movieTitle || '(no film)' }}</strong>.
+            </p>
+            <app-admin-movie-picker
+              [premiereId]="p.id"
+              [currentTitle]="p.movieTitle"
+              (changed)="onMovieChanged()"
+            />
+          </div>
+        }
+      </article>
+    }
+  </div>
+
+  <div class="pager">
+    <span class="pager__info">
+      Showing {{ firstShown() | number }}–{{ lastShown() | number }} of {{ total() | number }}
+    </span>
+    <span class="pager__spacer"></span>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() - 1)"
+      [disabled]="!hasPrevious()"
+      aria-label="Previous page"
+    >
+      Previous
+    </button>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() + 1)"
+      [disabled]="!hasNext()"
+      aria-label="Next page"
+    >
+      Next
+    </button>
+  </div>
+}
+
+@if (pendingActivate(); as target) {
+  <app-confirm-dialog
+    title="Start this Premiere now?"
+    [body]="
+      'It opens for everyone immediately and runs for the full window — real people will see ' +
+      &quot;'&quot; + target.movieTitle + &quot;'&quot; +
+      ' and can start clapping. This cannot be undone.'
+    "
+    confirmLabel="Start it now"
+    tone="danger"
+    [busy]="saving()"
+    (confirmed)="confirmActivate()"
+    (cancelled)="pendingActivate.set(null)"
+  />
+}

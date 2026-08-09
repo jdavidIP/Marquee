@@ -1,6 +1,6 @@
 <section class="dashboard">
   <header class="dashboard__head">
-    <h1>Operations</h1>
+    <h2 class="dashboard__title">Live</h2>
     @if (metrics(); as m) {
       <span class="dashboard__stamp">Updated {{ m.observedAt | date: 'HH:mm:ss' }}</span>
     }

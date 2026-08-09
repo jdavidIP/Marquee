@@ -26,6 +26,7 @@ public interface IPremiereFactory
 public sealed class PremiereFactory(
     MarqueeDbContext db,
     ITmdbClient tmdb,
+    IMovieCatalog movies,
     IPremiereCache cache,
     IRandomSource rng,
     IOptions<MarqueeRulesOptions> rules,
@@ -40,22 +41,12 @@ public sealed class PremiereFactory(
         var scheduledFor = AsUtc(scheduledForUtc);
 
         // --- Movie selection at creation time (§4.6), never during the clap flow. ---
-        var usedTmdbIds = await db.Movies.Select(m => m.TmdbId).ToListAsync(ct);
-        var chosen = await tmdb.DiscoverRandomMovieAsync(usedTmdbIds.ToHashSet(), ct)
+        // Films already queued for a Premiere, plus those still resting out their cooldown (§4.6).
+        var unavailable = await movies.UnavailableTmdbIdsAsync(ct);
+        var chosen = await tmdb.DiscoverRandomMovieAsync(unavailable, filter: null, ct)
             ?? throw new NoMovieAvailableException("TMDB returned no fresh movie for a new Premiere.");
 
-        var movie = new Movie
-        {
-            TmdbId = chosen.TmdbId,
-            Title = chosen.Title,
-            PosterPath = chosen.PosterPath,
-            ReleaseYear = chosen.ReleaseYear,
-            Overview = chosen.Overview,
-            VoteAverage = chosen.VoteAverage,
-            VoteCount = chosen.VoteCount,
-            CachedAt = now
-        };
-        db.Movies.Add(movie);
+        var movie = await movies.GetOrAddAsync(chosen, ct);
 
         // --- Threshold + caps, computed once from the current registered user base (§4.1, §4.2). ---
         var totalUsers = await db.Users.CountAsync(ct);

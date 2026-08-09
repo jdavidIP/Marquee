@@ -98,11 +98,16 @@ public class TmdbResilienceTests
         var (client, handler) = BuildClient(
             new ScriptedHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         movie.Should().NotBeNull("two 503s are transient and the pipeline should ride them out");
         movie!.TmdbId.Should().Be(603);
-        handler.Attempts.Should().Be(3, "two failures plus the successful third attempt");
+
+        // Two failures, the successful third attempt, then the /movie/{id} call that fills in the
+        // detail-only fields. This handler answers every URL with the same discover-shaped body, so
+        // that fourth response does not describe film 603 — and the id guard in EnrichAsync is what
+        // keeps the assertion above true rather than letting a mismatched record through.
+        handler.Attempts.Should().Be(4);
     }
 
     [Fact]
@@ -110,7 +115,7 @@ public class TmdbResilienceTests
     {
         var (client, handler) = BuildClient(new ScriptedHandler(HttpStatusCode.ServiceUnavailable));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         // The contract callers rely on: a dead TMDB yields "no movie", not an exception escaping into
         // the scheduler. PremiereFactory turns this into NoMovieAvailableException, which the daily
@@ -127,7 +132,7 @@ public class TmdbResilienceTests
         // endpoint on every scheduling run is how a wrong key becomes a rate-limit ban.
         var (client, handler) = BuildClient(new ScriptedHandler(HttpStatusCode.Unauthorized));
 
-        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>());
+        var movie = await client.DiscoverRandomMovieAsync(new HashSet<int>(), filter: null);
 
         movie.Should().BeNull();
         handler.Attempts.Should().Be(1, "4xx other than 408/429 is not transient");

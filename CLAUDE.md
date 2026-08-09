@@ -87,7 +87,7 @@ Entities and their essential fields. Add audit fields (`CreatedAt`, `UpdatedAt`)
 `Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `CreatedAt`
 
 **Premiere**
-`Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened`), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
+`Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened` | `Missed` — see §4.5), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
 
 **Movie**
 `Id`, `TmdbId` (unique), `Title`, `PosterPath`, `ReleaseYear`, `Overview`, `VoteAverage`, `VoteCount`, `CachedAt`
@@ -142,6 +142,15 @@ The floor is itself randomised in the 30–50 range, so a tiny user base still g
 Worked example: 1,000 registered users, peak hours, roll of 50% → threshold = 500.
 Worked example: 40 registered users, off-peak, roll of 35% → raw = 14 → below floor → threshold = random(30, 50).
 
+**An admin may retune a Scheduled Premiere's threshold**, but only within the band the formula itself could have produced:
+
+```
+adminBand.min = FloorMin                                        (30)
+adminBand.max = max(round(PeakMaxPct * totalRegisteredUsers), FloorMax)
+```
+
+The `max(...)` guard matters at small user counts: with 40 users `0.55 × 40 = 22`, which is *below* the 30–50 floor range, and without it the band would come out inverted. An admin can therefore re-roll the dice but never leave the table. The caps are always re-derived from the chosen threshold via §4.2 rather than set by hand, so the participation guarantee holds by construction. Once a Premiere is Active the threshold is fixed: it is the target people are already clapping towards, and the caps are limits some of them have already spent.
+
 ### 4.2 Per-participant clap cap
 
 Also computed once at creation. The intent: **even if every participant maxes out their cap, at least 8% of the registered user base must still be needed to reach the threshold.**
@@ -178,9 +187,23 @@ Tier names are cosmetic and can be decided later; store the tier number.
 - Times randomised daily
 - Each Premiere is active for **60 minutes** from the moment it opens
 
+**These bind an admin starting a Premiere early, not only the generator.** Activation changes when a Premiere runs but leaves `ScheduledFor` alone, so an unchecked "activate now" breaks the day count in both directions — today's audience gets a fifth Premiere, the borrowed-from day is left with three, and the generator (which counts by `ScheduledFor`) sees both days as full and tops up neither. So activation requires all of:
+
+1. the Premiere belongs to **today** — it cannot be pulled forward from another day, or run late from a past one;
+2. the current local time is inside the day window;
+3. the minimum gap is clear of everything else that ran today.
+
+Spacing is measured against each Premiere's **effective** time, `OpensAt ?? ScheduledFor`: one already started early occupies the slot it actually ran in, not the one it was drawn for.
+
+`Scheduler:EnforceActivationRules` (default true) gates this. It is deliberately not relaxed in Development — the Development-only `POST /api/premieres` already exists for putting a Premiere on screen on demand.
+
 ### 4.5 Expiry
 
-If the threshold is not met within 60 minutes, the Premiere **auto-opens anyway** with status `AutoOpened`. Everyone who clapped still receives the movie and their emblem, calculated the same way. There is no failure state.
+If the threshold is not met within 60 minutes, the Premiere **auto-opens anyway** with status `AutoOpened`. Everyone who clapped still receives the movie and their emblem, calculated the same way. There is no failure state for a Premiere that ran.
+
+**A Premiere that never ran is a separate case.** If the scheduler was not running when a Premiere came due, it is only started if it is less than `ActivationGraceMinutes` (default 30) late; past that it is marked `Missed` and abandoned. Without that bound, every Premiere missed during downtime activates the moment the scheduler returns — days' worth firing at once, at times nobody drew, which is exactly what §4.4 exists to prevent.
+
+`Missed` is not a failure state in the §4.5 sense — nobody was let down, because nobody ever saw it. It reveals no movie, queues no fan-out, broadcasts nothing, and **releases its film back to the pool**: §4.6 counts a film as spent only once a Premiere has actually opened.
 
 ### 4.6 Movie selection
 
@@ -189,7 +212,20 @@ Query TMDB `/discover/movie` with:
 - `vote_average.gte=5.0`
 - Must have a poster
 
-Pick randomly from the filtered pool. Track previously used TMDB IDs globally and exclude them so no movie repeats. The chosen movie is resolved and cached **at Premiere creation time**, never during the clap flow.
+Pick randomly from the filtered pool. The chosen movie is resolved and cached **at Premiere creation time**, never during the clap flow.
+
+**Reuse is a cooldown, not a ban.** A film is unavailable to the random pick while:
+
+1. it is attached to a Premiere that has not run yet (`Scheduled` or `Active`), or
+2. it was revealed within `MovieCooldownDays` (default 90) of now.
+
+The clock runs from `Premiere.OpenedAt` — when the film was actually *seen*. Being scheduled is not being seen, and a film swapped out of a Premiere before it ran was never shown at all, so neither starts the timer. The exclusion set is therefore derived from Premieres, **not** from every `Movie` row ever cached: a discarded pick must not shrink the pool for something nobody watched.
+
+Because a film may premiere more than once, `Movie` rows are reused rather than re-created (`TmdbId` is unique), and the open-time fan-out already skips a `LibraryEntry` for anyone who owns the film from an earlier Premiere.
+
+An admin choosing a film explicitly may override the cooldown, but only with an explicit acknowledgement — they are shown when it last premiered and when it comes free. Rule 1 has no override: the same film in two pending Premieres is a scheduling mistake, not a judgement about freshness.
+
+**A Premiere's film can only be changed while it is `Scheduled`.** Not merely because the film is public afterwards — a *running* Premiere can cross its threshold at any moment, and the open path takes its `MovieId` from the Redis `PremiereMeta` snapshot the crossing clap already read. A swap committing between that read and the open's own guarded update would leave `Premiere.MovieId` naming a film that was never revealed and never reached a single library.
 
 ---
 

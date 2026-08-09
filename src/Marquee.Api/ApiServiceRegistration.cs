@@ -14,6 +14,7 @@ public static class ApiServiceRegistration
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPremiereService, PremiereService>();
         services.AddScoped<IPremiereFactory, PremiereFactory>();
+        services.AddScoped<IMovieCatalog, MovieCatalog>();
         services.AddScoped<IPremiereOpener, PremiereOpener>();
         services.AddScoped<IPremiereScheduleService, PremiereScheduleService>();
         services.AddScoped<ILibraryService, LibraryService>();

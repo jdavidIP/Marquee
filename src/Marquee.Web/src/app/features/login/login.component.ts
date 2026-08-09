@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
+import { apiError } from '../../core/http-error';
 
 @Component({
   selector: 'app-login',
@@ -34,7 +35,7 @@ export class LoginComponent {
       next: () => this.router.navigate(['/premiere']),
       error: (err: unknown) => {
         this.busy.set(false);
-        this.error.set(readError(err));
+        this.error.set(apiError(err, 'Something went wrong. Please try again.'));
       },
     };
 
@@ -44,12 +45,4 @@ export class LoginComponent {
       this.auth.register(this.username.trim(), this.email.trim(), this.password).subscribe(done);
     }
   }
-}
-
-function readError(err: unknown): string {
-  const e = err as { status?: number; error?: { error?: string } };
-  if (e?.error?.error) return e.error.error;
-  if (e?.status === 0) return 'Cannot reach the server. Is the API running?';
-  if (e?.status === 401) return 'Invalid credentials.';
-  return 'Something went wrong. Please try again.';
 }

@@ -26,8 +26,85 @@ public class MovieConfiguration : IEntityTypeConfiguration<Movie>
         b.ToTable("movies");
         b.HasKey(m => m.Id);
         b.Property(m => m.Title).HasMaxLength(500).IsRequired();
+        b.Property(m => m.OriginalTitle).HasMaxLength(500);
         b.Property(m => m.PosterPath).HasMaxLength(256);
+        b.Property(m => m.OriginalLanguage).HasMaxLength(20);
         b.HasIndex(m => m.TmdbId).IsUnique();
+
+        // Both are filter axes for a library view, and neither is selective enough to ride on
+        // another index.
+        b.HasIndex(m => m.OriginalLanguage);
+        b.HasIndex(m => m.ReleaseYear);
+    }
+}
+
+public class GenreConfiguration : IEntityTypeConfiguration<Genre>
+{
+    public void Configure(EntityTypeBuilder<Genre> b)
+    {
+        b.ToTable("genres");
+        b.HasKey(g => g.Id);
+        b.Property(g => g.Name).HasMaxLength(100).IsRequired();
+        b.HasIndex(g => g.TmdbId).IsUnique();
+    }
+}
+
+public class MovieGenreConfiguration : IEntityTypeConfiguration<MovieGenre>
+{
+    public void Configure(EntityTypeBuilder<MovieGenre> b)
+    {
+        b.ToTable("movie_genres");
+        b.HasKey(mg => mg.Id);
+        b.HasOne(mg => mg.Movie)
+            .WithMany(m => m.MovieGenres)
+            .HasForeignKey(mg => mg.MovieId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(mg => mg.Genre)
+            .WithMany(g => g.MovieGenres)
+            .HasForeignKey(mg => mg.GenreId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A film carries a genre once.
+        b.HasIndex(mg => new { mg.MovieId, mg.GenreId }).IsUnique();
+
+        // The unique index above only serves lookups that start from the movie. "Every film in this
+        // genre" — which is what a library filter asks — walks the other way and would otherwise
+        // scan the join table.
+        b.HasIndex(mg => mg.GenreId);
+    }
+}
+
+public class CountryConfiguration : IEntityTypeConfiguration<Country>
+{
+    public void Configure(EntityTypeBuilder<Country> b)
+    {
+        b.ToTable("countries");
+        b.HasKey(c => c.Id);
+        b.Property(c => c.Iso3166Code).HasMaxLength(2).IsRequired();
+        b.Property(c => c.Name).HasMaxLength(100).IsRequired();
+        b.HasIndex(c => c.Iso3166Code).IsUnique();
+    }
+}
+
+public class MovieCountryConfiguration : IEntityTypeConfiguration<MovieCountry>
+{
+    public void Configure(EntityTypeBuilder<MovieCountry> b)
+    {
+        b.ToTable("movie_countries");
+        b.HasKey(mc => mc.Id);
+        b.HasOne(mc => mc.Movie)
+            .WithMany(m => m.MovieCountries)
+            .HasForeignKey(mc => mc.MovieId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(mc => mc.Country)
+            .WithMany(c => c.MovieCountries)
+            .HasForeignKey(mc => mc.CountryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        b.HasIndex(mc => new { mc.MovieId, mc.CountryId }).IsUnique();
+
+        // Same reasoning as MovieGenre: "every film from this country" reads the other direction.
+        b.HasIndex(mc => mc.CountryId);
     }
 }
 

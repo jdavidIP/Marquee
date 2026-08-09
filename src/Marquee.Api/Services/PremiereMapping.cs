@@ -32,5 +32,7 @@ internal static class PremiereMapping
             // is shown the registered cap, since that is what they would get by signing in.
             viewer?.IsAnonymous == true ? premiere.AnonymousClapCap : premiere.RegisteredClapCap,
             // Movie stays hidden until the Premiere opens (CLAUDE.md — reveal only on open).
-            premiere.IsTerminal && movie is not null ? MovieDtoFactory.Create(movie, tmdb) : null);
+            // HasRevealed, not IsTerminal: a Missed Premiere is finished but never showed its film,
+            // and that film is still available for a future Premiere to use.
+            premiere.HasRevealed && movie is not null ? MovieDtoFactory.Create(movie, tmdb) : null);
 }

@@ -1,5 +1,7 @@
 using Marquee.Api.Realtime;
+using Marquee.Api.Scheduling;
 using Marquee.Domain;
+using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
@@ -40,10 +42,12 @@ public sealed class PremiereScheduleService(
     IPremiereBroadcaster broadcaster,
     IRandomSource rng,
     IOptions<MarqueeScheduleOptions> schedule,
+    IOptions<SchedulerOptions> scheduler,
     IOptions<TmdbOptions> tmdbOptions,
     ILogger<PremiereScheduleService> logger) : IPremiereScheduleService
 {
     private readonly MarqueeScheduleOptions _schedule = schedule.Value;
+    private readonly SchedulerOptions _scheduler = scheduler.Value;
     private readonly TmdbOptions _tmdb = tmdbOptions.Value;
 
     public async Task<int> GenerateDayAsync(DateOnly localDate, CancellationToken ct)
@@ -55,17 +59,49 @@ public sealed class PremiereScheduleService(
         // Filtering here keeps this in step with the rest of the lifecycle, which is already
         // scope-namespaced end to end (Redis keys, SignalR groups), so a future scope doesn't
         // silently count against global's daily quota.
-        var existing = await db.Premieres
-            .CountAsync(p => p.ScopeId == Scopes.Global &&
-                              p.ScheduledFor >= dayStartUtc && p.ScheduledFor < dayEndUtc, ct);
-        if (existing >= _schedule.PremieresPerDay)
+        //
+        // Taken at each Premiere's effective time, OpensAt ?? ScheduledFor: one an admin started
+        // early occupies the slot it actually ran in, and that is what a new draw must keep clear of.
+        var existingUtc = await db.Premieres
+            .Where(p => p.ScopeId == Scopes.Global
+                        && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
+                        && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
+            .Select(p => p.OpensAt ?? p.ScheduledFor)
+            .ToListAsync(ct);
+
+        if (existingUtc.Count >= _schedule.PremieresPerDay)
         {
-            logger.LogInformation("{Date} already has {Count} Premieres — nothing to generate.", localDate, existing);
+            logger.LogInformation(
+                "{Date} already has {Count} Premieres — nothing to generate.", localDate, existingUtc.Count);
             return 0;
         }
 
-        var times = PremiereScheduleGenerator.Draw(_schedule, rng);
         var now = DateTime.UtcNow;
+
+        // Nothing may be scheduled into the past, and only today has any past to speak of.
+        var notBefore = localDate == DateOnly.FromDateTime(DateTime.Now)
+            ? TimeOnly.FromDateTime(DateTime.Now)
+            : (TimeOnly?)null;
+
+        return existingUtc.Count == 0
+            ? await GenerateWholeDayAsync(localDate, now, duration, ct)
+            : await FillDayAsync(
+                localDate,
+                existingUtc.Select(t => TimeOnly.FromDateTime(t.ToLocalTime())).ToList(),
+                notBefore, duration, ct);
+    }
+
+    /// <summary>
+    /// The normal path: an untouched day, laid out in one draw.
+    ///
+    /// Kept distinct from the top-up because <see cref="PremiereScheduleGenerator.Draw"/> spreads
+    /// N times evenly across the window by construction, which is a better distribution than
+    /// placing them one at a time could give.
+    /// </summary>
+    private async Task<int> GenerateWholeDayAsync(
+        DateOnly localDate, DateTime now, TimeSpan duration, CancellationToken ct)
+    {
+        var times = PremiereScheduleGenerator.Draw(_schedule, rng);
         var created = 0;
         var skipped = 0;
 
@@ -74,7 +110,8 @@ public sealed class PremiereScheduleService(
             var scheduledForUtc = ToUtc(localDate, time);
 
             // A time that has already passed cannot be run retroactively — generating for today
-            // partway through the day legitimately yields fewer than PremieresPerDay.
+            // partway through the day legitimately yields fewer than PremieresPerDay. A later run
+            // tops the day up through FillDayAsync.
             if (scheduledForUtc <= now)
             {
                 skipped++;
@@ -91,6 +128,49 @@ public sealed class PremiereScheduleService(
         return created;
     }
 
+    /// <summary>
+    /// Tops a partly-scheduled day up to its full complement, one Premiere at a time.
+    ///
+    /// This exists because drawing a fresh day and adding all of it was wrong: a day holding three
+    /// would gain four more and finish with seven. Only the shortfall is created, and each new time
+    /// is chosen from the room genuinely left — recomputed after every pick, so the §4.4 gap holds
+    /// between the new Premieres as well as against the ones already there.
+    ///
+    /// A day can legitimately have no room left, in which case it stays short rather than breaking
+    /// the spacing rule to hit a count.
+    /// </summary>
+    private async Task<int> FillDayAsync(
+        DateOnly localDate, List<TimeOnly> existing, TimeOnly? notBefore, TimeSpan duration,
+        CancellationToken ct)
+    {
+        var shortfall = _schedule.PremieresPerDay - existing.Count;
+        var created = 0;
+
+        for (var i = 0; i < shortfall; i++)
+        {
+            var windows = PremiereScheduleValidator.AllowedWindows(existing, _schedule, notBefore);
+            var pick = PremiereScheduleGenerator.PickWithin(windows, rng);
+            if (pick is null)
+            {
+                logger.LogInformation(
+                    "{Date} has room for no more Premieres: {Count} scheduled, {Short} short of " +
+                    "{Target}, and nothing fits the {Gap}-minute gap.",
+                    localDate, existing.Count, shortfall - created, _schedule.PremieresPerDay,
+                    _schedule.MinimumGapMinutes);
+                break;
+            }
+
+            existing.Add(pick.Value);
+            await factory.CreateAsync(ToUtc(localDate, pick.Value), activateNow: false, duration, ct);
+            created++;
+        }
+
+        logger.LogInformation(
+            "Topped {Date} up with {Created} Premiere(s) to reach {Total}.",
+            localDate, created, existing.Count);
+        return created;
+    }
+
     public async Task<int> ActivateDueAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -99,9 +179,21 @@ public sealed class PremiereScheduleService(
             .Where(p => p.Status == PremiereStatus.Scheduled && p.ScheduledFor <= now)
             .ToListAsync(ct);
 
+        var grace = TimeSpan.FromMinutes(_scheduler.ActivationGraceMinutes);
         var activated = 0;
+
         foreach (var premiere in due)
         {
+            // A Premiere whose moment has long gone is abandoned rather than run late. Without this
+            // every Premiere missed while the scheduler was down would activate at once when it came
+            // back — days' worth firing together, at a time nobody drew, breaking the §4.4 promise of
+            // four a day at least two hours apart.
+            if (now - premiere.ScheduledFor > grace)
+            {
+                await MarkMissedAsync(premiere, now, ct);
+                continue;
+            }
+
             var expiresAt = now.Add(TimeSpan.FromMinutes(_schedule.DurationMinutes));
 
             // Conditional update on the current status, the same guard the open path uses: if another
@@ -159,6 +251,38 @@ public sealed class PremiereScheduleService(
         if (opened > 0)
             logger.LogInformation("Auto-opened {Count} expired Premiere(s).", opened);
         return opened;
+    }
+
+    /// <summary>
+    /// Retires a Premiere that came due while nothing was listening.
+    ///
+    /// Deliberately quiet: nothing is broadcast, no movie is revealed and no fan-out is queued,
+    /// because nobody ever saw this Premiere. Its film stays unused and is free for a later one
+    /// (§4.6 counts a film as spent only once a Premiere has actually opened).
+    ///
+    /// Guarded by the same conditional update the activation path uses, so a concurrent tick cannot
+    /// both activate and retire the same row.
+    /// </summary>
+    private async Task MarkMissedAsync(Premiere premiere, DateTime now, CancellationToken ct)
+    {
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Status, PremiereStatus.Missed)
+                .SetProperty(p => p.UpdatedAt, now), ct);
+        if (rows == 0)
+            return;
+
+        premiere.Status = PremiereStatus.Missed;
+
+        // Drop the cached meta's Scheduled status so a stray clap is refused from cache rather than
+        // counted against a Premiere that will never open.
+        await cache.SetStatusAsync(premiere.Id, PremiereStatus.Missed, ct);
+
+        logger.LogWarning(
+            "Premiere {PremiereId} was due at {ScheduledFor:u} but is {Late:0} minutes late; marking " +
+            "it Missed rather than running it now. Its film stays available.",
+            premiere.Id, premiere.ScheduledFor, (now - premiere.ScheduledFor).TotalMinutes);
     }
 
     private async Task SafeBroadcastAsync(Func<Task> send, Guid premiereId)

@@ -134,3 +134,27 @@ Write the observed numbers down in the repo (`docs/concurrency-findings.md`). Do
 - A single clap is traceable end to end across both services
 - Load test runs with no lost claps and no duplicate opens
 - TMDB being down does not prevent an already-scheduled Premiere from running
+
+---
+
+### Iteration 7 — Admin control over Premieres
+
+**Goal:** make the admin side usable in production. The API already had most of the capability; almost none of it had a screen, and the parts that did lacked the domain rules the scheduler enforces on itself.
+
+- Remove on-demand Premiere creation from production. How many run per day is a product invariant (§4.4), not an operator decision — the endpoint survives, gated to Development, only so tests and load scripts can put one on screen
+- Editing a Scheduled Premiere: move it within its day, retune its threshold within the band the formula itself draws from (§4.1), choose its film or re-roll within a filter
+- `GET /admin/premieres/{id}/edit-options` returns the allowed windows and threshold band, so the UI shows the constraints instead of letting an admin discover them one rejection at a time. **The frontend never recomputes §4.4 or §4.2** — a second copy of those formulas would drift from `Marquee.Domain`
+- Movie reuse becomes a cooldown rather than a permanent ban (§4.6), with an admin override that requires an explicit acknowledgement
+- Persist what a film actually is: genres and origin countries as reference tables, plus original title, language, release date and runtime — so filtering by them is a query rather than a re-fetch
+- Angular admin area: routed tabs, users (list/search/block), Premieres (cards, filter, editors), and the film picker. Gated on the API's own permission claims rather than a role string
+
+**Three defects found while building, each fixed with a test that reproduces it**
+- Premieres missed while the scheduler was down all activated at once on the next start — days' worth firing together at times nobody drew. They are now marked `Missed` (§4.5)
+- `AdminService.ActivateAsync` validated only status, so starting one early could give today five Premieres and another day three. It now binds to §4.4 like every other path that moves when a Premiere runs
+- `GenerateDayAsync` topped up a short day by drawing a whole fresh one, overshooting past four. It now fills only the shortfall
+
+**Acceptance criteria**
+- An admin can run the day's Premieres — time, threshold, film — without touching the database or Swagger
+- Every edit is refused with the domain reason when it would break §4.4 or §4.2, and the UI shows the constraints up front
+- A Premiere started early announces itself over SignalR exactly as the scheduler's own activation does
+- Postgres and Redis agree after every mutation that touches cached Premiere metadata

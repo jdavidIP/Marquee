@@ -9,7 +9,8 @@
   margin-bottom: 20px;
 }
 
-h1 { font-size: 1.6rem; margin: 0; }
+/* The page heading lives on the shell now; this one names the panel within it. */
+.dashboard__title { font-size: 0.8rem; }
 h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 
 .dashboard__stamp { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
