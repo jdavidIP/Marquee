@@ -178,6 +178,16 @@ Tier names are cosmetic and can be decided later; store the tier number.
 - Times randomised daily
 - Each Premiere is active for **60 minutes** from the moment it opens
 
+**These bind an admin starting a Premiere early, not only the generator.** Activation changes when a Premiere runs but leaves `ScheduledFor` alone, so an unchecked "activate now" breaks the day count in both directions — today's audience gets a fifth Premiere, the borrowed-from day is left with three, and the generator (which counts by `ScheduledFor`) sees both days as full and tops up neither. So activation requires all of:
+
+1. the Premiere belongs to **today** — it cannot be pulled forward from another day, or run late from a past one;
+2. the current local time is inside the day window;
+3. the minimum gap is clear of everything else that ran today.
+
+Spacing is measured against each Premiere's **effective** time, `OpensAt ?? ScheduledFor`: one already started early occupies the slot it actually ran in, not the one it was drawn for.
+
+`Scheduler:EnforceActivationRules` (default true) gates this. It is deliberately not relaxed in Development — the Development-only `POST /api/premieres` already exists for putting a Premiere on screen on demand.
+
 ### 4.5 Expiry
 
 If the threshold is not met within 60 minutes, the Premiere **auto-opens anyway** with status `AutoOpened`. Everyone who clapped still receives the movie and their emblem, calculated the same way. There is no failure state for a Premiere that ran.

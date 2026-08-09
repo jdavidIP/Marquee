@@ -1,4 +1,5 @@
 using Marquee.Api.Dtos;
+using Marquee.Api.Scheduling;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
@@ -79,11 +80,13 @@ public sealed class AdminService(
     IUserBlockCache blockCache,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<MarqueeRulesOptions> rules,
+    IOptions<SchedulerOptions> scheduler,
     IOptions<TmdbOptions> tmdbOptions,
     ILogger<AdminService> logger) : IAdminService
 {
     private readonly MarqueeScheduleOptions _schedule = schedule.Value;
     private readonly MarqueeRulesOptions _rules = rules.Value;
+    private readonly SchedulerOptions _scheduler = scheduler.Value;
     private readonly TmdbOptions _tmdbOptions = tmdbOptions.Value;
 
     public async Task<PagedResult<AdminUserDto>> ListUsersAsync(
@@ -291,6 +294,11 @@ public sealed class AdminService(
     /// The local times of the day's other Premieres in this scope — the neighbours a proposed time
     /// has to keep its distance from. Scope-filtered so a future scoped Premiere does not constrain
     /// global's schedule.
+    ///
+    /// Each is taken at its *effective* time, <c>OpensAt ?? ScheduledFor</c>. A Premiere an admin
+    /// started early actually ran at OpensAt, and that is the moment the spacing rule has to keep
+    /// clear of; treating it as still sitting at its drawn time would let a second Premiere land
+    /// right on top of one that had just gone live.
     /// </summary>
     private async Task<IReadOnlyList<TimeOnly>> OtherTimesThatDayAsync(
         Premiere premiere, DateOnly localDate, CancellationToken ct)
@@ -301,9 +309,9 @@ public sealed class AdminService(
             .AsNoTracking()
             .Where(p => p.Id != premiere.Id
                         && p.ScopeId == premiere.ScopeId
-                        && p.ScheduledFor >= dayStartUtc
-                        && p.ScheduledFor < dayEndUtc)
-            .Select(p => p.ScheduledFor)
+                        && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
+                        && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
+            .Select(p => p.OpensAt ?? p.ScheduledFor)
             .ToListAsync(ct);
 
         return times.Select(t => TimeOnly.FromDateTime(t.ToLocalTime())).ToList();
@@ -375,6 +383,21 @@ public sealed class AdminService(
 
     private string? PosterUrl(string? posterPath) =>
         string.IsNullOrEmpty(posterPath) ? null : _tmdbOptions.ImageBaseUrl.TrimEnd('/') + posterPath;
+
+    /// <summary>
+    /// The same §4.4 violations as <see cref="Describe"/>, worded for "start it now" rather than
+    /// "move it to". A refusal here is about the clock, so it says what the clock currently reads.
+    /// </summary>
+    private string DescribeActivation(ScheduleViolation violation, DateTime nowLocal) => violation switch
+    {
+        ScheduleViolation.BeforeDayStart or ScheduleViolation.AfterDayEnd =>
+            $"It is {nowLocal:HH:mm} — Premieres run between {_schedule.DayStartHour:D2}:00 and " +
+            $"{_schedule.DayEndHour:D2}:00 local time.",
+        ScheduleViolation.TooCloseToAnother =>
+            $"Another Premiere ran less than {_schedule.MinimumGapMinutes} minutes ago, and they must " +
+            "be at least that far apart.",
+        _ => "This Premiere cannot be started right now."
+    };
 
     private static AdminResult<AdminPremiereDto> Invalid(string error) =>
         new(AdminOutcome.Invalid, Error: error);
@@ -480,7 +503,15 @@ public sealed class AdminService(
         return new AdminResult<AdminPremiereDto>(AdminOutcome.Ok, ToDto(premiere, contributors: 0));
     }
 
-    /// <summary>Start a Scheduled Premiere now, rather than waiting for the scheduler's tick.</summary>
+    /// <summary>
+    /// Start a Scheduled Premiere now, rather than waiting for the scheduler's tick.
+    ///
+    /// "Early" is not "anywhere". Activation moves when a Premiere runs but leaves ScheduledFor
+    /// alone, so without these checks starting tomorrow's Premiere today would put five in front of
+    /// today's audience and leave tomorrow with three — while the generator, which counts by
+    /// ScheduledFor, saw both days as full and topped up neither. It could equally start one at
+    /// 04:00 or ten minutes after another, breaking the day window and the minimum gap.
+    /// </summary>
     public async Task<AdminResult<AdminPremiereDto>> ActivateAsync(Guid premiereId, CancellationToken ct)
     {
         var premiere = await LoadAsync(premiereId, ct);
@@ -492,6 +523,33 @@ public sealed class AdminService(
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
         var now = DateTime.UtcNow;
+
+        if (_scheduler.EnforceActivationRules)
+        {
+            var nowLocal = now.ToLocalTime();
+            var today = DateOnly.FromDateTime(nowLocal);
+            var belongsTo = DateOnly.FromDateTime(premiere.ScheduledFor.ToLocalTime());
+
+            if (belongsTo != today)
+            {
+                return Invalid(
+                    $"This Premiere belongs to {belongsTo:yyyy-MM-dd}. Starting it today would give " +
+                    $"today {_schedule.PremieresPerDay + 1} and leave {belongsTo:yyyy-MM-dd} with " +
+                    $"{_schedule.PremieresPerDay - 1} — every day holds exactly " +
+                    $"{_schedule.PremieresPerDay}. Move it to today first if that is what you want.");
+            }
+
+            // Checked against what actually ran today, not what was drawn for today: a Premiere
+            // already started early occupies its real slot, and that is what the gap must clear.
+            var violation = PremiereScheduleValidator.Validate(
+                TimeOnly.FromDateTime(nowLocal),
+                await OtherTimesThatDayAsync(premiere, today, ct),
+                _schedule);
+
+            if (violation != ScheduleViolation.None)
+                return Invalid(DescribeActivation(violation, nowLocal));
+        }
+
         premiere.Status = PremiereStatus.Active;
         premiere.OpensAt = now;
         // The window is measured from activation, not from ScheduledFor, so a manual start still
