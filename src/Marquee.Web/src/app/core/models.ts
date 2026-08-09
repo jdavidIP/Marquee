@@ -84,6 +84,38 @@ export interface AnonymousSessionResponse {
   expiresAtUtc: string;
 }
 
+/**
+ * A search hit. Deliberately identical for public and private users — a private profile stays
+ * discoverable, and these are the same fields a stranger may see anyway. The client must not use
+ * isPrivate to decide what to display: the server already shaped the payload.
+ */
+export interface UserSearchResultDto {
+  id: string;
+  username: string;
+  bio: string | null;
+  isPrivate: boolean;
+}
+
+/** A pending friend request, in whichever direction it points. */
+export interface FriendRequestDto {
+  id: string;
+  /** The other party — the addressee on an outgoing request, the requester on an incoming one. */
+  userId: string;
+  username: string;
+  status: string;
+  /** True when the signed-in user sent this request rather than received it. */
+  outgoing: boolean;
+  createdAt: string;
+}
+
+export interface FriendDto {
+  userId: string;
+  username: string;
+  bio: string | null;
+  isPrivate: boolean;
+  friendsSince: string;
+}
+
 export interface FriendContributorDto {
   userId: string;
   username: string;
