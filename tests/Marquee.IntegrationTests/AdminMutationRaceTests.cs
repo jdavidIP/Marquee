@@ -182,8 +182,13 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
         // without being caught, which is exactly what AlreadyTerminal being reachable at all proves.
         reschedule.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
 
+        // BeCloseTo, not Be: Postgres stores timestamps at microsecond precision while a .NET
+        // DateTime carries 100ns ticks, so the value that comes back has been truncated and exact
+        // equality fails on the last digit. Matches how AdminPremiereEditingTests compares the same
+        // column. The tolerance is far tighter than anything the race could shift, so it still pins
+        // down that this specific write is the one that landed.
         if (reschedule.Outcome == AdminOutcome.Ok)
-            stored.ScheduledFor.Should().Be(proposed);
+            stored.ScheduledFor.Should().BeCloseTo(proposed, TimeSpan.FromSeconds(1));
     }
 
     private async Task ParkOtherPremieresTodayAsync()
