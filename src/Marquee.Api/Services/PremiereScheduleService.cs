@@ -208,9 +208,17 @@ public sealed class PremiereScheduleService(
             if (rows == 0)
                 continue;
 
-            premiere.Status = PremiereStatus.Active;
-            premiere.OpensAt = now;
-            premiere.ExpiresAt = expiresAt;
+            // Refresh the whole tracked entity from Postgres rather than trusting the copy loaded by
+            // the batch query above — a plain field patch would not do this, since ExecuteUpdateAsync
+            // bypasses the change tracker and only touched the four columns in its own SET clause.
+            // Threshold, the caps and MovieId are exactly what a concurrent AdminService edit could
+            // have changed in the gap between that batch load and this point. Those writers now guard
+            // themselves the same way this method's own status flip is guarded above, so any such edit
+            // could only have committed while this Premiere was still Scheduled — strictly before the
+            // flip just above — and this reload is guaranteed to observe it rather than race it
+            // further. Mirrors AdminService.ActivateAsync, which has the identical shape.
+            await db.Entry(premiere).ReloadAsync(ct);
+            await db.Entry(premiere).Reference(p => p.Movie).LoadAsync(ct);
 
             // Refresh the hot-path cache before anyone can clap, then tell the scope it is live.
             await cache.SetAsync(premiere.ToMeta(), ct);
