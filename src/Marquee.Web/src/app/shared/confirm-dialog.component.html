@@ -1,0 +1,40 @@
+<!-- Escape cancels wherever focus sits inside the dialog. -->
+<div class="scrim" (keydown.escape)="onCancel()">
+  <div
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-labelledby]="'confirm-title'"
+    [attr.aria-describedby]="'confirm-body'"
+  >
+    <h2 id="confirm-title" class="dialog__title">{{ title() }}</h2>
+    <p id="confirm-body" class="dialog__body">{{ body() }}</p>
+
+    @if (reasonLabel(); as label) {
+      <label class="dialog__field">
+        <span>{{ label }}</span>
+        <textarea
+          [(ngModel)]="reason"
+          maxlength="500"
+          rows="3"
+          [disabled]="busy()"
+        ></textarea>
+      </label>
+    }
+
+    <div class="dialog__actions">
+      <button #cancelButton type="button" class="ghost" (click)="onCancel()" [disabled]="busy()">
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="primary"
+        [class.danger]="tone() === 'danger'"
+        (click)="onConfirm()"
+        [disabled]="busy()"
+      >
+        {{ busy() ? 'Working…' : confirmLabel() }}
+      </button>
+    </div>
+  </div>
+</div>

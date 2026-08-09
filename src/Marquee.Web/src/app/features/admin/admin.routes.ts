@@ -20,6 +20,11 @@ export const ADMIN_ROUTES: Routes = [
         loadComponent: () =>
           import('./admin-dashboard.component').then((m) => m.AdminDashboardComponent),
       },
+      {
+        path: 'users',
+        canActivate: [requirePermission(Permissions.ViewUsers)],
+        loadComponent: () => import('./admin-users.component').then((m) => m.AdminUsersComponent),
+      },
       // An unknown operations path lands on the overview rather than bouncing the admin out of the
       // area entirely, which the app-level wildcard would do.
       { path: '**', redirectTo: 'overview' },

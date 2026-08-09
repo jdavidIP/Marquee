@@ -1,0 +1,130 @@
+<div class="toolbar">
+  <input
+    class="search"
+    type="search"
+    placeholder="Search by username or email"
+    [value]="search()"
+    (input)="onSearchInput($any($event.target).value)"
+    aria-label="Search users"
+  />
+  @if (total() > 0) {
+    <span class="toolbar__count">{{ total() | number }} user{{ total() === 1 ? '' : 's' }}</span>
+  }
+</div>
+
+@if (error(); as e) {
+  <p class="error">{{ e }}</p>
+}
+
+@if (loading()) {
+  <p class="empty">Loading users…</p>
+} @else if (users().length === 0) {
+  @if (search()) {
+    <p class="empty">
+      No users match that search.
+      <button class="action" type="button" (click)="clearSearch()">Clear search</button>
+    </p>
+  } @else {
+    <p class="empty">No users yet.</p>
+  }
+} @else {
+  <div class="table-wrap" [class.is-refreshing]="refreshing()">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Username</th>
+          <th scope="col">Email</th>
+          <th scope="col">Role</th>
+          <th scope="col">Status</th>
+          <th scope="col">Profile</th>
+          <th scope="col">Joined</th>
+          <th scope="col" class="num">Movies</th>
+          @if (canBlock()) { <th scope="col"></th> }
+        </tr>
+      </thead>
+      <tbody>
+        @for (user of users(); track user.id) {
+          <tr [class.is-muted]="user.isBlocked">
+            <td>{{ user.username }}</td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.role }}</td>
+            <td>
+              <!-- Text, not colour alone. -->
+              @if (user.isBlocked) {
+                <span class="pill pill--bad">Blocked</span>
+              } @else {
+                <span class="pill pill--ok">Active</span>
+              }
+            </td>
+            <td>{{ user.isPrivate ? 'Private' : 'Public' }}</td>
+            <td>{{ user.createdAt | date: 'mediumDate' }}</td>
+            <td class="num">{{ user.moviesCollected | number }}</td>
+            @if (canBlock()) {
+              <td>
+                <div class="row-actions">
+                  @if (user.isBlocked) {
+                    <button
+                      class="action"
+                      type="button"
+                      (click)="unblock(user)"
+                      [disabled]="busyUserId() === user.id"
+                    >
+                      {{ busyUserId() === user.id ? 'Unblocking…' : 'Unblock' }}
+                    </button>
+                  } @else {
+                    <button
+                      class="action action--danger"
+                      type="button"
+                      (click)="askToBlock(user)"
+                      [disabled]="busyUserId() === user.id || isSelf(user)"
+                      [title]="isSelf(user) ? 'You cannot block your own account.' : ''"
+                    >
+                      {{ busyUserId() === user.id ? 'Blocking…' : 'Block' }}
+                    </button>
+                  }
+                </div>
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pager">
+    <span class="pager__info">
+      Showing {{ firstShown() | number }}–{{ lastShown() | number }} of {{ total() | number }}
+    </span>
+    <span class="pager__spacer"></span>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() - 1)"
+      [disabled]="!hasPrevious()"
+      aria-label="Previous page"
+    >
+      Previous
+    </button>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() + 1)"
+      [disabled]="!hasNext()"
+      aria-label="Next page"
+    >
+      Next
+    </button>
+  </div>
+}
+
+@if (pending(); as user) {
+  <app-confirm-dialog
+    [title]="'Block ' + user.username + '?'"
+    body="They will not be able to clap or use anything that needs an account. You can unblock them at any time."
+    confirmLabel="Block user"
+    reasonLabel="Reason (optional, recorded in the log)"
+    [busy]="busyUserId() === user.id"
+    (confirmed)="confirmBlock($event)"
+    (cancelled)="pending.set(null)"
+  />
+}
