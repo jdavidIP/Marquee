@@ -165,6 +165,10 @@ Two ways around it:
 ```bash
 dotnet test tests/Marquee.UnitTests            # domain formula + schedule tests
 
+# Docker must be running (Testcontainers manages its own Postgres and Redis) — no other
+# setup needed. Runs in CI on every push to main and every PR targeting it.
+dotnet test tests/Marquee.IntegrationTests
+
 # API + docker infra must be running for all of these
 cd tests/Marquee.LoadTests
 node clap-storm.mjs        # iteration 2 — concurrency: lost updates, double open, cap enforcement
@@ -172,6 +176,12 @@ node realtime-check.mjs    # iteration 3 — two watchers, throttling, reveal, t
 node queue-check.mjs       # iteration 4 — fan-out, crash recovery, replay, dead-lettering
 node security-check.mjs    # iteration 5 — throttling, privacy, friend intersection, admin 403s
 ```
+
+`Marquee.IntegrationTests` never reaches a real RabbitMQ, even if `docker compose up -d` is running —
+the bus is deliberately pointed at a closed port, and a dedicated test asserts the app is still
+configured that way rather than pointed back at the real broker. Without that, a test run publishes
+real events for Premieres that exist only in its throwaway database, and the worker dead-letters
+them. See `MarqueeAppFactory`'s class comment and issue #8 for the incident that motivated it.
 
 `realtime-check.mjs` exits non-zero if any check fails, and includes a ~1 minute wait while it proves
 a Premiere auto-opens on its timer. Set `SKIP_AUTOOPEN=1` to skip that part.
