@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -27,8 +27,6 @@ jobs:
       - name: Build
         run: dotnet build Marquee.sln --no-restore --configuration Release
 
-      # Marquee.IntegrationTests is still an empty Testcontainers scaffold (Iteration 6) — nothing
-      # to run there yet. Only Marquee.UnitTests (the pure §4 domain formula tests) runs in CI.
       - name: Unit tests
         run: dotnet test tests/Marquee.UnitTests/Marquee.UnitTests.csproj --no-build --configuration Release --logger "trx;LogFileName=unit-tests.trx"
 
