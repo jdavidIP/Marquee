@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { Observable, forkJoin } from 'rxjs';
 import { FriendsService } from '../../core/friends.service';
@@ -31,7 +31,7 @@ interface SearchRow {
   templateUrl: './friends.component.html',
   styleUrl: './friends.component.css',
 })
-export class FriendsComponent implements OnInit {
+export class FriendsComponent implements OnInit, OnDestroy {
   private readonly friendsApi = inject(FriendsService);
   private readonly users = inject(UsersService);
   private readonly auth = inject(AuthService);
@@ -84,6 +84,11 @@ export class FriendsComponent implements OnInit {
 
   ngOnInit(): void {
     this.reload(true);
+  }
+
+  /** A pending debounce would otherwise fire a search against a component nobody is looking at. */
+  ngOnDestroy(): void {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
   protected onSearchInput(value: string): void {
