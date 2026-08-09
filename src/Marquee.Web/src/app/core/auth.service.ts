@@ -3,9 +3,17 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthResponse, UserDto } from './models';
+import { decodePermissions } from './jwt';
 
 const TOKEN_KEY = 'marquee.token';
 const USER_KEY = 'marquee.user';
+
+/** Mirrors MarqueePermissions on the API. */
+export const Permissions = {
+  ManagePremieres: 'premieres:manage',
+  ViewUsers: 'users:view',
+  BlockUsers: 'users:block',
+} as const;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -14,7 +22,26 @@ export class AuthService {
 
   readonly user = this._user.asReadonly();
   readonly isLoggedIn = computed(() => this._token() !== null);
-  readonly isAdmin = computed(() => this._user()?.role === 'Admin');
+
+  /**
+   * Derived from the token rather than the stored role, matching how the API decides. The backend
+   * gates on permission claims precisely so permissions can diverge from roles later; gating the UI
+   * on `role === 'Admin'` would re-couple them and go stale the moment they do.
+   *
+   * Recomputes on sign-in and sign-out for free, because it reads the same signal the token lives in.
+   */
+  private readonly permissions = computed(() => decodePermissions(this._token()));
+
+  readonly canManagePremieres = computed(() => this.has(Permissions.ManagePremieres));
+  readonly canViewUsers = computed(() => this.has(Permissions.ViewUsers));
+  readonly canBlockUsers = computed(() => this.has(Permissions.BlockUsers));
+
+  /** Whether to offer the operations area at all — any one of its tabs is enough. */
+  readonly canSeeOperations = computed(() => this.canViewUsers() || this.canManagePremieres());
+
+  has(permission: string): boolean {
+    return this.permissions().includes(permission);
+  }
 
   constructor(private http: HttpClient) {}
 

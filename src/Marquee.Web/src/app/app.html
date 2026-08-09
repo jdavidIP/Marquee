@@ -4,7 +4,7 @@
     <nav class="nav">
       <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
       <a routerLink="/library" routerLinkActive="active">Library</a>
-      @if (auth.isAdmin()) {
+      @if (auth.canSeeOperations()) {
         <a routerLink="/admin" routerLinkActive="active">Operations</a>
       }
     </nav>
