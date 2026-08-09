@@ -161,10 +161,7 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
         // Premiere that has already started.
         //
         // RescheduleAsync also checks the minimum gap against same-day neighbours (§4.4), which is
-        // orthogonal to the race this test is about, so today is parked clear first. The proposed
-        // time is kept close to now (rather than hours out) so it reliably lands on the same local
-        // day as the Premiere it is targeting — a multi-hour offset would risk crossing midnight and
-        // failing on the unrelated day-boundary rule instead of exercising the race.
+        // orthogonal to the race under test, so today is parked clear first.
         await ParkOtherPremieresTodayAsync();
 
         var id = await DueNowAsync();
@@ -175,20 +172,45 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
         var reschedule = await rescheduleTask;
 
         var (stored, _) = await CurrentStateAsync(id);
+
+        // Activation always wins: a reschedule does not touch Status, so nothing it does can stop
+        // the flip. True in every branch below, which is why it is asserted before them.
         stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
 
-        // Ok if the reschedule beat the flip; AlreadyTerminal if it lost the race. Either is a
-        // correctly-handled outcome — what must never happen is the write landing after activation
-        // without being caught, which is exactly what AlreadyTerminal being reachable at all proves.
-        reschedule.Outcome.Should().BeOneOf(AdminOutcome.Ok, AdminOutcome.AlreadyTerminal);
+        switch (reschedule.Outcome)
+        {
+            // Beat the flip. BeCloseTo rather than Be: Postgres stores timestamps at microsecond
+            // precision while a .NET DateTime carries 100ns ticks, so the value read back has been
+            // truncated and exact equality fails on the last digit — matching how
+            // AdminPremiereEditingTests compares this same column. A second is far tighter than
+            // anything the race could shift, so it still pins down which write landed.
+            case AdminOutcome.Ok:
+                stored.ScheduledFor.Should().BeCloseTo(proposed, TimeSpan.FromSeconds(1));
+                break;
 
-        // BeCloseTo, not Be: Postgres stores timestamps at microsecond precision while a .NET
-        // DateTime carries 100ns ticks, so the value that comes back has been truncated and exact
-        // equality fails on the last digit. Matches how AdminPremiereEditingTests compares the same
-        // column. The tolerance is far tighter than anything the race could shift, so it still pins
-        // down that this specific write is the one that landed.
-        if (reschedule.Outcome == AdminOutcome.Ok)
-            stored.ScheduledFor.Should().BeCloseTo(proposed, TimeSpan.FromSeconds(1));
+            // Lost the race, and the guard caught it. That this outcome is reachable at all is the
+            // property the fix exists to provide.
+            case AdminOutcome.AlreadyTerminal:
+                break;
+
+            // §4.4 refused the proposed time for a reason unrelated to the race, and in the last
+            // hour of the local day that is unavoidable rather than incidental: the Premiere has to
+            // be due within the activation grace (so today), a reschedule may not leave its day,
+            // nothing may be scheduled into the past, and the day window closes at DayEndHour —
+            // 23:00 by default, which the suite does not override. Between 23:00 and midnight there
+            // is therefore no valid time to propose at all, and CI genuinely runs at that hour.
+            //
+            // Accepted rather than asserted away, but not a free pass: a refusal must actually have
+            // refused, so the stored time must not have moved to what was proposed.
+            case AdminOutcome.Invalid:
+                stored.ScheduledFor.Should().NotBeCloseTo(proposed, TimeSpan.FromSeconds(1),
+                    "a refused reschedule must not have written the time it refused");
+                break;
+
+            default:
+                Assert.Fail($"Unexpected reschedule outcome {reschedule.Outcome}.");
+                break;
+        }
     }
 
     private async Task ParkOtherPremieresTodayAsync()
