@@ -1,0 +1,169 @@
+<div class="picker">
+  <div class="picker__modes" role="group" aria-label="How to change the film">
+    <button
+      type="button"
+      class="picker__mode"
+      [class.active]="mode() === 'search'"
+      [attr.aria-pressed]="mode() === 'search'"
+      (click)="setMode('search')"
+    >
+      Pick a film
+    </button>
+    <button
+      type="button"
+      class="picker__mode"
+      [class.active]="mode() === 'filter'"
+      [attr.aria-pressed]="mode() === 'filter'"
+      (click)="setMode('filter')"
+    >
+      Re-roll
+    </button>
+  </div>
+
+  @if (error(); as e) {
+    <p class="picker__error">{{ e }}</p>
+  }
+
+  @if (mode() === 'search') {
+    <input
+      class="picker__search"
+      type="search"
+      placeholder="Search TMDB by title"
+      [value]="query"
+      (input)="onQueryInput($any($event.target).value)"
+      [disabled]="busy()"
+      aria-label="Search TMDB by title"
+    />
+
+    @if (searching()) {
+      <p class="picker__hint">Searching…</p>
+    } @else if (searched() && results().length === 0) {
+      <p class="picker__hint">Nothing matched that title.</p>
+    } @else if (results().length > 0) {
+      <ul class="hits">
+        @for (hit of results(); track hit.tmdbId) {
+          <li class="hit" [class.hit--blocked]="hit.alreadyQueued">
+            @if (hit.posterUrl) {
+              <img class="hit__poster" [src]="hit.posterUrl" [alt]="hit.title" loading="lazy" />
+            } @else {
+              <div class="hit__poster hit__poster--none" aria-hidden="true"></div>
+            }
+
+            <div class="hit__body">
+              <p class="hit__title">
+                {{ hit.title }}
+                @if (hit.releaseYear) { <span class="hit__year">{{ hit.releaseYear }}</span> }
+              </p>
+              <p class="hit__meta">
+                {{ hit.voteAverage | number: '1.1-1' }} · {{ hit.voteCount | number }} votes
+              </p>
+
+              <!-- Availability is shown rather than hidden: §4.6 is a cooldown an admin may
+                   deliberately override, so what they need is the fact, not a missing row. -->
+              @if (blockedReason(hit); as reason) {
+                <p class="hit__flag hit__flag--blocked">{{ reason }}</p>
+              } @else if (hit.inCooldown) {
+                <p class="hit__flag hit__flag--resting">
+                  Premiered {{ hit.lastPremieredAt | date: 'd MMM yyyy' }} — free again
+                  {{ hit.eligibleFrom | date: 'd MMM yyyy' }}
+                </p>
+              }
+            </div>
+
+            <button
+              class="action"
+              type="button"
+              (click)="choose(hit)"
+              [disabled]="busy() || hit.alreadyQueued"
+              [title]="blockedReason(hit) ?? ''"
+            >
+              {{ hit.inCooldown ? 'Use anyway' : 'Use this' }}
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <p class="picker__hint">
+      Narrows the pool a random pick is made from. The §4.6 floors still apply on top, so a
+      re-roll can only ever be more selective than the default.
+    </p>
+
+    <div class="filters">
+      <label class="filters__field">
+        <span>Genre</span>
+        <select [(ngModel)]="filter.genreId" [disabled]="busy()">
+          <option [ngValue]="null">Any</option>
+          @for (genre of genres(); track genre.tmdbId) {
+            <option [ngValue]="genre.tmdbId">{{ genre.name }}</option>
+          }
+        </select>
+      </label>
+
+      <label class="filters__field">
+        <span>Country</span>
+        <select [(ngModel)]="filter.originCountry" [disabled]="busy()">
+          <option [ngValue]="null">Any</option>
+          @for (country of countries(); track country.iso3166Code) {
+            <option [ngValue]="country.iso3166Code">{{ country.name }}</option>
+          }
+        </select>
+      </label>
+
+      <label class="filters__field">
+        <!-- Free text because there is no language endpoint; ISO 639-1, which is what TMDB wants. -->
+        <span>Language</span>
+        <input type="text" maxlength="2" placeholder="en" [(ngModel)]="filter.originalLanguage" [disabled]="busy()" />
+      </label>
+
+      <label class="filters__field">
+        <span>Min rating</span>
+        <input type="number" min="0" max="10" step="0.5" placeholder="5.0" [(ngModel)]="filter.minVoteAverage" [disabled]="busy()" />
+      </label>
+
+      <label class="filters__field">
+        <span>From year</span>
+        <input type="number" min="1874" max="2200" placeholder="1990" [(ngModel)]="filter.minYear" [disabled]="busy()" />
+      </label>
+
+      <label class="filters__field">
+        <span>To year</span>
+        <input type="number" min="1874" max="2200" placeholder="1999" [(ngModel)]="filter.maxYear" [disabled]="busy()" />
+      </label>
+
+      <label class="filters__field">
+        <span>Min runtime</span>
+        <input type="number" min="1" max="1000" placeholder="90" [(ngModel)]="filter.minRuntime" [disabled]="busy()" />
+      </label>
+
+      <label class="filters__field">
+        <span>Max runtime</span>
+        <input type="number" min="1" max="1000" placeholder="150" [(ngModel)]="filter.maxRuntime" [disabled]="busy()" />
+      </label>
+    </div>
+
+    <div class="picker__actions">
+      <button class="action" type="button" (click)="clearFilter()" [disabled]="busy()">Clear</button>
+      <button class="action" type="button" (click)="reroll()" [disabled]="busy()">
+        {{ busy() ? 'Re-rolling…' : 'Re-roll' }}
+      </button>
+    </div>
+  }
+</div>
+
+@if (pendingCooldown(); as resting) {
+  <app-confirm-dialog
+    title="Use a film that is still resting?"
+    [body]="
+      &quot;'&quot; + resting.title + &quot;'&quot; + ' premiered on ' +
+      (resting.lastPremieredAt | date: 'd MMM yyyy') +
+      ' and is not free again until ' + (resting.eligibleFrom | date: 'd MMM yyyy') +
+      '. Using it now means some people will be shown a film they have already seen.'
+    "
+    confirmLabel="Use it anyway"
+    tone="danger"
+    [busy]="busy()"
+    (confirmed)="confirmCooldownOverride()"
+    (cancelled)="pendingCooldown.set(null)"
+  />
+}

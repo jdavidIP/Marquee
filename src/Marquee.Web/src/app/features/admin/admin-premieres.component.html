@@ -114,6 +114,16 @@
           >
             {{ isEditing(p, 'threshold') ? 'Cancel' : 'Threshold' }}
           </button>
+          <!-- Enabled while Active too: until a Premiere opens, nobody has seen the film. -->
+          <button
+            class="action"
+            type="button"
+            (click)="toggleEditor(p, 'movie')"
+            [disabled]="!canChangeMovie(p) || saving()"
+            [title]="movieDisabledReason(p)"
+          >
+            {{ isEditing(p, 'movie') ? 'Cancel' : 'Film' }}
+          </button>
           <button
             class="action action--danger"
             type="button"
@@ -197,6 +207,22 @@
                 The clap caps are recomputed from this, so the participation rule still holds.
               </p>
             }
+          </div>
+        }
+
+        @if (isEditing(p, 'movie')) {
+          <div class="editor">
+            <p class="editor__hint">
+              Currently holding <strong>{{ p.movieTitle || '(no film)' }}</strong>.
+              @if (p.status === 'Active') {
+                This Premiere is running — swapping now changes what people receive when it opens.
+              }
+            </p>
+            <app-admin-movie-picker
+              [premiereId]="p.id"
+              [currentTitle]="p.movieTitle"
+              (changed)="onMovieChanged()"
+            />
           </div>
         }
       </article>

@@ -6,11 +6,12 @@ import { AdminService } from '../../core/admin.service';
 import { apiError } from '../../core/http-error';
 import { AdminPremiereDto, PremiereEditOptionsDto, PremiereStatus } from '../../core/models';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
+import { AdminMoviePickerComponent } from './admin-movie-picker.component';
 
 const PAGE_SIZE = 25;
 
 /** Which inline editor a card currently has open. */
-type Editor = 'schedule' | 'threshold';
+type Editor = 'schedule' | 'threshold' | 'movie';
 
 /** The filter options, in lifecycle order. Sentence case per CLAUDE.md §7. */
 const STATUS_FILTERS: ReadonlyArray<{ value: PremiereStatus | ''; label: string }> = [
@@ -31,7 +32,7 @@ const LATE_START_THRESHOLD_MINUTES = 5;
 @Component({
   selector: 'app-admin-premieres',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConfirmDialogComponent],
+  imports: [CommonModule, FormsModule, ConfirmDialogComponent, AdminMoviePickerComponent],
   templateUrl: './admin-premieres.component.html',
   styleUrls: ['./admin-tables.css', './admin-premieres.component.css'],
 })
@@ -147,6 +148,10 @@ export class AdminPremieresComponent {
     this.options.set(null);
     this.scheduleInput = toLocalTimeValue(premiere.scheduledFor);
     this.thresholdInput = premiere.threshold;
+
+    // The movie picker needs none of this — its constraints are per-film and come back with the
+    // search results — so it does not pay for a request it will not read.
+    if (editor === 'movie') return;
 
     this.optionsLoading.set(true);
     this.admin.editOptions(premiere.id).subscribe({
@@ -270,6 +275,22 @@ export class AdminPremieresComponent {
     return this.canEdit(p) && this.isToday(p);
   }
 
+  /**
+   * The film can still change while a Premiere is running, unlike its time or threshold: nobody has
+   * seen it yet, so swapping it is only a change of what will be revealed. Once it has opened the
+   * film is in people's libraries and the question is closed.
+   */
+  protected canChangeMovie(p: AdminPremiereDto): boolean {
+    return p.status === 'Scheduled' || p.status === 'Active';
+  }
+
+  protected movieDisabledReason(p: AdminPremiereDto): string {
+    if (this.canChangeMovie(p)) return '';
+    return p.status === 'Missed'
+      ? 'This Premiere never ran, so its film was never used.'
+      : 'The film is already in people’s libraries.';
+  }
+
   protected activateDisabledReason(p: AdminPremiereDto): string {
     if (!this.canEdit(p)) return this.disabledReason(p);
     if (!this.isToday(p)) return 'Only today’s Premieres can be started early — each day holds its own four.';
@@ -359,6 +380,11 @@ export class AdminPremieresComponent {
   protected progressPct(p: AdminPremiereDto): number {
     if (p.threshold <= 0) return 0;
     return Math.min(100, Math.round((p.totalClaps / p.threshold) * 100));
+  }
+
+  /** The picker reports only that the film changed; refetching is this screen's job. */
+  protected onMovieChanged(): void {
+    this.afterSave();
   }
 
   private afterSave(): void {
