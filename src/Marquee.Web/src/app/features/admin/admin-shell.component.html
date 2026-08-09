@@ -1,0 +1,11 @@
+<section class="ops">
+  <h1>Operations</h1>
+
+  <nav class="ops__tabs">
+    @if (auth.canViewUsers()) {
+      <a routerLink="overview" routerLinkActive="active">Overview</a>
+    }
+  </nav>
+
+  <router-outlet />
+</section>
