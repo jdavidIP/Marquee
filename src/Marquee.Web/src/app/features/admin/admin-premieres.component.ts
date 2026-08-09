@@ -145,7 +145,7 @@ export class AdminPremieresComponent {
     this.openEditor.set(editor);
     this.actionError.set(null);
     this.options.set(null);
-    this.scheduleInput = toLocalInputValue(premiere.scheduledFor);
+    this.scheduleInput = toLocalTimeValue(premiere.scheduledFor);
     this.thresholdInput = premiere.threshold;
 
     this.optionsLoading.set(true);
@@ -172,11 +172,14 @@ export class AdminPremieresComponent {
   }
 
   protected saveSchedule(premiere: AdminPremiereDto): void {
-    if (!this.scheduleInput) return;
+    const localDate = this.options()?.localDate;
+    if (!this.scheduleInput || !localDate) return;
 
-    // datetime-local yields a naive wall-clock string; Date reads it in the browser's zone, so
-    // toISOString produces the correct instant for ScheduledForUtc.
-    const utc = new Date(this.scheduleInput).toISOString();
+    // Only a time is editable, so the date comes from the server's own answer rather than anything
+    // the admin could have typed. The two are combined as local wall-clock and converted once —
+    // the single place a timezone mistake could hide.
+    const utc = toUtcIso(localDate, this.scheduleInput);
+    if (!utc) return;
 
     this.saving.set(true);
     this.admin.reschedule(premiere.id, utc).subscribe({
@@ -305,18 +308,19 @@ export class AdminPremieresComponent {
   }
 
   /**
-   * Bounds for the picker: the Premiere's own local day and only that day. A Premiere cannot move
-   * across midnight — the scheduler enforces four per local day by counting rows in that window, so
-   * a cross-day move would leave one day short and another over.
+   * Outer bounds for the time picker, taken from the first and last allowed window.
+   *
+   * Only an outer bound — the gaps between windows are still reachable, and the server is what
+   * actually rejects them. These come from the server's own answer rather than from §4.4 being
+   * re-derived here, and they exist only to stop the most obvious out-of-range pick.
    */
-  protected dayMin(): string {
-    const date = this.options()?.localDate;
-    return date ? `${date}T00:00` : '';
+  protected timeMin(): string {
+    return this.options()?.allowedWindows[0]?.start ?? '';
   }
 
-  protected dayMax(): string {
-    const date = this.options()?.localDate;
-    return date ? `${date}T23:59` : '';
+  protected timeMax(): string {
+    const windows = this.options()?.allowedWindows ?? [];
+    return windows.length > 0 ? windows[windows.length - 1].end : '';
   }
 
   /**
@@ -407,9 +411,26 @@ export class AdminPremieresComponent {
   }
 }
 
-/** UTC instant -> the naive local "YYYY-MM-DDTHH:mm" a datetime-local input expects. */
-function toLocalInputValue(iso: string): string {
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** UTC instant -> the local "HH:mm" a time input expects. */
+function toLocalTimeValue(iso: string): string {
   const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * A local date ("YYYY-MM-DD") plus a local time ("HH:mm") -> the UTC instant the API stores.
+ *
+ * Built through the Date constructor rather than by parsing a combined string: a date-time string
+ * without a zone is read as local, but a date-only one is read as UTC, and relying on which rule
+ * applies to a concatenation is how an off-by-one-day bug gets in.
+ */
+function toUtcIso(localDate: string, localTime: string): string | null {
+  const [year, month, day] = localDate.split('-').map(Number);
+  const [hour, minute] = localTime.split(':').map(Number);
+
+  if ([year, month, day, hour, minute].some((n) => !Number.isFinite(n))) return null;
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0).toISOString();
 }

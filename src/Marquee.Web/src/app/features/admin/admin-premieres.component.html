@@ -144,12 +144,15 @@
               }
               <div class="editor__row">
                 <label class="editor__field">
-                  <span>New time</span>
+                  <!-- A time, not a date-time: the day is fixed, so it should not be offered.
+                       The server enforces the same rule, but a control that cannot express an
+                       invalid change beats one that can and is then refused. -->
+                  <span>New time on {{ o.localDate }}</span>
                   <input
-                    type="datetime-local"
+                    type="time"
                     [(ngModel)]="scheduleInput"
-                    [min]="dayMin()"
-                    [max]="dayMax()"
+                    [min]="timeMin()"
+                    [max]="timeMax()"
                     [disabled]="saving()"
                   />
                 </label>
@@ -158,7 +161,8 @@
                 </button>
               </div>
               <p class="editor__note">
-                It stays on {{ o.localDate }} — each day holds exactly four Premieres.
+                The date is fixed — each day holds exactly four Premieres, so moving one to another
+                day would leave that day short and this one over.
               </p>
             }
           </div>
