@@ -6,6 +6,9 @@
       <a routerLink="overview" routerLinkActive="active">Overview</a>
       <a routerLink="users" routerLinkActive="active">Users</a>
     }
+    @if (auth.canManagePremieres()) {
+      <a routerLink="premieres" routerLinkActive="active">Premieres</a>
+    }
   </nav>
 
   <router-outlet />

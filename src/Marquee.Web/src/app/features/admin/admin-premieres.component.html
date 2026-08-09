@@ -1,0 +1,111 @@
+<div class="toolbar">
+  <div class="segmented" role="group" aria-label="Filter by status">
+    @for (filter of filters; track filter.value) {
+      <button
+        type="button"
+        class="segmented__option"
+        [class.active]="activeFilter() === filter.value"
+        [attr.aria-pressed]="activeFilter() === filter.value"
+        (click)="selectFilter(filter.value)"
+      >
+        {{ filter.label }}
+      </button>
+    }
+  </div>
+
+  <button class="action" type="button" (click)="refresh()" [disabled]="refreshing()">
+    {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
+  </button>
+
+  @if (total() > 0) {
+    <span class="toolbar__count">
+      {{ total() | number }} Premiere{{ total() === 1 ? '' : 's' }}
+    </span>
+  }
+</div>
+
+@if (error(); as e) {
+  <p class="error">{{ e }}</p>
+}
+
+@if (loading()) {
+  <p class="empty">Loading Premieres…</p>
+} @else if (premieres().length === 0) {
+  @if (activeFilter()) {
+    <p class="empty">No Premieres with that status.</p>
+  } @else {
+    <p class="empty">No Premieres yet. The scheduler draws four a day.</p>
+  }
+} @else {
+  <div class="cards" [class.is-refreshing]="refreshing()">
+    @for (p of premieres(); track p.id) {
+      <article class="card">
+        <header class="card__head">
+          <span class="pill" [class]="'pill ' + pillClass(p.status)">{{ statusLabel(p.status) }}</span>
+          <span class="card__when">{{ p.scheduledFor | date: 'EEE d MMM, HH:mm' }}</span>
+        </header>
+
+        <h3 class="card__movie">
+          {{ p.movieTitle || '(no movie)' }}
+          <span class="card__tmdb">tmdb {{ p.movieTmdbId }}</span>
+        </h3>
+
+        <!-- Only meaningful once the Premiere has opened: live counting happens in Redis and
+             TotalClaps is written at open time, so a running Premiere reads 0 here. -->
+        @if (hasDurableCount(p)) {
+          <div class="bar" role="progressbar" [attr.aria-valuenow]="progressPct(p)" aria-valuemin="0" aria-valuemax="100">
+            <div class="bar__fill" [style.width.%]="progressPct(p)"></div>
+          </div>
+          <p class="card__counts">
+            {{ p.totalClaps | number }} of {{ p.threshold | number }} claps ·
+            {{ p.contributors | number }} contributor{{ p.contributors === 1 ? '' : 's' }}
+          </p>
+        } @else {
+          <p class="card__counts">
+            Threshold {{ p.threshold | number }} ·
+            {{ p.contributors | number }} contributor{{ p.contributors === 1 ? '' : 's' }} so far
+            @if (p.status === 'Active') {
+              <span class="card__note">— live count is in Redis until it opens</span>
+            }
+          </p>
+        }
+
+        <dl class="card__meta">
+          @if (p.opensAt) {
+            <div><dt>Window</dt><dd>{{ p.opensAt | date: 'HH:mm' }}–{{ p.expiresAt | date: 'HH:mm' }}</dd></div>
+          }
+          @if (p.openedAt) {
+            <div><dt>Opened</dt><dd>{{ p.openedAt | date: 'd MMM, HH:mm' }}</dd></div>
+          }
+          <div><dt>Caps</dt><dd>{{ p.registeredClapCap }} registered · {{ p.anonymousClapCap }} anonymous</dd></div>
+          <div><dt>Scope</dt><dd>{{ p.scopeId }}</dd></div>
+        </dl>
+      </article>
+    }
+  </div>
+
+  <div class="pager">
+    <span class="pager__info">
+      Showing {{ firstShown() | number }}–{{ lastShown() | number }} of {{ total() | number }}
+    </span>
+    <span class="pager__spacer"></span>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() - 1)"
+      [disabled]="!hasPrevious()"
+      aria-label="Previous page"
+    >
+      Previous
+    </button>
+    <button
+      class="action"
+      type="button"
+      (click)="goToPage(currentPage() + 1)"
+      [disabled]="!hasNext()"
+      aria-label="Next page"
+    >
+      Next
+    </button>
+  </div>
+}

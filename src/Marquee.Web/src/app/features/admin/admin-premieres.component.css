@@ -1,0 +1,113 @@
+/* Toolbar, pill, pager and empty/error styling is shared — see admin-tables.css. Cards rather than
+   a table because AdminPremiereDto carries 15 fields and the content column is capped at 900px; a
+   ten-column table would scroll sideways and read as nothing in particular. */
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented__option {
+  background: var(--panel);
+  border: 0;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+}
+
+.segmented__option:last-child { border-right: 0; }
+.segmented__option:hover { color: var(--ink); }
+
+.segmented__option.active {
+  background: var(--panel-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cards {
+  display: grid;
+  gap: 14px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.card__when {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__movie {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.card__tmdb {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+.card__counts {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__note { color: var(--gold-dim); }
+
+.bar {
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar__fill {
+  height: 100%;
+  background: var(--gold);
+}
+
+.card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.card__meta div { display: flex; gap: 6px; }
+
+.card__meta dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  align-self: center;
+}
+
+.card__meta dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
