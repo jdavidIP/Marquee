@@ -5,17 +5,25 @@ times a day a **Premiere** appears containing a hidden movie; it opens only when
 **clap** for it before its 60-minute timer runs out. See [`CLAUDE.md`](./CLAUDE.md) for the full
 domain spec and [`MARQUEE_PLAN.md`](./MARQUEE_PLAN.md) for the iteration-by-iteration build plan.
 
-> **Status: Iteration 6 complete** — the system can now be watched and has been proven under load.
-> A clap's journey is readable end to end two ways: a correlation id that survives the queue hop in
-> both directions, and an OpenTelemetry trace joining API → Redis → RabbitMQ → worker into one span
-> tree. Liveness and readiness are separate endpoints; TMDB sits behind retry, timeouts and a circuit
-> breaker; integration tests run against real Postgres and Redis via Testcontainers; a k6 burst test
-> showed no lost claps and no duplicate opens; and an admin dashboard reports live queue depth,
-> connections and clap rate.
+> **Status: Iteration 7 complete** — every iteration in `MARQUEE_PLAN.md` is now built. Iteration 7
+> made the admin side usable in production: a Scheduled Premiere's time, threshold and film can be
+> edited, but only within the bounds the generator itself would have drawn from (§4.1, §4.2, §4.4);
+> movie reuse is a 90-day cooldown rather than a permanent ban (§4.6); and the Angular admin area is
+> gated on the API's own permission claims rather than a role string.
+>
+> Iteration 6 (still current): a clap's journey is readable end to end two ways — a correlation id
+> that survives the queue hop in both directions, and an OpenTelemetry trace joining API → Redis →
+> RabbitMQ → worker into one span tree. Liveness and readiness are separate endpoints; TMDB sits
+> behind retry, timeouts and a circuit breaker; integration tests run against real Postgres and Redis
+> via Testcontainers, and in CI on every push to `main` and every pull request targeting it; a k6
+> burst test showed no lost claps and no duplicate opens; and an admin dashboard reports live queue
+> depth, connections and clap rate.
+>
 > Design notes in [`docs/observability-and-resilience.md`](./docs/observability-and-resilience.md);
 > the security and social layer in [`docs/security-and-social.md`](./docs/security-and-social.md);
 > the queue work in [`docs/queue-and-outbox.md`](./docs/queue-and-outbox.md);
 > Iteration 2's concurrency work in [`docs/concurrency-findings.md`](./docs/concurrency-findings.md).
+> Iteration 7 has no equivalent design-notes doc yet.
 
 ## Architecture
 
