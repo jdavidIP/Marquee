@@ -39,5 +39,13 @@ public class Premiere : AuditableEntity
 
     public ICollection<Contribution> Contributions { get; set; } = new List<Contribution>();
 
-    public bool IsTerminal => Status is PremiereStatus.Opened or PremiereStatus.AutoOpened;
+    /// <summary>
+    /// The Premiere ran and showed its film. This — not <see cref="IsTerminal"/> — is what gates the
+    /// reveal: a Missed Premiere is equally finished, but nobody ever saw what it was holding, so
+    /// naming it would give away a film that is still available for a future Premiere.
+    /// </summary>
+    public bool HasRevealed => Status is PremiereStatus.Opened or PremiereStatus.AutoOpened;
+
+    /// <summary>Nothing about this Premiere can change any more, whether or not it ever ran.</summary>
+    public bool IsTerminal => HasRevealed || Status is PremiereStatus.Missed;
 }

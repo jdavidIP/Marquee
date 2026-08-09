@@ -87,7 +87,7 @@ Entities and their essential fields. Add audit fields (`CreatedAt`, `UpdatedAt`)
 `Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `CreatedAt`
 
 **Premiere**
-`Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened`), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
+`Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened` | `Missed` — see §4.5), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
 
 **Movie**
 `Id`, `TmdbId` (unique), `Title`, `PosterPath`, `ReleaseYear`, `Overview`, `VoteAverage`, `VoteCount`, `CachedAt`
@@ -180,7 +180,11 @@ Tier names are cosmetic and can be decided later; store the tier number.
 
 ### 4.5 Expiry
 
-If the threshold is not met within 60 minutes, the Premiere **auto-opens anyway** with status `AutoOpened`. Everyone who clapped still receives the movie and their emblem, calculated the same way. There is no failure state.
+If the threshold is not met within 60 minutes, the Premiere **auto-opens anyway** with status `AutoOpened`. Everyone who clapped still receives the movie and their emblem, calculated the same way. There is no failure state for a Premiere that ran.
+
+**A Premiere that never ran is a separate case.** If the scheduler was not running when a Premiere came due, it is only started if it is less than `ActivationGraceMinutes` (default 30) late; past that it is marked `Missed` and abandoned. Without that bound, every Premiere missed during downtime activates the moment the scheduler returns — days' worth firing at once, at times nobody drew, which is exactly what §4.4 exists to prevent.
+
+`Missed` is not a failure state in the §4.5 sense — nobody was let down, because nobody ever saw it. It reveals no movie, queues no fan-out, broadcasts nothing, and **releases its film back to the pool**: §4.6 counts a film as spent only once a Premiere has actually opened.
 
 ### 4.6 Movie selection
 

@@ -42,6 +42,13 @@
       <article class="card">
         <header class="card__head">
           <span class="pill" [class]="'pill ' + pillClass(p.status)">{{ statusLabel(p.status) }}</span>
+          <!-- The list is ordered by this, so a Premiere that ran late is filed under the day it
+               was drawn for rather than the day it happened. The badge makes that visible. -->
+          @if (lateStartMinutes(p); as late) {
+            <span class="card__late" [title]="'Scheduled for ' + (p.scheduledFor | date: 'medium') + ', started ' + (p.opensAt | date: 'medium')">
+              {{ lateStartLabel(p) }}
+            </span>
+          }
           <span class="card__when">{{ p.scheduledFor | date: 'EEE d MMM, HH:mm' }}</span>
         </header>
 
@@ -59,6 +66,11 @@
           <p class="card__counts">
             {{ p.totalClaps | number }} of {{ p.threshold | number }} claps ·
             {{ p.contributors | number }} contributor{{ p.contributors === 1 ? '' : 's' }}
+          </p>
+        } @else if (p.status === 'Missed') {
+          <p class="card__counts">
+            Its time passed while the scheduler was not running, so it was retired rather than
+            started late. Nobody saw it, and its film is still available.
           </p>
         } @else {
           <p class="card__counts">

@@ -22,7 +22,11 @@ export interface MovieDto {
   voteCount: number;
 }
 
-export type PremiereStatus = 'Scheduled' | 'Active' | 'Opened' | 'AutoOpened';
+/**
+ * Missed means the Premiere's moment passed while the scheduler was not running, so it was retired
+ * rather than started late. Unlike AutoOpened it never revealed its film.
+ */
+export type PremiereStatus = 'Scheduled' | 'Active' | 'Opened' | 'AutoOpened' | 'Missed';
 
 export interface PremiereDto {
   id: string;

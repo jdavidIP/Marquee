@@ -25,4 +25,15 @@ public sealed class SchedulerOptions
 
     /// <summary>How many days ahead to keep generated, including today.</summary>
     public int GenerateDaysAhead { get; set; } = 2;
+
+    /// <summary>
+    /// How late a Premiere may still be started. Past this, its moment is judged gone and it is
+    /// marked Missed instead of run.
+    ///
+    /// Without a bound, every Premiere missed while the scheduler was down activates the instant it
+    /// comes back — so a weekend of downtime fires several at once, at a time nobody drew, which is
+    /// exactly what §4.4 (four a day, two hours apart) exists to prevent. Kept well under
+    /// MinimumGapMinutes so a late start cannot collide with the next Premiere's slot.
+    /// </summary>
+    public int ActivationGraceMinutes { get; set; } = 30;
 }

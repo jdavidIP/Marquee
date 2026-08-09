@@ -14,7 +14,14 @@ const STATUS_FILTERS: ReadonlyArray<{ value: PremiereStatus | ''; label: string 
   { value: 'Active', label: 'Active' },
   { value: 'Opened', label: 'Opened' },
   { value: 'AutoOpened', label: 'Auto-opened' },
+  { value: 'Missed', label: 'Missed' },
 ];
+
+/**
+ * How far a start can drift from its scheduled time before the card says so. The scheduler allows a
+ * grace period for a brief restart, so a small gap is expected and not worth remarking on.
+ */
+const LATE_START_THRESHOLD_MINUTES = 5;
 
 @Component({
   selector: 'app-admin-premieres',
@@ -99,9 +106,11 @@ export class AdminPremieresComponent {
       case 'Active':
         return 'pill--warn';
       case 'Opened':
-        return 'pill--ok';
       case 'AutoOpened':
         return 'pill--ok';
+      // Missed is a Premiere nobody got: worth flagging as a fault, not filed away as "finished".
+      case 'Missed':
+        return 'pill--bad';
       default:
         return 'pill--idle';
     }
@@ -113,6 +122,30 @@ export class AdminPremieresComponent {
 
   protected isPending(p: AdminPremiereDto): boolean {
     return p.status === 'Scheduled';
+  }
+
+  /**
+   * How late a Premiere actually started, in minutes, or null when it started on time or never
+   * started at all.
+   *
+   * Surfaced because the list is ordered by ScheduledFor: a Premiere that activated well after its
+   * slot sits in the list under the day it was drawn for, not the day it ran, and without this the
+   * discrepancy is invisible. It also makes historic rows from before the grace period existed
+   * explain themselves rather than looking like corrupt data.
+   */
+  protected lateStartMinutes(p: AdminPremiereDto): number | null {
+    if (!p.opensAt) return null;
+
+    const drift = (new Date(p.opensAt).getTime() - new Date(p.scheduledFor).getTime()) / 60_000;
+    return drift >= LATE_START_THRESHOLD_MINUTES ? Math.round(drift) : null;
+  }
+
+  /** Days is the only sensible unit once a start is more than a day adrift. */
+  protected lateStartLabel(p: AdminPremiereDto): string {
+    const minutes = this.lateStartMinutes(p) ?? 0;
+    if (minutes < 60) return `${minutes} min late`;
+    if (minutes < 60 * 24) return `${Math.round(minutes / 60)} h late`;
+    return `${Math.round(minutes / (60 * 24))} days late`;
   }
 
   /**

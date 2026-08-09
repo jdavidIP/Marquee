@@ -1,5 +1,7 @@
 using Marquee.Api.Realtime;
+using Marquee.Api.Scheduling;
 using Marquee.Domain;
+using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
@@ -40,10 +42,12 @@ public sealed class PremiereScheduleService(
     IPremiereBroadcaster broadcaster,
     IRandomSource rng,
     IOptions<MarqueeScheduleOptions> schedule,
+    IOptions<SchedulerOptions> scheduler,
     IOptions<TmdbOptions> tmdbOptions,
     ILogger<PremiereScheduleService> logger) : IPremiereScheduleService
 {
     private readonly MarqueeScheduleOptions _schedule = schedule.Value;
+    private readonly SchedulerOptions _scheduler = scheduler.Value;
     private readonly TmdbOptions _tmdb = tmdbOptions.Value;
 
     public async Task<int> GenerateDayAsync(DateOnly localDate, CancellationToken ct)
@@ -99,9 +103,21 @@ public sealed class PremiereScheduleService(
             .Where(p => p.Status == PremiereStatus.Scheduled && p.ScheduledFor <= now)
             .ToListAsync(ct);
 
+        var grace = TimeSpan.FromMinutes(_scheduler.ActivationGraceMinutes);
         var activated = 0;
+
         foreach (var premiere in due)
         {
+            // A Premiere whose moment has long gone is abandoned rather than run late. Without this
+            // every Premiere missed while the scheduler was down would activate at once when it came
+            // back — days' worth firing together, at a time nobody drew, breaking the §4.4 promise of
+            // four a day at least two hours apart.
+            if (now - premiere.ScheduledFor > grace)
+            {
+                await MarkMissedAsync(premiere, now, ct);
+                continue;
+            }
+
             var expiresAt = now.Add(TimeSpan.FromMinutes(_schedule.DurationMinutes));
 
             // Conditional update on the current status, the same guard the open path uses: if another
@@ -159,6 +175,38 @@ public sealed class PremiereScheduleService(
         if (opened > 0)
             logger.LogInformation("Auto-opened {Count} expired Premiere(s).", opened);
         return opened;
+    }
+
+    /// <summary>
+    /// Retires a Premiere that came due while nothing was listening.
+    ///
+    /// Deliberately quiet: nothing is broadcast, no movie is revealed and no fan-out is queued,
+    /// because nobody ever saw this Premiere. Its film stays unused and is free for a later one
+    /// (§4.6 counts a film as spent only once a Premiere has actually opened).
+    ///
+    /// Guarded by the same conditional update the activation path uses, so a concurrent tick cannot
+    /// both activate and retire the same row.
+    /// </summary>
+    private async Task MarkMissedAsync(Premiere premiere, DateTime now, CancellationToken ct)
+    {
+        var rows = await db.Premieres
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Status, PremiereStatus.Missed)
+                .SetProperty(p => p.UpdatedAt, now), ct);
+        if (rows == 0)
+            return;
+
+        premiere.Status = PremiereStatus.Missed;
+
+        // Drop the cached meta's Scheduled status so a stray clap is refused from cache rather than
+        // counted against a Premiere that will never open.
+        await cache.SetStatusAsync(premiere.Id, PremiereStatus.Missed, ct);
+
+        logger.LogWarning(
+            "Premiere {PremiereId} was due at {ScheduledFor:u} but is {Late:0} minutes late; marking " +
+            "it Missed rather than running it now. Its film stays available.",
+            premiere.Id, premiere.ScheduledFor, (now - premiere.ScheduledFor).TotalMinutes);
     }
 
     private async Task SafeBroadcastAsync(Func<Task> send, Guid premiereId)

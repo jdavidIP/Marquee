@@ -46,6 +46,18 @@
   margin-bottom: 10px;
 }
 
+/* A late start is a fault worth noticing, not decoration — same accent the Missed pill uses. */
+.card__late {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .card__when {
   margin-left: auto;
   color: var(--muted);
