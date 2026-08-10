@@ -105,7 +105,7 @@ Write the observed numbers down in the repo (`docs/concurrency-findings.md`). Do
 - Profile endpoint returns a shaped DTO based on the viewer:
   - Self, admin, or accepted friend → full profile
   - Stranger, public profile → full profile
-  - Stranger, private profile → **only `username` and `bio`**. Other fields are **omitted from the payload entirely**, not returned as nulls
+  - Stranger, private profile → **only `username`, `bio`, and the viewer's own `FriendshipStatus`/`FriendRequestOutgoing`**. The account's own detail — counts, join date, `isPrivate` itself — is **omitted from the payload entirely**, not returned as nulls. The two relationship fields are the one exception: they describe the *viewer's* standing, not the account's, so keeping them off the limited payload was never required by the privacy rule — and doing so left the frontend's Add Friend button unable to work on a private stranger's profile, forced to discover "already pending" by rejection instead of knowing up front (issue #25)
 - Private profiles remain **discoverable in search** — privacy restricts detail, not existence
 - "Which of my friends contributed" — maintain `premiere:{scope}:{id}:contributors` as a Redis SET, and answer per-viewer on demand with `SINTER` against `user:{userId}:friends`. **Never** broadcast personalised friend data to all connected clients; broadcast only the public count and let each client ask about itself
 - Private friends **do** appear in a viewer's friends-among-contributors list — privacy applies to strangers, not to accepted friends

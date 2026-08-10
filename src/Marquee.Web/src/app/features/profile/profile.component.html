@@ -107,18 +107,16 @@
     }
   }
 
-  <!-- The limited payload: username and bio arrived, nothing else did. Said plainly rather than
-       rendering empty stat boxes, which would imply the numbers are zero. -->
+  <!-- The limited payload: username, bio and the viewer's own relationship arrived; the account's
+       own detail did not. Said plainly rather than rendering empty stat boxes, which would imply
+       the numbers are zero. Add Friend / Respond in Friends already render in the header above —
+       friendshipStatus is on this payload too, so those work here exactly as on a full profile. -->
   @if (limited()) {
     <section class="panel">
       <p class="empty">
         This account is private. Become friends to see their activity — they will still show up in
         search either way.
       </p>
-      <!-- No Add friend button here on purpose: this payload carries no relationship, so the button
-           could not say whether a request is already pending and would be discovered by rejection.
-           Friends search knows, so send them there rather than guess. -->
-      <a class="action" routerLink="/friends">Find them in Friends</a>
     </section>
   }
 } @else if (!error()) {

@@ -36,18 +36,30 @@ describe('ProfileComponent payload shapes', () => {
     };
   }
 
-  const limited: LimitedProfileDto = { username: 'ana', bio: 'Likes westerns.' };
+  function limited(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
+    return {
+      username: 'ana',
+      bio: 'Likes westerns.',
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      ...overrides,
+    };
+  }
+
+  let sendRequestSpy: jasmine.Spy;
 
   function make(profile: ProfileDto, viewerId: string | null = me) {
     // Reset first so a test can build more than one profile — the outgoing/incoming pair below
     // needs two, and TestBed refuses to be reconfigured once instantiated.
     TestBed.resetTestingModule();
+    sendRequestSpy = jasmine.createSpy('sendRequest').and.returnValue(of({}));
+
     TestBed.configureTestingModule({
       imports: [ProfileComponent],
       providers: [
         provideRouter([]),
         { provide: UsersService, useValue: { profile: () => of(profile), updateMe: () => of({}) } },
-        { provide: FriendsService, useValue: { sendRequest: () => of({}) } },
+        { provide: FriendsService, useValue: { sendRequest: sendRequestSpy } },
         {
           provide: AuthService,
           useValue: {
@@ -75,10 +87,36 @@ describe('ProfileComponent payload shapes', () => {
   it('treats a payload without an id as the limited shape', () => {
     // Keyed on a field only the full payload carries — never on isPrivate, which the limited
     // payload does not even include.
-    const c = make(limited);
+    const c = make(limited());
 
     expect(c['full']()).toBeNull();
     expect(c['limited']()).toBe(true);
+  });
+
+  it('offers Add Friend on a limited profile with no relationship yet', () => {
+    // The reason friendshipStatus and friendRequestOutgoing were added to LimitedProfileDto at
+    // all: without them, a stranger's private-profile view had nothing to build this button from.
+    const c = make(limited({ friendshipStatus: null }));
+
+    expect(c['canAdd']()).toBe(true);
+
+    c['addFriend']();
+
+    expect(sendRequestSpy).toHaveBeenCalledWith('ana');
+  });
+
+  it('does not offer Add Friend on a limited profile with a request already pending', () => {
+    const c = make(limited({ friendshipStatus: 'Pending', friendRequestOutgoing: true }));
+
+    expect(c['canAdd']()).toBe(false);
+    expect(c['relationship']()).toBe('Request sent');
+  });
+
+  it('points an incoming request on a limited profile at Friends, same as a full one', () => {
+    const c = make(limited({ friendshipStatus: 'Pending', friendRequestOutgoing: false }));
+
+    expect(c['relationship']()).toBe('Wants to be friends');
+    expect(c['linkToRequests']()).toBe(true);
   });
 
   it('recognises the viewer looking at their own profile', () => {
@@ -136,7 +174,14 @@ describe('isFullProfile', () => {
       friendRequestOutgoing: null,
     };
 
+    const limitedProfile: LimitedProfileDto = {
+      username: 'ana',
+      bio: null,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+    };
+
     expect(isFullProfile(privateButEntitled)).toBe(true);
-    expect(isFullProfile({ username: 'ana', bio: null })).toBe(false);
+    expect(isFullProfile(limitedProfile)).toBe(false);
   });
 });

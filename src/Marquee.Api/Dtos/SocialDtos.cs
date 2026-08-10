@@ -21,14 +21,30 @@ public sealed record FullProfileDto(
     bool? FriendRequestOutgoing);
 
 /// <summary>
-/// A private profile seen by a stranger. MARQUEE_PLAN.md is explicit that the other fields are
-/// "omitted from the payload entirely, not returned as nulls" — hence a separate type rather than a
-/// nulled-out <see cref="FullProfileDto"/>. A null field still tells the reader the field exists and
-/// leaks its shape; an absent one says nothing at all.
+/// A private profile seen by a stranger. MARQUEE_PLAN.md is explicit that the *account's own*
+/// fields — movie counts, join date, friend count — are "omitted from the payload entirely, not
+/// returned as nulls" — hence a separate type rather than a nulled-out <see cref="FullProfileDto"/>.
+/// A null field still tells the reader the field exists and leaks its shape; an absent one says
+/// nothing at all.
+///
+/// FriendshipStatus and FriendRequestOutgoing are the one exception, added so a client can offer a
+/// working "add friend" action here rather than only being able to say "you cannot see this
+/// profile". They describe the *viewer's own relationship* to the account, not the account itself —
+/// the same distinction the plan already draws by saying privacy restricts detail, not existence:
+/// the account's own detail stays withheld; the viewer's own standing does not.
 ///
 /// The profile still resolves rather than 404ing: privacy restricts detail, not existence.
 /// </summary>
-public sealed record LimitedProfileDto(string Username, string? Bio);
+public sealed record LimitedProfileDto(
+    string Username,
+    string? Bio,
+    /// <summary>
+    /// Pending or null. Never Accepted — an accepted friend is entitled to the full profile, so
+    /// this type is never the one returned for them.
+    /// </summary>
+    string? FriendshipStatus,
+    /// <summary>True when the viewer sent the pending request, false when they received it.</summary>
+    bool? FriendRequestOutgoing);
 
 /// <summary>
 /// A search hit. Deliberately identical for public and private users — private profiles stay

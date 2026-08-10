@@ -114,13 +114,22 @@ export interface FullProfileDto {
 }
 
 /**
- * A private profile seen by a stranger. The remaining fields are **absent from the payload, not
- * null** — a null still tells the reader the field exists and leaks its shape, an absent one says
- * nothing at all. That is why this is a separate type rather than a nulled-out FullProfileDto.
+ * A private profile seen by a stranger. The account's own fields — counts, join date, isPrivate
+ * itself — are **absent from the payload, not null**: a null still tells the reader the field
+ * exists and leaks its shape, an absent one says nothing at all. That is why this is a separate
+ * type rather than a nulled-out FullProfileDto.
+ *
+ * friendshipStatus and friendRequestOutgoing are the one exception. They describe the *viewer's
+ * own relationship* to the account, not the account's own detail, so withholding them was never
+ * required by the privacy rule — and withholding them in practice meant a stranger's Add Friend
+ * button had nothing to go on, forced to discover "already pending" by rejection. status is never
+ * 'Accepted' here: an accepted friend is entitled to the full profile instead.
  */
 export interface LimitedProfileDto {
   username: string;
   bio: string | null;
+  friendshipStatus: string | null;
+  friendRequestOutgoing: boolean | null;
 }
 
 export type ProfileDto = FullProfileDto | LimitedProfileDto;

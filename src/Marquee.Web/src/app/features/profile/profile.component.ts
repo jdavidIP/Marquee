@@ -89,35 +89,41 @@ export class ProfileComponent {
     this.patch({ isPrivate: !f.isPrivate });
   }
 
+  /**
+   * Works from either payload shape: friendshipStatus and friendRequestOutgoing are on both
+   * FullProfileDto and LimitedProfileDto now, precisely so this button still works on a private
+   * stranger's profile instead of only being reachable on a public one.
+   */
   protected addFriend(): void {
-    const f = this.full();
-    if (!f) return;
+    const p = this.profile();
+    if (!p) return;
 
     this.busy.set(true);
-    this.friends.sendRequest(f.username).subscribe({
+    this.friends.sendRequest(p.username).subscribe({
       next: () => this.load(this.username()),
-      error: (err: unknown) => this.fail(err, `Could not send a request to ${f.username}.`),
+      error: (err: unknown) => this.fail(err, `Could not send a request to ${p.username}.`),
     });
   }
 
   /**
    * What the viewer's relationship to this profile means in words. Read straight off the payload —
    * the server worked it out, and the two nullable fields together say more than either alone.
+   * Reads profile() rather than full(): a limited payload carries these two fields too.
    */
   protected readonly relationship = computed(() => {
-    const f = this.full();
-    if (!f || this.isSelf()) return null;
+    const p = this.profile();
+    if (!p || this.isSelf()) return null;
 
-    if (f.friendshipStatus === 'Accepted') return 'Friends';
-    if (f.friendshipStatus === 'Pending') {
-      return f.friendRequestOutgoing ? 'Request sent' : 'Wants to be friends';
+    if (p.friendshipStatus === 'Accepted') return 'Friends';
+    if (p.friendshipStatus === 'Pending') {
+      return p.friendRequestOutgoing ? 'Request sent' : 'Wants to be friends';
     }
     return null;
   });
 
   /** Only a stranger with no pending request in either direction can be added from here. */
   protected readonly canAdd = computed(
-    () => this.full() !== null && !this.isSelf() && this.full()!.friendshipStatus === null,
+    () => this.profile() !== null && !this.isSelf() && this.profile()!.friendshipStatus === null,
   );
 
   /**
@@ -126,7 +132,7 @@ export class ProfileComponent {
    * to find it, point at the screen that owns them.
    */
   protected readonly linkToRequests = computed(
-    () => this.full()?.friendshipStatus === 'Pending' && this.full()?.friendRequestOutgoing === false,
+    () => this.profile()?.friendshipStatus === 'Pending' && this.profile()?.friendRequestOutgoing === false,
   );
 
   private patch(request: { bio?: string | null; isPrivate?: boolean | null }, done?: () => void): void {
