@@ -1,0 +1,124 @@
+@if (error(); as e) {
+  <p class="error">{{ e }}</p>
+}
+
+@if (loading()) {
+  <p class="empty">Loading profile…</p>
+} @else if (profile(); as p) {
+  <section class="panel">
+    <header class="head">
+      <div class="head__who">
+        <h1 class="head__name">{{ p.username }}</h1>
+        @if (isSelf()) {
+          <span class="pill">This is you</span>
+        } @else if (relationship(); as r) {
+          <span class="pill">{{ r }}</span>
+        }
+      </div>
+
+      <div class="head__actions">
+        @if (canAdd()) {
+          <button class="action action--primary" type="button" (click)="addFriend()" [disabled]="busy()">
+            {{ busy() ? 'Sending…' : 'Add friend' }}
+          </button>
+        }
+        @if (linkToRequests()) {
+          <a class="action" routerLink="/friends">Respond in Friends</a>
+        }
+      </div>
+    </header>
+
+    <!-- Bio: editable only on your own profile, and only when the full payload came back. -->
+    @if (isSelf() && editing()) {
+      <div class="editor">
+        <label class="editor__label" for="bio">Bio</label>
+        <textarea
+          id="bio"
+          class="editor__input"
+          rows="3"
+          maxlength="500"
+          [(ngModel)]="bioDraft"
+          placeholder="Say something about the films you like."
+        ></textarea>
+        <div class="editor__actions">
+          <button class="action action--primary" type="button" (click)="saveBio()" [disabled]="busy()">
+            {{ busy() ? 'Saving…' : 'Save' }}
+          </button>
+          <button class="action" type="button" (click)="cancelEditing()" [disabled]="busy()">Cancel</button>
+        </div>
+      </div>
+    } @else {
+      <p class="bio" [class.bio--empty]="!p.bio">
+        {{ p.bio || (isSelf() ? 'No bio yet.' : 'This user has not written a bio.') }}
+      </p>
+      @if (isSelf()) {
+        <button class="action" type="button" (click)="startEditing()">Edit bio</button>
+      }
+    }
+  </section>
+
+  @if (full(); as f) {
+    <section class="panel">
+      <h2 class="panel__title">Activity</h2>
+      <dl class="stats">
+        <div class="stat">
+          <dt class="stat__label">Movies collected</dt>
+          <dd class="stat__value">{{ f.moviesCollected | number }}</dd>
+        </div>
+        <div class="stat">
+          <dt class="stat__label">Premieres attended</dt>
+          <dd class="stat__value">{{ f.premieresAttended | number }}</dd>
+        </div>
+        <div class="stat">
+          <dt class="stat__label">Friends</dt>
+          <dd class="stat__value">{{ f.friendCount | number }}</dd>
+        </div>
+        <div class="stat">
+          <dt class="stat__label">Joined</dt>
+          <dd class="stat__value">{{ f.createdAt | date: 'mediumDate' }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    @if (isSelf()) {
+      <section class="panel">
+        <h2 class="panel__title">Privacy</h2>
+        <div class="privacy">
+          <div class="privacy__text">
+            <!-- States the current setting in words, not by the switch position alone. -->
+            <strong>{{ f.isPrivate ? 'Private' : 'Public' }}</strong>
+            <span class="privacy__hint">
+              @if (f.isPrivate) {
+                Strangers see only your name and bio. Friends see everything, and you stay findable
+                in search.
+              } @else {
+                Anyone can see your activity and friend count.
+              }
+            </span>
+          </div>
+          <button class="action" type="button" (click)="togglePrivacy()" [disabled]="busy()">
+            {{ busy() ? 'Saving…' : f.isPrivate ? 'Make public' : 'Make private' }}
+          </button>
+        </div>
+        @if (saved()) {
+          <p class="saved">Saved.</p>
+        }
+      </section>
+    }
+  }
+
+  <!-- The limited payload: username, bio and the viewer's own relationship arrived; the account's
+       own detail did not. Said plainly rather than rendering empty stat boxes, which would imply
+       the numbers are zero. Add Friend / Respond in Friends already render in the header above —
+       friendshipStatus is on this payload too, so those work here exactly as on a full profile. -->
+  @if (limited()) {
+    <section class="panel">
+      <p class="empty">
+        This account is private. Become friends to see their activity — they will still show up in
+        search either way.
+      </p>
+    </section>
+  }
+} @else if (!error()) {
+  <p class="empty">No such user.</p>
+}

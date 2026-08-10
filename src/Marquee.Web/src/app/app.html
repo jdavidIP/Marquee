@@ -10,7 +10,10 @@
       }
     </nav>
     <div class="account">
-      <span class="who">{{ auth.user()?.username }}</span>
+      <!-- Your own name is the way to your profile: it is where you already look for it. -->
+      @if (auth.user()?.username; as me) {
+        <a class="who" [routerLink]="['/u', me]" routerLinkActive="active">{{ me }}</a>
+      }
       <button class="link" (click)="logout()">Sign out</button>
     </div>
   }

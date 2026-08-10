@@ -35,4 +35,25 @@ describe('UsersService', () => {
     expect(req.request.params.get('limit')).toBe('25');
     req.flush([]);
   });
+
+  it('encodes a username into the profile path', () => {
+    // Usernames are free-form enough that a raw interpolation would build a broken URL for
+    // anything needing escaping.
+    service.profile('a b').subscribe();
+
+    const req = http.expectOne(`${base}/a%20b`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ username: 'a b', bio: null });
+  });
+
+  it('patches only the fields it was given', () => {
+    // Both are optional on the API so a client can change one without clobbering the other —
+    // sending isPrivate here would overwrite a setting this call never intended to touch.
+    service.updateMe({ bio: 'hello' }).subscribe();
+
+    const req = http.expectOne(`${base}/me`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ bio: 'hello' });
+    req.flush({});
+  });
 });

@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Observable, forkJoin } from 'rxjs';
 import { FriendsService } from '../../core/friends.service';
 import { UsersService } from '../../core/users.service';
@@ -27,7 +28,7 @@ interface SearchRow {
 @Component({
   selector: 'app-friends',
   standalone: true,
-  imports: [DatePipe, ConfirmDialogComponent],
+  imports: [DatePipe, RouterLink, ConfirmDialogComponent],
   templateUrl: './friends.component.html',
   styleUrl: './friends.component.css',
 })

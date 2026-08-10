@@ -62,21 +62,26 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
                        && viewer.UserId is Guid viewerId
                        && await friendships.AreFriendsAsync(viewerId, user.Id, ct);
 
+        // Computed before the entitlement branch: a stranger who cannot see anything else about a
+        // private profile still needs to know whether a friend request already exists in either
+        // direction, or the frontend's Add Friend button has nothing to go on and would have to
+        // discover "already pending" by rejection — the failure mode the whole point of returning
+        // this up front is meant to avoid (MARQUEE_PLAN.md).
+        var (status, outgoing) = await RelationshipAsync(viewer.UserId, user.Id, isFriend, ct);
+
         // The full profile is the default; the restricted one is the exception, and only for the
         // exact case the plan names: a private profile viewed by someone who is not the owner, not
         // an admin, and not an accepted friend. Note that an accepted friend sees everything even
         // though the profile is private — privacy applies to strangers, not to friends.
         var entitled = isSelf || viewer.IsAdmin || isFriend || !user.IsPrivate;
         if (!entitled)
-            return new LimitedProfileDto(user.Username, user.Bio);
+            return new LimitedProfileDto(user.Username, user.Bio, status, outgoing);
 
         var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == user.Id, ct);
         var premieresAttended = await db.Contributions.CountAsync(c => c.UserId == user.Id, ct);
         var friendCount = await db.Friendships.CountAsync(
             f => f.Status == FriendshipStatus.Accepted
                  && (f.RequesterId == user.Id || f.AddresseeId == user.Id), ct);
-
-        var (status, outgoing) = await RelationshipAsync(viewer.UserId, user.Id, isFriend, ct);
 
         return new FullProfileDto(
             user.Id,

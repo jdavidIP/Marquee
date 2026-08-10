@@ -30,7 +30,7 @@
       @for (row of searchRows(); track row.user.id) {
         <li class="row">
           <div class="row__who">
-            <span class="row__name">{{ row.user.username }}</span>
+            <a class="row__name" [routerLink]="['/u', row.user.username]">{{ row.user.username }}</a>
             @if (row.user.bio) {
               <span class="row__bio">{{ row.user.bio }}</span>
             }
@@ -81,7 +81,7 @@
         @for (request of incoming(); track request.id) {
           <li class="row">
             <div class="row__who">
-              <span class="row__name">{{ request.username }}</span>
+              <a class="row__name" [routerLink]="['/u', request.username]">{{ request.username }}</a>
               <span class="row__bio">Asked {{ request.createdAt | date: 'mediumDate' }}</span>
             </div>
             <div class="row__actions">
@@ -115,7 +115,7 @@
         @for (request of outgoing(); track request.id) {
           <li class="row">
             <div class="row__who">
-              <span class="row__name">{{ request.username }}</span>
+              <a class="row__name" [routerLink]="['/u', request.username]">{{ request.username }}</a>
               <span class="row__bio">Sent {{ request.createdAt | date: 'mediumDate' }}</span>
             </div>
             <div class="row__actions">
@@ -145,7 +145,7 @@
         @for (friend of friends(); track friend.userId) {
           <li class="row">
             <div class="row__who">
-              <span class="row__name">{{ friend.username }}</span>
+              <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
               @if (friend.bio) {
                 <span class="row__bio">{{ friend.bio }}</span>
               } @else {
