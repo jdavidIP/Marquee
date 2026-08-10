@@ -1,0 +1,160 @@
+/* Colours come from the app's custom properties, never new values. Kept lean: component styles are
+   charged per component against the 4 kB anyComponentStyle budget. */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.panel__title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.head__who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.head__name {
+  font-size: 1.4rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Status is never carried by colour alone — the pill states its meaning in words. */
+.pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bio {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.bio--empty { color: var(--muted); }
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.editor__input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 8px 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+.editor__actions { display: flex; gap: 8px; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.stat { margin: 0; }
+
+.stat__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.stat__value {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.privacy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.privacy__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.privacy__hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.saved {
+  color: var(--ok);
+  font-size: 0.85rem;
+  margin: 12px 0 0;
+}
+
+.action,
+a.action {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 5px 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.action:hover:not(:disabled) { border-color: var(--muted); }
+.action:disabled { opacity: 0.45; cursor: not-allowed; }
+.action--primary:not(:disabled) { color: var(--gold); }
+
+.empty { color: var(--muted); padding: 12px 0; margin: 0; }
+.error { color: var(--accent); margin-bottom: 12px; }

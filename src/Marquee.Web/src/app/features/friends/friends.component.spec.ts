@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { FriendsComponent } from './friends.component';
 import { FriendsService } from '../../core/friends.service';
@@ -31,6 +32,8 @@ describe('FriendsComponent search relations', () => {
     TestBed.configureTestingModule({
       imports: [FriendsComponent],
       providers: [
+        // The rows link to /u/:username, so the component pulls in RouterLink and needs a router.
+        provideRouter([]),
         { provide: FriendsService, useValue: friendsApi },
         { provide: UsersService, useValue: { search: () => of(options.results ?? []) } },
         { provide: AuthService, useValue: { user: signal({ id: me, username: 'me' }) } },

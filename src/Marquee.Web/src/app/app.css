@@ -38,7 +38,9 @@
   gap: 12px;
 }
 
-.who { color: var(--muted); }
+/* An anchor since it leads to your own profile, but styled as the quiet label it has always been. */
+.who { color: var(--muted); text-decoration: none; }
+.who:hover, .who.active { color: var(--ink); }
 
 .link {
   background: none;

@@ -68,6 +68,18 @@ export class AuthService {
     this._user.set(null);
   }
 
+  /**
+   * Replace the cached user after they edit their own profile.
+   *
+   * Deliberately does not touch the token: bio and privacy are not claims, so nothing about
+   * authorisation changes and reissuing would be misleading. This only keeps the copy the UI reads
+   * — the topbar's name, the profile screen's own view of itself — in step with what was saved.
+   */
+  applyProfileUpdate(user: UserDto): void {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    this._user.set(user);
+  }
+
   private store(r: AuthResponse): void {
     localStorage.setItem(TOKEN_KEY, r.token);
     localStorage.setItem(USER_KEY, JSON.stringify(r.user));

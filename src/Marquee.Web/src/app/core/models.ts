@@ -96,6 +96,53 @@ export interface UserSearchResultDto {
   isPrivate: boolean;
 }
 
+/** A profile as seen by someone entitled to all of it: the owner, an admin, a friend, or anyone
+ *  at all when the account is public. */
+export interface FullProfileDto {
+  id: string;
+  username: string;
+  bio: string | null;
+  isPrivate: boolean;
+  createdAt: string;
+  moviesCollected: number;
+  premieresAttended: number;
+  friendCount: number;
+  /** 'Pending' | 'Accepted' | null — the viewer's own relationship to this profile. */
+  friendshipStatus: string | null;
+  /** True when the viewer sent the pending request, false when they received it. */
+  friendRequestOutgoing: boolean | null;
+}
+
+/**
+ * A private profile seen by a stranger. The remaining fields are **absent from the payload, not
+ * null** — a null still tells the reader the field exists and leaks its shape, an absent one says
+ * nothing at all. That is why this is a separate type rather than a nulled-out FullProfileDto.
+ */
+export interface LimitedProfileDto {
+  username: string;
+  bio: string | null;
+}
+
+export type ProfileDto = FullProfileDto | LimitedProfileDto;
+
+/**
+ * Which shape came back.
+ *
+ * Keyed on a field only the full payload carries — never on isPrivate. The server has already
+ * decided what this viewer is entitled to, and a friend sees everything even when the account is
+ * private. Re-deriving that decision here would be a second copy of a privacy rule that must not
+ * drift from the one in UserProfileService.
+ */
+export function isFullProfile(profile: ProfileDto): profile is FullProfileDto {
+  return 'id' in profile;
+}
+
+/** Partial update of your own profile. Both optional, so one can change without clobbering the other. */
+export interface UpdateProfileRequest {
+  bio?: string | null;
+  isPrivate?: boolean | null;
+}
+
 /** A pending friend request, in whichever direction it points. */
 export interface FriendRequestDto {
   id: string;

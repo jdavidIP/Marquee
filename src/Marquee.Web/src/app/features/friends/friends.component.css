@@ -81,9 +81,15 @@
   flex: 1;
 }
 
+/* An anchor to the person's profile. Underlined only on hover so a list of names does not read as
+   a wall of links. */
 .row__name {
   font-weight: 600;
+  color: inherit;
+  text-decoration: none;
 }
+
+.row__name:hover { text-decoration: underline; }
 
 /* Bios are free text and can be long; one line with an ellipsis keeps rows scannable. */
 .row__bio {
