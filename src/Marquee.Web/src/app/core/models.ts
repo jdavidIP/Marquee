@@ -190,6 +190,38 @@ export interface LibraryEntryDto {
   emblemTier: number | null;
 }
 
+/** What a library listing can be ordered by. Mirrors the API's LibrarySort enum by name. */
+export type LibrarySort = 'Acquired' | 'Title' | 'ReleaseYear' | 'Rating';
+
+/**
+ * One request for a slice of a library. Every field is optional; an empty query is the whole
+ * library, most recently acquired first.
+ *
+ * `desc` left undefined means "however this field normally reads" — the server decides, so the
+ * default direction is not duplicated here where it could drift.
+ */
+export interface LibraryQuery {
+  search?: string;
+  genreId?: number | null;
+  minYear?: number | null;
+  maxYear?: number | null;
+  sort?: LibrarySort;
+  desc?: boolean | null;
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * The filter values worth offering for one library — the genres it actually contains and the years
+ * it actually spans. Comes from the API rather than a client-side constant so the controls cannot
+ * drift from the seeded reference tables, and so no filter is offered that would return nothing.
+ */
+export interface LibraryFiltersDto {
+  genres: GenreDto[];
+  minYear: number | null;
+  maxYear: number | null;
+}
+
 export interface PagedResult<T> {
   items: T[];
   total: number;

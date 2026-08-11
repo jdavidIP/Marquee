@@ -2,6 +2,86 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .muted { color: var(--muted); }
 .err { color: var(--accent); }
 
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.control { display: flex; flex-direction: column; gap: 5px; }
+/* The search field takes any spare room; the selects stay the width of their contents. */
+.control--search { flex: 1 1 220px; }
+.control__row { display: flex; gap: 6px; }
+
+.control__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.control__input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  padding: 8px 10px;
+  font: inherit;
+  width: 100%;
+}
+
+.control__input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.direction {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 8px 12px;
+}
+
+.direction:hover { border-color: var(--gold); color: var(--gold); }
+
+.clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 12px;
+}
+
+.clear:hover { border-color: var(--accent); color: var(--accent); }
+
+.count { color: var(--muted); font-size: 0.85rem; margin: 0 0 14px; }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 24px 0 0;
+}
+
+.pager__button {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 14px;
+}
+
+.pager__button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.pager__button:disabled { opacity: 0.4; cursor: default; }
+.pager__position { color: var(--muted); font-size: 0.85rem; }
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
