@@ -1,4 +1,8 @@
-<h1 class="title">{{ username() }}'s friends</h1>
+@if (isSelf()) {
+  <h1 class="title">Your friends</h1>
+} @else {
+  <h1 class="title">{{ username() }}'s friends</h1>
+}
 
 <p class="back"><a routerLink="/u/{{ username() }}">Back to profile</a></p>
 

@@ -1,9 +1,11 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { PremiereHistoryComponent } from './premiere-history.component';
 import { PremiereHistoryService } from '../../core/premiere-history.service';
+import { AuthService } from '../../core/auth.service';
 import { PagedResult, PremiereHistoryEntryDto, PremiereHistoryQuery } from '../../core/models';
 
 /**
@@ -37,8 +39,10 @@ describe('PremiereHistoryComponent', () => {
     return { items, total, page: 1, pageSize: 20 };
   }
 
+  /** Defaults to a viewer who is not "ana"; the self case gets its own tests below. */
   function make(
     result: PagedResult<PremiereHistoryEntryDto> | (() => ReturnType<typeof throwError>) = page([entry('Alien')]),
+    viewerUsername: string | null = 'someone-else',
   ) {
     TestBed.resetTestingModule();
     forUserSpy = jasmine.createSpy('forUser').and.returnValue(
@@ -47,7 +51,11 @@ describe('PremiereHistoryComponent', () => {
 
     TestBed.configureTestingModule({
       imports: [PremiereHistoryComponent],
-      providers: [provideRouter([]), { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } }],
+      providers: [
+        provideRouter([]),
+        { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } },
+        { provide: AuthService, useValue: { user: signal(viewerUsername ? { username: viewerUsername } : null) } },
+      ],
     });
 
     const fixture = TestBed.createComponent(PremiereHistoryComponent);
@@ -161,7 +169,11 @@ describe('PremiereHistoryComponent', () => {
 
     TestBed.configureTestingModule({
       imports: [PremiereHistoryComponent],
-      providers: [provideRouter([]), { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } }],
+      providers: [
+        provideRouter([]),
+        { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } },
+        { provide: AuthService, useValue: { user: signal({ username: 'someone-else' }) } },
+      ],
     });
 
     const fixture = TestBed.createComponent(PremiereHistoryComponent);
@@ -174,5 +186,16 @@ describe('PremiereHistoryComponent', () => {
 
     expect(forUserSpy).toHaveBeenCalledTimes(1);
     expect(forUserSpy.calls.mostRecent().args[0]).toBe('bob');
+  });
+
+  it('recognises the viewer looking at their own premiere history', () => {
+    const c = make(page([entry('Alien')]), 'ana');
+
+    expect(c['isSelf']()).toBe(true);
+  });
+
+  it('does not treat a stranger or an anonymous viewer as self', () => {
+    expect(make(page([entry('Alien')]), 'someone-else')['isSelf']()).toBe(false);
+    expect(make(page([entry('Alien')]), null)['isSelf']()).toBe(false);
   });
 });

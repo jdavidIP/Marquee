@@ -1,8 +1,18 @@
-import { Component, OnDestroy, effect, inject, input, signal, untracked } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { UsersService } from '../../core/users.service';
 import { apiError, isForbidden } from '../../core/http-error';
 import { FriendDto } from '../../core/models';
+import { AuthService } from '../../core/auth.service';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -20,6 +30,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 })
 export class UserFriendsComponent implements OnDestroy {
   private readonly users = inject(UsersService);
+  private readonly auth = inject(AuthService);
 
   /** Bound from the route, so /u/:username/friends is a real, linkable, reloadable address. */
   readonly username = input.required<string>();
@@ -31,6 +42,11 @@ export class UserFriendsComponent implements OnDestroy {
 
   protected readonly query = signal('');
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  protected readonly isSelf = computed(() => {
+    const f = this.username();
+    return f !== null && f === this.auth.user()?.username;
+  });
 
   constructor() {
     // Same one-path-loads-it shape as ProfileComponent: a route change, a reload, and a search all
@@ -51,7 +67,10 @@ export class UserFriendsComponent implements OnDestroy {
     if (this.searchTimer) clearTimeout(this.searchTimer);
 
     // One request per pause, not one per keystroke.
-    this.searchTimer = setTimeout(() => this.load(this.username(), value.trim()), SEARCH_DEBOUNCE_MS);
+    this.searchTimer = setTimeout(
+      () => this.load(this.username(), value.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
   }
 
   protected clearSearch(): void {

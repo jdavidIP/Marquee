@@ -1,9 +1,19 @@
-import { Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { PremiereHistoryService } from '../../core/premiere-history.service';
 import { apiError, isForbidden } from '../../core/http-error';
 import { PremiereHistoryEntryDto, PremiereHistorySort } from '../../core/models';
+import { AuthService } from '../../core/auth.service';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;
@@ -29,6 +39,7 @@ interface SortOption {
 })
 export class PremiereHistoryComponent implements OnDestroy {
   private readonly history = inject(PremiereHistoryService);
+  private readonly auth = inject(AuthService);
 
   readonly username = input.required<string>();
 
@@ -57,6 +68,11 @@ export class PremiereHistoryComponent implements OnDestroy {
   protected readonly descending = computed(() => this.desc() ?? this.sort() !== 'Title');
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  protected readonly isSelf = computed(() => {
+    const f = this.username();
+    return f !== null && f === this.auth.user()?.username;
+  });
 
   constructor() {
     effect(() => {

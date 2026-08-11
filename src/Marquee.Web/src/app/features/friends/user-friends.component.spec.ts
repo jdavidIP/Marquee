@@ -1,9 +1,11 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { UserFriendsComponent } from './user-friends.component';
 import { UsersService } from '../../core/users.service';
+import { AuthService } from '../../core/auth.service';
 import { FriendDto } from '../../core/models';
 
 /**
@@ -19,7 +21,14 @@ describe('UserFriendsComponent', () => {
     return { userId: username, username, bio: null, isPrivate: false, friendsSince: '2026-01-01T00:00:00Z' };
   }
 
-  function make(result: FriendDto[] | (() => ReturnType<typeof throwError>) = []) {
+  /**
+   * Defaults to a viewer who is not "ana" — most tests here are about a stranger or friend looking
+   * at someone else's list, not the "this is your own" header case, which gets its own tests below.
+   */
+  function make(
+    result: FriendDto[] | (() => ReturnType<typeof throwError>) = [],
+    viewerUsername: string | null = 'someone-else',
+  ) {
     TestBed.resetTestingModule();
     friendsOfSpy = jasmine.createSpy('friendsOf').and.returnValue(
       typeof result === 'function' ? result() : of(result),
@@ -27,7 +36,11 @@ describe('UserFriendsComponent', () => {
 
     TestBed.configureTestingModule({
       imports: [UserFriendsComponent],
-      providers: [provideRouter([]), { provide: UsersService, useValue: { friendsOf: friendsOfSpy } }],
+      providers: [
+        provideRouter([]),
+        { provide: UsersService, useValue: { friendsOf: friendsOfSpy } },
+        { provide: AuthService, useValue: { user: signal(viewerUsername ? { username: viewerUsername } : null) } },
+      ],
     });
 
     const fixture = TestBed.createComponent(UserFriendsComponent);
@@ -86,5 +99,16 @@ describe('UserFriendsComponent', () => {
 
     expect(c['friends']().map((f: FriendDto) => f.username)).toEqual(['bob', 'carol']);
     expect(c['forbidden']()).toBe(false);
+  });
+
+  it('recognises the viewer looking at their own friend list', () => {
+    const c = make([], 'ana');
+
+    expect(c['isSelf']()).toBe(true);
+  });
+
+  it('does not treat a stranger or an anonymous viewer as self', () => {
+    expect(make([], 'someone-else')['isSelf']()).toBe(false);
+    expect(make([], null)['isSelf']()).toBe(false);
   });
 });
