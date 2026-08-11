@@ -10,6 +10,24 @@ namespace Marquee.Api.Services;
 /// </summary>
 public sealed record ProfileViewer(Guid? UserId, bool IsAdmin);
 
+/// <summary>
+/// The answer to "does this account exist, and is this viewer entitled to its private surface" —
+/// the same self/admin/friend/public rule <see cref="LimitedProfileDto"/>'s remarks describe,
+/// pulled out so it answers once and is reused by every screen that shows something belonging to
+/// an account other than the viewer's own (the profile itself, a friend list, a library, a
+/// premiere history), rather than each one re-deriving the privacy rule independently.
+/// </summary>
+public sealed record ProfileEntitlement(
+    Guid UserId,
+    string Username,
+    string? Bio,
+    bool IsPrivate,
+    DateTime CreatedAt,
+    bool Entitled,
+    /// <summary>Pending or Accepted — the viewer's own relationship to this account, if any.</summary>
+    string? FriendshipStatus,
+    bool? FriendRequestOutgoing);
+
 public interface IUserProfileService
 {
     /// <summary>
@@ -19,6 +37,15 @@ public interface IUserProfileService
     /// not the full one with fields nulled out.
     /// </summary>
     Task<object?> GetProfileAsync(string username, ProfileViewer viewer, CancellationToken ct);
+
+    /// <summary>
+    /// Resolves a username and answers whether <paramref name="viewer"/> is entitled to that
+    /// account's private surface. Null means no such user; a non-null result with
+    /// <see cref="ProfileEntitlement.Entitled"/> false means the account exists but this viewer
+    /// gets none of its detail — the caller decides what that means for its own endpoint (the
+    /// profile itself still returns 200 with a restricted payload; other endpoints may prefer 403).
+    /// </summary>
+    Task<ProfileEntitlement?> ResolveEntitlementAsync(string username, ProfileViewer viewer, CancellationToken ct);
 
     Task<IReadOnlyList<UserSearchResultDto>> SearchAsync(string query, int limit, CancellationToken ct);
 
@@ -46,6 +73,40 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
 
     public async Task<object?> GetProfileAsync(string username, ProfileViewer viewer, CancellationToken ct)
     {
+        var resolved = await ResolveEntitlementAsync(username, viewer, ct);
+        if (resolved is null)
+            return null;
+
+        // The full profile is the default; the restricted one is the exception, and only for the
+        // exact case the plan names: a private profile viewed by someone who is not the owner, not
+        // an admin, and not an accepted friend. Note that an accepted friend sees everything even
+        // though the profile is private — privacy applies to strangers, not to friends.
+        if (!resolved.Entitled)
+            return new LimitedProfileDto(
+                resolved.Username, resolved.Bio, resolved.FriendshipStatus, resolved.FriendRequestOutgoing);
+
+        var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == resolved.UserId, ct);
+        var premieresAttended = await db.Contributions.CountAsync(c => c.UserId == resolved.UserId, ct);
+        var friendCount = await db.Friendships.CountAsync(
+            f => f.Status == FriendshipStatus.Accepted
+                 && (f.RequesterId == resolved.UserId || f.AddresseeId == resolved.UserId), ct);
+
+        return new FullProfileDto(
+            resolved.UserId,
+            resolved.Username,
+            resolved.Bio,
+            resolved.IsPrivate,
+            resolved.CreatedAt,
+            moviesCollected,
+            premieresAttended,
+            friendCount,
+            resolved.FriendshipStatus,
+            resolved.FriendRequestOutgoing);
+    }
+
+    public async Task<ProfileEntitlement?> ResolveEntitlementAsync(
+        string username, ProfileViewer viewer, CancellationToken ct)
+    {
         var name = username.Trim();
 
         var user = await db.Users
@@ -62,38 +123,16 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
                        && viewer.UserId is Guid viewerId
                        && await friendships.AreFriendsAsync(viewerId, user.Id, ct);
 
-        // Computed before the entitlement branch: a stranger who cannot see anything else about a
-        // private profile still needs to know whether a friend request already exists in either
+        // Computed regardless of entitlement: a stranger who cannot see anything else about a
+        // private account still needs to know whether a friend request already exists in either
         // direction, or the frontend's Add Friend button has nothing to go on and would have to
         // discover "already pending" by rejection — the failure mode the whole point of returning
         // this up front is meant to avoid (MARQUEE_PLAN.md).
         var (status, outgoing) = await RelationshipAsync(viewer.UserId, user.Id, isFriend, ct);
-
-        // The full profile is the default; the restricted one is the exception, and only for the
-        // exact case the plan names: a private profile viewed by someone who is not the owner, not
-        // an admin, and not an accepted friend. Note that an accepted friend sees everything even
-        // though the profile is private — privacy applies to strangers, not to friends.
         var entitled = isSelf || viewer.IsAdmin || isFriend || !user.IsPrivate;
-        if (!entitled)
-            return new LimitedProfileDto(user.Username, user.Bio, status, outgoing);
 
-        var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == user.Id, ct);
-        var premieresAttended = await db.Contributions.CountAsync(c => c.UserId == user.Id, ct);
-        var friendCount = await db.Friendships.CountAsync(
-            f => f.Status == FriendshipStatus.Accepted
-                 && (f.RequesterId == user.Id || f.AddresseeId == user.Id), ct);
-
-        return new FullProfileDto(
-            user.Id,
-            user.Username,
-            user.Bio,
-            user.IsPrivate,
-            user.CreatedAt,
-            moviesCollected,
-            premieresAttended,
-            friendCount,
-            status,
-            outgoing);
+        return new ProfileEntitlement(
+            user.Id, user.Username, user.Bio, user.IsPrivate, user.CreatedAt, entitled, status, outgoing);
     }
 
     /// <summary>

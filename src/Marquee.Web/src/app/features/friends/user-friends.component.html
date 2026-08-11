@@ -1,0 +1,52 @@
+<h1 class="title">{{ username() }}'s friends</h1>
+
+<p class="back"><a routerLink="/u/{{ username() }}">Back to profile</a></p>
+
+@if (error(); as e) {
+  <p class="error">{{ e }}</p>
+}
+
+@if (loading()) {
+  <p class="empty">Loading…</p>
+} @else if (forbidden()) {
+  <p class="empty">This account is private. Become friends to see their friend list.</p>
+} @else {
+  <section class="panel">
+    <div class="toolbar">
+      <input
+        class="search"
+        type="search"
+        placeholder="Search by username"
+        [value]="query()"
+        (input)="onSearchInput($any($event.target).value)"
+        aria-label="Search this friend list by username"
+      />
+      @if (query()) {
+        <button class="action" type="button" (click)="clearSearch()">Clear</button>
+      }
+    </div>
+
+    @if (friends().length === 0) {
+      <p class="empty">
+        @if (query()) {
+          Nobody matches that name.
+        } @else {
+          No friends yet.
+        }
+      </p>
+    } @else {
+      <ul class="list">
+        @for (friend of friends(); track friend.userId) {
+          <li class="row">
+            <div class="row__who">
+              <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
+              @if (friend.bio) {
+                <span class="row__bio">{{ friend.bio }}</span>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+}
