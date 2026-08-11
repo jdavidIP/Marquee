@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The password blocklist's data (issue #27) — see CommonPasswords.cs for provenance. -->
+    <EmbeddedResource Include="Resources\common-passwords-top10000.txt" />
+  </ItemGroup>
+
 </Project>
