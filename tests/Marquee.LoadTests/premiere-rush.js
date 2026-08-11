@@ -28,7 +28,7 @@ import exec from 'k6/execution';
 
 const API = __ENV.API_BASE || 'http://host.docker.internal:5080/api';
 const ADMIN_USER = __ENV.ADMIN_USER || 'admin';
-const ADMIN_PASS = __ENV.ADMIN_PASS || 'admin12345';
+const ADMIN_PASS = __ENV.ADMIN_PASS || 'seed-me-locally-1';
 
 // Scaled down by default so the test runs on a laptop beside Postgres, Redis, RabbitMQ, Jaeger and
 // both services. Raise PEAK_RATE for a real run; the shape stays the same.

@@ -22,7 +22,9 @@ Iteration 2's before/after numbers live in
 
 - Postgres, Redis and RabbitMQ up (`docker compose up -d`) and the API running on
   `http://localhost:5080`.
-- The seeded dev admin (`admin` / `admin12345`) exists — the API seeds it on startup.
+- The seeded dev admin (`admin` / `seed-me-locally-1`) exists — the API seeds it on startup. A
+  database seeded before the password policy (#27) landed still has the old `admin12345`; pass
+  `ADMIN_PASS` rather than re-seeding if so.
 - For `queue-check.mjs`: `Marquee.Worker` running, plus `docker` on `PATH` (it reads the
   authoritative numbers straight out of the Postgres container).
 

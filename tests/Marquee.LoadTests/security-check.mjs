@@ -22,7 +22,7 @@
 // Postgres — never against what a response merely claimed.
 //
 // Usage:  node security-check.mjs
-// Env:    API_BASE (http://localhost:5080/api), ADMIN_USER (admin), ADMIN_PASS (admin12345),
+// Env:    API_BASE (http://localhost:5080/api), ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1),
 //         HUB_URL (http://localhost:5080/hubs/premieres), PG_CONTAINER (marquee-postgres),
 //         PREMIERE_ID (unset — reuse an existing Active Premiere instead of creating one, so the
 //                      script can run against a database whose TMDB stub pool is spent)
@@ -36,9 +36,9 @@ const execFileAsync = promisify(execFile);
 const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const HUB_URL = process.env.HUB_URL ?? 'http://localhost:5080/hubs/premieres';
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS ?? 'admin12345';
+const ADMIN_PASS = process.env.ADMIN_PASS ?? 'seed-me-locally-1';
 const PG_CONTAINER = process.env.PG_CONTAINER ?? 'marquee-postgres';
-const PASSWORD = 'seccheck123';
+const PASSWORD = 'seccheck-load-1';
 const RUN = Date.now().toString(36);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,7 +94,7 @@ async function register(label) {
   // of accounts. Back off and retry rather than failing a security check for the wrong reason.
   for (let attempt = 0; ; attempt++) {
     const { status, body } = await post('/auth/register', {
-      body: { username, email: `${username}@marquee.test`, password: PASSWORD },
+      body: { username, email: `${username}@marquee.test`, password: PASSWORD, confirmPassword: PASSWORD },
     });
 
     if (status === 200 || status === 201) return { username, token: body.token, id: body.user.id };

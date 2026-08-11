@@ -14,7 +14,7 @@
 //
 // Usage:  node realtime-check.mjs
 // Env:    API_BASE (http://localhost:5080/api), HUB_URL (http://localhost:5080/hubs/premieres),
-//         USERS (60), ADMIN_USER (admin), ADMIN_PASS (admin12345), SKIP_AUTOOPEN (unset)
+//         USERS (60), ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1), SKIP_AUTOOPEN (unset)
 
 import { SignalRClient } from './signalr-client.mjs';
 
@@ -22,9 +22,9 @@ const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const HUB = process.env.HUB_URL ?? 'http://localhost:5080/hubs/premieres';
 const USERS = parseInt(process.env.USERS ?? '60', 10);
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS ?? 'admin12345';
+const ADMIN_PASS = process.env.ADMIN_PASS ?? 'seed-me-locally-1';
 const SCOPE = process.env.SCOPE_ID ?? 'global';
-const PASSWORD = 'realtime123';
+const PASSWORD = 'realtime-load-1';
 const RUN = Date.now().toString(36);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,7 +53,7 @@ async function login(usernameOrEmail, password) {
 async function registerOne(i) {
   const username = `rt_${RUN}_${i}`;
   const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD,
+    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
   });
   if (status === 200 || status === 201) return body.token;
   if (status === 409) return login(username, PASSWORD);
