@@ -35,18 +35,23 @@ public sealed class LibraryService(
             .Take(query.PageSize)
             .ToListAsync(ct);
 
-        // Emblem tier earned per movie lives on the Contribution for that (premiere, user). Looked
-        // up for this page only — the whole point of paging is not to touch the rest.
-        var premiereIds = entries.Select(e => e.PremiereId).ToList();
+        // A film can premiere more than once (CLAUDE.md §4.6), and each time earns its own
+        // Contribution with its own EmblemTier — a repeat reveal only skips the LibraryEntry, never
+        // the emblem. Keyed by MovieId rather than by the LibraryEntry's own PremiereId, so a better
+        // tier earned on a later re-premiere is not shadowed by the one earned when the entry was
+        // first created (issue #37). Looked up for this page only — the whole point of paging is not
+        // to touch the rest.
+        var movieIds = entries.Select(e => e.MovieId).ToList();
         var tiers = await db.Contributions
             .AsNoTracking()
-            .Where(c => c.UserId == userId && premiereIds.Contains(c.PremiereId))
-            .Select(c => new { c.PremiereId, c.EmblemTier })
-            .ToDictionaryAsync(x => x.PremiereId, x => x.EmblemTier, ct);
+            .Where(c => c.UserId == userId && movieIds.Contains(c.Premiere.MovieId))
+            .GroupBy(c => c.Premiere.MovieId)
+            .Select(g => new { MovieId = g.Key, BestTier = g.Max(c => c.EmblemTier) })
+            .ToDictionaryAsync(x => x.MovieId, x => x.BestTier, ct);
 
         var items = entries.Select(e =>
         {
-            tiers.TryGetValue(e.PremiereId, out var tier);
+            tiers.TryGetValue(e.MovieId, out var tier);
             return new LibraryEntryDto(
                 e.MovieId, MovieDtoFactory.Create(e.Movie, _tmdb), e.PremiereId, e.AcquiredAt, tier);
         }).ToList();
