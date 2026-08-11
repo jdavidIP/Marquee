@@ -1,5 +1,7 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { provideRouter } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { of, throwError } from 'rxjs';
 import { LibraryComponent } from './library.component';
 import { LibraryService } from '../../core/library.service';
 import { LibraryEntryDto, LibraryFiltersDto, LibraryQuery, PagedResult } from '../../core/models';
@@ -216,5 +218,74 @@ describe('LibraryComponent', () => {
     expect(c['error']()).toBeNull();
     expect(c['entries']().length).toBe(1);
     expect(c['genres']()).toEqual([]);
+  });
+
+  describe('viewing someone else\'s library (issue #38)', () => {
+    let forUserSpy: jasmine.Spy;
+
+    function makeForUser(
+      username: string,
+      result: PagedResult<LibraryEntryDto> | (() => ReturnType<typeof throwError>) = page([entry('Alien')]),
+    ) {
+      TestBed.resetTestingModule();
+      forUserSpy = jasmine.createSpy('forUser').and.returnValue(
+        typeof result === 'function' ? result() : of(result),
+      );
+
+      TestBed.configureTestingModule({
+        imports: [LibraryComponent],
+        providers: [
+          provideRouter([]),
+          {
+            provide: LibraryService,
+            useValue: {
+              mine: jasmine.createSpy('mine should not be called for a routed username'),
+              filters: jasmine.createSpy('filters should not be called for a routed username'),
+              forUser: forUserSpy,
+              filtersFor: () => of(filters),
+            },
+          },
+        ],
+      });
+
+      const fixture = TestBed.createComponent(LibraryComponent);
+      fixture.componentRef.setInput('username', username);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    it('calls forUser rather than mine when a username is routed', () => {
+      makeForUser('ana');
+
+      expect(forUserSpy).toHaveBeenCalledTimes(1);
+      expect(forUserSpy.calls.mostRecent().args[0]).toBe('ana');
+    });
+
+    it('treats a 403 as "this account is private", not as an error banner', () => {
+      const fixture = makeForUser('ana', () => throwError(() => new HttpErrorResponse({ status: 403 })));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['forbidden']()).toBe(true);
+      expect(c['error']()).toBeNull();
+    });
+
+    it('treats any other failure as a real error, not as forbidden', () => {
+      const fixture = makeForUser('ana', () => throwError(() => new HttpErrorResponse({ status: 500 })));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['forbidden']()).toBe(false);
+      expect(c['error']()).not.toBeNull();
+    });
+
+    it('reloads with the new username when the route param changes on the same instance', () => {
+      const fixture = makeForUser('ana');
+      forUserSpy.calls.reset();
+
+      fixture.componentRef.setInput('username', 'bob');
+      fixture.detectChanges();
+
+      expect(forUserSpy).toHaveBeenCalledTimes(1);
+      expect(forUserSpy.calls.mostRecent().args[0]).toBe('bob');
+    });
   });
 });

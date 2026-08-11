@@ -1,7 +1,8 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { LibraryService } from '../../core/library.service';
-import { apiError } from '../../core/http-error';
+import { apiError, isForbidden } from '../../core/http-error';
 import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort } from '../../core/models';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -17,18 +18,27 @@ interface SortOption {
 @Component({
   selector: 'app-library',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, RouterLink],
   templateUrl: './library.component.html',
   styleUrl: './library.component.css',
 })
-export class LibraryComponent implements OnInit, OnDestroy {
+export class LibraryComponent implements OnDestroy {
   private readonly library = inject(LibraryService);
+
+  /**
+   * Set only when routed at /u/:username/library — viewing someone else's collection rather than
+   * your own (issue #38). Optional because the plain /library route carries no username segment at
+   * all, so this input is never bound there and "your own library" stays the default reading.
+   */
+  readonly username = input<string | undefined>();
 
   protected readonly entries = signal<LibraryEntryDto[]>([]);
   protected readonly total = signal(0);
   protected readonly page = signal(1);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
+  /** A 403 from a private account being viewed — reads as "private", not as a failure. */
+  protected readonly forbidden = signal(false);
 
   /** Available filter values, as the API reports them for this library. */
   protected readonly genres = signal<GenreDto[]>([]);
@@ -70,9 +80,18 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-  ngOnInit(): void {
-    this.loadFilters();
-    this.load();
+  constructor() {
+    // Keyed on username() rather than a one-shot ngOnInit: navigating from one person's library to
+    // another's reuses this component instance (same route, different param), and only an effect
+    // observes that. Untracked because loadFilters()/load() write the signals this would otherwise
+    // depend on.
+    effect(() => {
+      this.username();
+      untracked(() => {
+        this.loadFilters();
+        this.reset();
+      });
+    });
   }
 
   /** A pending debounce would otherwise fire a request against a component nobody is looking at. */
@@ -163,33 +182,51 @@ export class LibraryComponent implements OnInit, OnDestroy {
       pageSize: PAGE_SIZE,
     };
 
-    this.library.mine(query).subscribe({
+    const username = this.username();
+    const call = username ? this.library.forUser(username, query) : this.library.mine(query);
+
+    call.subscribe({
       next: (result) => {
         this.entries.set(result.items);
         this.total.set(result.total);
         this.loading.set(false);
+        this.forbidden.set(false);
         this.error.set(null);
       },
       error: (err: unknown) => {
         this.loading.set(false);
-        this.error.set(apiError(err, 'Could not load your library.'));
+        this.entries.set([]);
+        // 403 reads as "this account is private", never as a generic error banner — it is an
+        // expected outcome of the entitlement rule the API applies, not a failure.
+        if (isForbidden(err)) {
+          this.forbidden.set(true);
+          this.error.set(null);
+        } else {
+          this.forbidden.set(false);
+          this.error.set(apiError(err, username ? `Could not load ${username}'s library.` : 'Could not load your library.'));
+        }
       },
     });
   }
 
   /**
-   * Loaded once. The values describe the library as a whole, so narrowing the view must not narrow
-   * the controls — a genre dropdown that lost its other options the moment one was picked would
-   * leave no way back to them.
+   * Loaded once per username. The values describe the library as a whole, so narrowing the view
+   * must not narrow the controls — a genre dropdown that lost its other options the moment one was
+   * picked would leave no way back to them.
    */
   private loadFilters(): void {
-    this.library.filters().subscribe({
+    const username = this.username();
+    const call = username ? this.library.filtersFor(username) : this.library.filters();
+
+    call.subscribe({
       next: (filters) => {
         this.genres.set(filters.genres);
         this.years.set(yearRange(filters.minYear, filters.maxYear));
       },
-      // Deliberately quiet: the listing itself still works unfiltered, and an error banner about
-      // dropdown contents would sit on top of a screen that is otherwise fine.
+      // Deliberately quiet: a private account's filters call fails the same way the listing does,
+      // and that failure is already surfaced by load()'s own error handling — a second banner here
+      // would just repeat it. For everyone else this stays what it always was: the listing still
+      // works unfiltered, so nothing here should interrupt a screen that is otherwise fine.
       error: () => {},
     });
   }

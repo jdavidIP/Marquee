@@ -1,7 +1,7 @@
 import { Component, OnDestroy, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { UsersService } from '../../core/users.service';
-import { apiError } from '../../core/http-error';
+import { apiError, isForbidden } from '../../core/http-error';
 import { FriendDto } from '../../core/models';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -84,8 +84,4 @@ export class UserFriendsComponent implements OnDestroy {
       },
     });
   }
-}
-
-function isForbidden(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { status?: number }).status === 403;
 }

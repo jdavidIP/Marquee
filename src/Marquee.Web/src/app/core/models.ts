@@ -229,6 +229,36 @@ export interface PagedResult<T> {
   pageSize: number;
 }
 
+/** What a premiere history listing can be ordered by. Mirrors the API's PremiereHistorySort enum. */
+export type PremiereHistorySort = 'Opened' | 'Title' | 'Rating';
+
+/**
+ * One request for a slice of a premiere history. No genre/year filter here, unlike LibraryQuery —
+ * this is a record of when the viewer attended, not a second way to browse movies by their own
+ * attributes.
+ */
+export interface PremiereHistoryQuery {
+  search?: string;
+  sort?: PremiereHistorySort;
+  desc?: boolean | null;
+  page?: number;
+  pageSize?: number;
+}
+
+/**
+ * One Premiere a user contributed to. Keyed on the Premiere, not the movie — unlike a
+ * LibraryEntryDto, a film re-premiered and attended twice appears here twice (issue #37 is the
+ * reason the two must not be conflated).
+ */
+export interface PremiereHistoryEntryDto {
+  premiereId: string;
+  movie: MovieDto;
+  openedAt: string | null;
+  status: string;
+  clapCount: number;
+  emblemTier: number | null;
+}
+
 export interface AdminUserDto {
   id: string;
   username: string;

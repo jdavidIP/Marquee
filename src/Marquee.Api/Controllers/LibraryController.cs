@@ -11,8 +11,6 @@ namespace Marquee.Api.Controllers;
 [Authorize]
 public class LibraryController(ILibraryService library) : ControllerBase
 {
-    private const int MaxPageSize = 100;
-
     /// <summary>
     /// A page of the signed-in user's library — movies acquired from Premieres they clapped for.
     ///
@@ -35,8 +33,8 @@ public class LibraryController(ILibraryService library) : ControllerBase
         if (userId is null)
             return Unauthorized();
 
-        var query = new LibraryQuery(
-            search, genreId, minYear, maxYear, sort, desc, Page(page), PageSize(pageSize));
+        var (p, ps) = Paging.Clamp(page, pageSize);
+        var query = new LibraryQuery(search, genreId, minYear, maxYear, sort, desc, p, ps);
 
         return Ok(await library.GetForUserAsync(userId.Value, query, ct));
     }
@@ -63,8 +61,4 @@ public class LibraryController(ILibraryService library) : ControllerBase
     /// six columns instead of leaving a ragged last row at every breakpoint.
     /// </summary>
     private const int DefaultPageSize = 24;
-
-    private static int Page(int page) => page < 1 ? 1 : page;
-
-    private static int PageSize(int pageSize) => Math.Clamp(pageSize, 1, MaxPageSize);
 }

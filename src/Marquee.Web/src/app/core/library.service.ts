@@ -17,6 +17,24 @@ export class LibraryService {
   filters(): Observable<LibraryFiltersDto> {
     return this.http.get<LibraryFiltersDto>(`${environment.apiBase}/library/filters`);
   }
+
+  /**
+   * Someone else's library, same query shape as `mine()` (issue #38 reuses #26's querying rather
+   * than duplicating it). Visible to the same audience as their friend list and premiere history —
+   * a 403 means the account is private, not that something failed.
+   */
+  forUser(username: string, query: LibraryQuery = {}): Observable<PagedResult<LibraryEntryDto>> {
+    return this.http.get<PagedResult<LibraryEntryDto>>(
+      `${environment.apiBase}/users/${encodeURIComponent(username)}/library`,
+      { params: toParams(query) },
+    );
+  }
+
+  filtersFor(username: string): Observable<LibraryFiltersDto> {
+    return this.http.get<LibraryFiltersDto>(
+      `${environment.apiBase}/users/${encodeURIComponent(username)}/library/filters`,
+    );
+  }
 }
 
 /**

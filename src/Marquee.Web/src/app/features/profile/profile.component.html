@@ -18,7 +18,12 @@
 
       <div class="head__actions">
         @if (canAdd()) {
-          <button class="action action--primary" type="button" (click)="addFriend()" [disabled]="busy()">
+          <button
+            class="action action--primary"
+            type="button"
+            (click)="addFriend()"
+            [disabled]="busy()"
+          >
             {{ busy() ? 'Sending…' : 'Add friend' }}
           </button>
         }
@@ -41,10 +46,17 @@
           placeholder="Say something about the films you like."
         ></textarea>
         <div class="editor__actions">
-          <button class="action action--primary" type="button" (click)="saveBio()" [disabled]="busy()">
+          <button
+            class="action action--primary"
+            type="button"
+            (click)="saveBio()"
+            [disabled]="busy()"
+          >
             {{ busy() ? 'Saving…' : 'Save' }}
           </button>
-          <button class="action" type="button" (click)="cancelEditing()" [disabled]="busy()">Cancel</button>
+          <button class="action" type="button" (click)="cancelEditing()" [disabled]="busy()">
+            Cancel
+          </button>
         </div>
       </div>
     } @else {
@@ -63,11 +75,19 @@
       <dl class="stats">
         <div class="stat">
           <dt class="stat__label">Movies collected</dt>
-          <dd class="stat__value">{{ f.moviesCollected | number }}</dd>
+          <dd class="stat__value">
+            @if (isSelf()) {
+              <a routerLink="/library">{{ f.moviesCollected | number }}</a>
+            } @else {
+              <a [routerLink]="['/u', f.username, 'library']">{{ f.moviesCollected | number }}</a>
+            }
+          </dd>
         </div>
         <div class="stat">
           <dt class="stat__label">Premieres attended</dt>
-          <dd class="stat__value">{{ f.premieresAttended | number }}</dd>
+          <dd class="stat__value">
+            <a [routerLink]="['/u', f.username, 'premieres']">{{ f.premieresAttended | number }}</a>
+          </dd>
         </div>
         <div class="stat">
           <dt class="stat__label">Friends</dt>

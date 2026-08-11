@@ -18,6 +18,7 @@ public static class ApiServiceRegistration
         services.AddScoped<IPremiereOpener, PremiereOpener>();
         services.AddScoped<IPremiereScheduleService, PremiereScheduleService>();
         services.AddScoped<ILibraryService, LibraryService>();
+        services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
 

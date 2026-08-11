@@ -1,6 +1,16 @@
-<h1>Your library</h1>
+@if (username(); as u) {
+  <p class="back"><a routerLink="/u/{{ u }}">Back to profile</a></p>
+  <h1>{{ u }}'s library</h1>
+} @else {
+  <h1>Your library</h1>
+}
+
+@if (forbidden()) {
+  <p class="muted">This account is private. Become friends to see their library.</p>
+} @else {
 
 <section class="controls">
+
   <div class="control control--search">
     <label class="control__label" for="library-search">Search</label>
     <input
@@ -140,4 +150,6 @@
       <button class="pager__button" type="button" (click)="next()" [disabled]="!canNext()">Next</button>
     </nav>
   }
+}
+
 }
