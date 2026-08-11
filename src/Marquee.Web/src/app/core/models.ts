@@ -12,6 +12,24 @@ export interface AuthResponse {
   user: UserDto;
 }
 
+/**
+ * What the server will accept in a password (issue #27), read from GET /api/auth/password-rules
+ * rather than restated here. The thresholds live in the API's options, so a copy in the client
+ * would start lying the moment one was retuned.
+ */
+export interface PasswordRulesDto {
+  minLength: number;
+  maxLength: number;
+  requireLetter: boolean;
+  requireDigit: boolean;
+}
+
+/** One rejected password rule, so the form can list the reasons instead of running them together. */
+export interface PasswordProblemDto {
+  rule: string;
+  message: string;
+}
+
 export interface MovieDto {
   tmdbId: number;
   title: string;

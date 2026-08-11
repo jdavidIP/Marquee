@@ -38,4 +38,9 @@ input:focus { outline: none; border-color: var(--gold); }
 
 .err { color: var(--accent); font-size: 0.85rem; margin: 0; }
 
+/* Each refused rule on its own line, indented like the list it is. */
+.err--list { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+.hint { margin: -6px 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+
 .switch { margin-top: 18px; display: block; text-align: center; width: 100%; }

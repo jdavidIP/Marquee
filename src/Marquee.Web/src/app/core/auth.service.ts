@@ -2,7 +2,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { AuthResponse, UserDto } from './models';
+import { AuthResponse, PasswordRulesDto, UserDto } from './models';
 import { decodePermissions } from './jwt';
 
 const TOKEN_KEY = 'marquee.token';
@@ -49,10 +49,28 @@ export class AuthService {
     return this._token();
   }
 
-  register(username: string, email: string, password: string): Observable<AuthResponse> {
+  register(
+    username: string,
+    email: string,
+    password: string,
+    confirmPassword: string,
+  ): Observable<AuthResponse> {
     return this.http
-      .post<AuthResponse>(`${environment.apiBase}/auth/register`, { username, email, password })
+      .post<AuthResponse>(`${environment.apiBase}/auth/register`, {
+        username,
+        email,
+        password,
+        confirmPassword,
+      })
       .pipe(tap((r) => this.store(r)));
+  }
+
+  /**
+   * What a password has to satisfy, so the form can say so before anyone submits rather than after.
+   * Anonymous on the API — the people who need it are the ones without an account yet.
+   */
+  passwordRules(): Observable<PasswordRulesDto> {
+    return this.http.get<PasswordRulesDto>(`${environment.apiBase}/auth/password-rules`);
   }
 
   login(usernameOrEmail: string, password: string): Observable<AuthResponse> {
