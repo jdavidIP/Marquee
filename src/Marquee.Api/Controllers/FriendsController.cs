@@ -19,7 +19,7 @@ public class FriendsController(IFriendshipService friendships) : ControllerBase
         if (userId is null)
             return Unauthorized();
 
-        return Ok(await friendships.ListFriendsAsync(userId.Value, ct));
+        return Ok(await friendships.ListFriendsAsync(userId.Value, search: null, ct));
     }
 
     /// <summary>Pending requests in both directions, flagged with which way each one points.</summary>

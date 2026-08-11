@@ -29,7 +29,8 @@ public interface IFriendshipService
     Task<FriendActionResult> RejectAsync(Guid userId, Guid requestId, CancellationToken ct);
     Task<FriendActionResult> RemoveFriendAsync(Guid userId, Guid otherUserId, CancellationToken ct);
 
-    Task<IReadOnlyList<FriendDto>> ListFriendsAsync(Guid userId, CancellationToken ct);
+    /// <summary>Accepted friends, optionally narrowed to those whose username contains <paramref name="search"/>.</summary>
+    Task<IReadOnlyList<FriendDto>> ListFriendsAsync(Guid userId, string? search, CancellationToken ct);
     Task<IReadOnlyList<FriendRequestDto>> ListRequestsAsync(Guid userId, CancellationToken ct);
 
     /// <summary>Are these two accepted friends? Answered from Postgres — used for profile shaping.</summary>
@@ -244,14 +245,28 @@ public sealed class FriendshipService(
         return new FriendActionResult(FriendActionOutcome.Ok);
     }
 
-    public async Task<IReadOnlyList<FriendDto>> ListFriendsAsync(Guid userId, CancellationToken ct)
+    public async Task<IReadOnlyList<FriendDto>> ListFriendsAsync(Guid userId, string? search, CancellationToken ct)
     {
         // A friendship is undirected once accepted but the row keeps its original direction, so the
         // "other party" is whichever column is not the viewer.
-        var friends = await db.Friendships
+        var query = db.Friendships
             .AsNoTracking()
             .Where(f => f.Status == FriendshipStatus.Accepted
-                        && (f.RequesterId == userId || f.AddresseeId == userId))
+                        && (f.RequesterId == userId || f.AddresseeId == userId));
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = $"%{search.Trim()}%";
+
+            // The match has to run against whichever side is the *other* party, which depends on
+            // direction the same way the final projection below does — so the condition is written
+            // the same two-armed way rather than matching on Requester or Addressee unconditionally.
+            query = query.Where(f =>
+                (f.RequesterId == userId && EF.Functions.ILike(f.Addressee.Username, term))
+                || (f.AddresseeId == userId && EF.Functions.ILike(f.Requester.Username, term)));
+        }
+
+        var friends = await query
             .Select(f => f.RequesterId == userId
                 ? new FriendDto(f.Addressee.Id, f.Addressee.Username, f.Addressee.Bio, f.Addressee.IsPrivate, f.UpdatedAt)
                 : new FriendDto(f.Requester.Id, f.Requester.Username, f.Requester.Bio, f.Requester.IsPrivate, f.UpdatedAt))

@@ -71,7 +71,9 @@
         </div>
         <div class="stat">
           <dt class="stat__label">Friends</dt>
-          <dd class="stat__value">{{ f.friendCount | number }}</dd>
+          <dd class="stat__value">
+            <a [routerLink]="['/u', f.username, 'friends']">{{ f.friendCount | number }}</a>
+          </dd>
         </div>
         <div class="stat">
           <dt class="stat__label">Joined</dt>

@@ -31,6 +31,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/profile/profile.component').then((m) => m.ProfileComponent),
   },
   {
+    // Nested under the profile route rather than /friends/:username — this is that user's friend
+    // list, not a variant of the signed-in user's own /friends screen.
+    path: 'u/:username/friends',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/friends/user-friends.component').then((m) => m.UserFriendsComponent),
+  },
+  {
     path: 'admin',
     canActivate: [adminGuard],
     loadChildren: () => import('./features/admin/admin.routes').then((m) => m.ADMIN_ROUTES),
