@@ -21,7 +21,7 @@ public sealed class PasswordPolicyOptions
     /// The industry floor, and well above NIST's hard minimum of 8. Length is the only input to
     /// password strength that is both large and under the user's control.
     /// </summary>
-    public int MinLength { get; set; } = 12;
+    public int MinLength { get; set; } = 10;
 
     /// <summary>
     /// A bound on work, not on strength: everything above this is hashed at the same cost to us and

@@ -36,8 +36,8 @@ public class PasswordPolicyTests
 
     [Theory]
     [InlineData("short1", true)]
-    [InlineData("elevenchar1", true)]        // 11 characters — one below the floor
-    [InlineData("twelvechars1", false)]      // 12 exactly — the floor is inclusive
+    [InlineData("ninechar1", true)]          // 9 characters — one below the floor
+    [InlineData("tenchars12", false)]        // 10 exactly — the floor is inclusive
     public void Length_floor_is_inclusive(string password, bool expectTooShort)
     {
         RulesFor(password).Contains(PasswordRule.TooShort).Should().Be(expectTooShort);
@@ -214,8 +214,8 @@ public class PasswordPolicyTests
     [Fact]
     public void Surrounding_spaces_are_part_of_the_password_not_noise_to_be_trimmed()
     {
-        // 11 characters plus a trailing space is 12. Trimming would make this too short, and would
-        // also mean the stored password is not the one the user typed.
-        Evaluate("elevenchar1 ").IsAcceptable.Should().BeTrue();
+        // 9 characters plus a trailing space is 10 — exactly the floor. Trimming would make this
+        // too short, and would also mean the stored password is not the one the user typed.
+        Evaluate("ninechar1 ").IsAcceptable.Should().BeTrue();
     }
 }

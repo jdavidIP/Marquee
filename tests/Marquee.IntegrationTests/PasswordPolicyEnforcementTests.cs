@@ -54,7 +54,7 @@ public class PasswordPolicyEnforcementTests(MarqueeAppFactory factory)
         body!.Problems.Select(p => p.Rule).Should().Contain("TooShort");
         // The single line the web client reads has to carry the reason too, not just the itemised
         // list — apiError() shows `error`, so a generic sentence there would waste the whole point.
-        body.Error.Should().Contain("12");
+        body.Error.Should().Contain("10");
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class PasswordPolicyEnforcementTests(MarqueeAppFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the form is shown to people who have no account yet");
 
         var rules = await response.Content.ReadFromJsonAsync<RulesBody>();
-        rules!.MinLength.Should().Be(12);
+        rules!.MinLength.Should().Be(10);
         rules.RequireDigit.Should().BeTrue();
         rules.RequireLetter.Should().BeTrue();
 
