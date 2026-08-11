@@ -11,7 +11,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Marquee.IntegrationTests;
 
 /// <summary>
-/// GET /api/library's search, filter, sort and paging (issue #26).
+/// GET /api/library's search, filter, sort and paging (issue #26), and which emblem it shows when a
+/// movie premiered more than once (issue #37).
 ///
 /// These run over real Postgres rather than a fake because most of what they check only exists in
 /// the database: ILike is a Postgres operator, NULL release years order differently there than in
@@ -367,6 +368,96 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
 
         page.Items.Single(i => i.Movie.Title == "Earned Tier Four").EmblemTier.Should().Be(4);
         page.Items.Single(i => i.Movie.Title == "No Emblem").EmblemTier.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Plants one movie revealed by two separate Premieres for the same user — the shape CLAUDE.md
+    /// §4.6 allows (a film's reuse is a cooldown, not a ban). Only the first Premiere gets a
+    /// LibraryEntry; the second still earns its own Contribution and emblem, exactly what
+    /// PremiereOpenedConsumer does for a real re-premiere (issue #37).
+    /// </summary>
+    private async Task SeedRepeatPremiereAsync(Guid userId, string title, int firstTier, int secondTier)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var now = DateTime.UtcNow;
+
+        var movie = new Movie
+        {
+            TmdbId = Random.Shared.Next(1_000_000, 9_999_999),
+            Title = title,
+            PosterPath = "/poster.jpg",
+            ReleaseYear = 2001,
+            Overview = "Seeded by LibraryQueryTests.",
+            VoteAverage = 7.0,
+            VoteCount = 1000,
+            CachedAt = now
+        };
+        db.Movies.Add(movie);
+
+        Premiere MakePremiere(int daysAgo) => new()
+        {
+            ScopeId = "global",
+            ScheduledFor = now.AddDays(-daysAgo),
+            OpensAt = now.AddDays(-daysAgo),
+            ExpiresAt = now.AddDays(-daysAgo).AddHours(1),
+            OpenedAt = now.AddDays(-daysAgo),
+            Threshold = 10,
+            RegisteredClapCap = 5,
+            AnonymousClapCap = 2,
+            Status = PremiereStatus.Opened,
+            Movie = movie,
+            TotalClaps = 10
+        };
+
+        var firstPremiere = MakePremiere(daysAgo: 10);
+        var secondPremiere = MakePremiere(daysAgo: 2);
+        db.Premieres.AddRange(firstPremiere, secondPremiere);
+
+        // The LibraryEntry exists once, tied to whichever Premiere first earned the film — the
+        // fan-out skips a second one for a movie the user already owns.
+        db.LibraryEntries.Add(new LibraryEntry
+        {
+            UserId = userId,
+            Movie = movie,
+            Premiere = firstPremiere,
+            AcquiredAt = firstPremiere.OpenedAt!.Value
+        });
+
+        db.Contributions.Add(new Contribution
+        {
+            Premiere = firstPremiere, UserId = userId, ClapCount = 3, EmblemTier = firstTier
+        });
+        db.Contributions.Add(new Contribution
+        {
+            Premiere = secondPremiere, UserId = userId, ClapCount = 3, EmblemTier = secondTier
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_better_emblem_earned_on_a_later_re_premiere_is_what_the_library_shows()
+    {
+        var (client, userId) = await NewUserAsync();
+        await SeedRepeatPremiereAsync(userId, "Re-premiered Film", firstTier: 2, secondTier: 4);
+
+        var page = await PageAsync(client);
+
+        page.Items.Single().EmblemTier.Should().Be(4,
+            "the second Premiere earned a better tier than the one that created the LibraryEntry");
+    }
+
+    [Fact]
+    public async Task An_earlier_higher_emblem_never_regresses_on_a_later_re_premiere()
+    {
+        var (client, userId) = await NewUserAsync();
+        await SeedRepeatPremiereAsync(userId, "Re-premiered Film", firstTier: 4, secondTier: 2);
+
+        var page = await PageAsync(client);
+
+        page.Items.Single().EmblemTier.Should().Be(4,
+            "a worse tier earned later must not overwrite the better one already earned");
     }
 
     [Fact]
