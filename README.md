@@ -259,6 +259,7 @@ earns its place alongside the trace id.
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | POST | `/api/auth/register` | – | Create account, returns JWT |
+| GET | `/api/auth/password-rules` | – | What a password must satisfy, so the form can say so up front |
 | POST | `/api/auth/login` | – | Log in, returns JWT |
 | GET | `/api/auth/me` | user | Current user |
 | POST | `/api/sessions/anonymous` | – | Issue a short-lived anonymous session so a visitor can clap |
