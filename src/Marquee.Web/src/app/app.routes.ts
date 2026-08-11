@@ -39,6 +39,22 @@ export const routes: Routes = [
       import('./features/friends/user-friends.component').then((m) => m.UserFriendsComponent),
   },
   {
+    // LibraryComponent itself, reused rather than duplicated: the same search/filter/sort screen
+    // that /library shows for the caller's own collection now also serves anyone else's, switched
+    // by whether a username param is present at all (issue #38).
+    path: 'u/:username/library',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/library/library.component').then((m) => m.LibraryComponent),
+  },
+  {
+    path: 'u/:username/premieres',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/premiere-history/premiere-history.component').then(
+        (m) => m.PremiereHistoryComponent,
+      ),
+  },
+  {
     path: 'admin',
     canActivate: [adminGuard],
     loadChildren: () => import('./features/admin/admin.routes').then((m) => m.ADMIN_ROUTES),

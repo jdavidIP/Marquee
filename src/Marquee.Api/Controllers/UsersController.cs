@@ -8,8 +8,18 @@ namespace Marquee.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-public class UsersController(IUserProfileService profiles, IFriendshipService friendships) : ControllerBase
+public class UsersController(
+    IUserProfileService profiles,
+    IFriendshipService friendships,
+    ILibraryService library,
+    IPremiereHistoryService premiereHistory) : ControllerBase
 {
+    /// <summary>Matches the library's own default, since this walks the same page shape.</summary>
+    private const int DefaultLibraryPageSize = 24;
+
+    /// <summary>A list rather than a poster grid, so a plainer default than the library's.</summary>
+    private const int DefaultHistoryPageSize = 20;
+
     private const int MaxSearchResults = 25;
 
     /// <summary>
@@ -70,13 +80,99 @@ public class UsersController(IUserProfileService profiles, IFriendshipService fr
     public async Task<ActionResult<IReadOnlyList<FriendDto>>> Friends(
         string username, [FromQuery] string? search, CancellationToken ct)
     {
+        var (error, entitlement) = await ResolveEntitledAsync(username, ct);
+        if (error is not null)
+            return error;
+
+        return Ok(await friendships.ListFriendsAsync(entitlement!.UserId, search, ct));
+    }
+
+    /// <summary>
+    /// A user's library — movies they collected from Premieres they clapped for — visible to the
+    /// same audience as their friend list, and shaped by the same search/filter/sort as the caller's
+    /// own (LibraryController.Mine, issue #26): reused, not duplicated, since the entries mean the
+    /// same thing either way.
+    /// </summary>
+    [Authorize]
+    [HttpGet("{username}/library")]
+    public async Task<ActionResult<PagedResult<LibraryEntryDto>>> Library(
+        string username,
+        [FromQuery] string? search,
+        [FromQuery] int? genreId,
+        [FromQuery] int? minYear,
+        [FromQuery] int? maxYear,
+        [FromQuery] LibrarySort sort = LibrarySort.Acquired,
+        [FromQuery] bool? desc = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultLibraryPageSize,
+        CancellationToken ct = default)
+    {
+        var (error, entitlement) = await ResolveEntitledAsync(username, ct);
+        if (error is not null)
+            return error;
+
+        var (p, ps) = Paging.Clamp(page, pageSize);
+        var query = new LibraryQuery(search, genreId, minYear, maxYear, sort, desc, p, ps);
+
+        return Ok(await library.GetForUserAsync(entitlement!.UserId, query, ct));
+    }
+
+    /// <summary>The genre/year filter values worth offering for this user's library — see LibraryController.Filters.</summary>
+    [Authorize]
+    [HttpGet("{username}/library/filters")]
+    public async Task<ActionResult<LibraryFiltersDto>> LibraryFilters(string username, CancellationToken ct)
+    {
+        var (error, entitlement) = await ResolveEntitledAsync(username, ct);
+        if (error is not null)
+            return error;
+
+        return Ok(await library.GetFiltersAsync(entitlement!.UserId, ct));
+    }
+
+    /// <summary>
+    /// Which Premieres a user contributed to, and what they earned each time — the history behind
+    /// the "premieres attended" count on their profile, which until now had no way to be opened.
+    /// Same audience as the friend list and the library.
+    /// </summary>
+    [Authorize]
+    [HttpGet("{username}/premieres")]
+    public async Task<ActionResult<PagedResult<PremiereHistoryEntryDto>>> Premieres(
+        string username,
+        [FromQuery] string? search,
+        [FromQuery] PremiereHistorySort sort = PremiereHistorySort.Opened,
+        [FromQuery] bool? desc = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultHistoryPageSize,
+        CancellationToken ct = default)
+    {
+        var (error, entitlement) = await ResolveEntitledAsync(username, ct);
+        if (error is not null)
+            return error;
+
+        var (p, ps) = Paging.Clamp(page, pageSize);
+        var query = new PremiereHistoryQuery(search, sort, desc, p, ps);
+
+        return Ok(await premiereHistory.GetForUserAsync(entitlement!.UserId, query, ct));
+    }
+
+    /// <summary>
+    /// Resolves a username to the viewer's entitlement, or the response to send instead: 404 if no
+    /// such account exists, 403 if it does but this viewer gets none of its private surface. Shared
+    /// by every endpoint under this controller that shows something belonging to an account other
+    /// than "me" — the friend list, the library, the premiere history — so the check is made once
+    /// rather than copied at each one.
+    /// </summary>
+    private async Task<(ActionResult? Error, ProfileEntitlement? Entitlement)> ResolveEntitledAsync(
+        string username, CancellationToken ct)
+    {
         var viewer = new ProfileViewer(User.GetUserId(), User.HasPermission(MarqueePermissions.ViewUsers));
         var entitlement = await profiles.ResolveEntitlementAsync(username, viewer, ct);
-        if (entitlement is null)
-            return NotFound();
-        if (!entitlement.Entitled)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "This user's friend list is private." });
 
-        return Ok(await friendships.ListFriendsAsync(entitlement.UserId, search, ct));
+        if (entitlement is null)
+            return (NotFound(), null);
+        if (!entitlement.Entitled)
+            return (StatusCode(StatusCodes.Status403Forbidden, new { error = "This account is private." }), null);
+
+        return (null, entitlement);
     }
 }

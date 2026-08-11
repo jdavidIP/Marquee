@@ -30,3 +30,12 @@ export function isCooldownConflict(err: unknown): boolean {
   const e = err as { status?: number; error?: { cooldown?: boolean } };
   return e?.status === 409 && e?.error?.cooldown === true;
 }
+
+/**
+ * True when a call to a `GET /api/users/{username}/...` endpoint was refused for privacy, not
+ * failure. These read as "this account is private" rather than a generic error banner — an expected
+ * outcome of the entitlement rule, not something gone wrong.
+ */
+export function isForbidden(err: unknown): boolean {
+  return (err as { status?: number })?.status === 403;
+}
