@@ -69,10 +69,7 @@ export class PremiereHistoryComponent implements OnDestroy {
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-  protected readonly isSelf = computed(() => {
-    const f = this.username();
-    return f !== null && f === this.auth.user()?.username;
-  });
+  protected readonly isSelf = computed(() => this.username() === this.auth.user()?.username);
 
   constructor() {
     effect(() => {

@@ -76,6 +76,11 @@
         <div class="stat">
           <dt class="stat__label">Movies collected</dt>
           <dd class="stat__value">
+            <!-- Only this stat gets a self-shortcut to the plain top-nav route: LibraryComponent is
+                 the one screen actually reused across both /library and /u/:username/library, so a
+                 simpler URL exists for your own collection. Friends and premiere history have no
+                 such bare route — self reaches them the same way anyone else does, through
+                 /u/:username/..., which is why those two links below never branch on isSelf(). -->
             @if (isSelf()) {
               <a routerLink="/library">{{ f.moviesCollected | number }}</a>
             } @else {

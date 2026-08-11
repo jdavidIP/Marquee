@@ -43,10 +43,7 @@ export class UserFriendsComponent implements OnDestroy {
   protected readonly query = signal('');
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-  protected readonly isSelf = computed(() => {
-    const f = this.username();
-    return f !== null && f === this.auth.user()?.username;
-  });
+  protected readonly isSelf = computed(() => this.username() === this.auth.user()?.username);
 
   constructor() {
     // Same one-path-loads-it shape as ProfileComponent: a route change, a reload, and a search all
