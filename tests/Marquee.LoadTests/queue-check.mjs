@@ -21,7 +21,7 @@
 // nothing about the real consumer.
 //
 // Usage:  node queue-check.mjs
-// Env:    API_BASE (http://localhost:5080/api), ADMIN_USER (admin), ADMIN_PASS (admin12345),
+// Env:    API_BASE (http://localhost:5080/api), ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1),
 //         RABBIT_API (http://localhost:15672), RABBIT_USER (marquee), RABBIT_PASS (marquee),
 //         PG_CONTAINER (marquee-postgres), RABBIT_CONTAINER (marquee-rabbitmq),
 //         SKIP_CRASH (unset — set it to skip check B),
@@ -35,13 +35,13 @@ const execFileAsync = promisify(execFile);
 
 const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS ?? 'admin12345';
+const ADMIN_PASS = process.env.ADMIN_PASS ?? 'seed-me-locally-1';
 const RABBIT_API = process.env.RABBIT_API ?? 'http://localhost:15672';
 const RABBIT_USER = process.env.RABBIT_USER ?? 'marquee';
 const RABBIT_PASS = process.env.RABBIT_PASS ?? 'marquee';
 const PG_CONTAINER = process.env.PG_CONTAINER ?? 'marquee-postgres';
 const RABBIT_CONTAINER = process.env.RABBIT_CONTAINER ?? 'marquee-rabbitmq';
-const PASSWORD = 'queuecheck123';
+const PASSWORD = 'queuecheck-load-1';
 const RUN = Date.now().toString(36);
 
 const FANOUT_EXCHANGE = 'marquee-premiere-fanout';
@@ -77,7 +77,7 @@ async function login(usernameOrEmail, password) {
 async function registerOne(i) {
   const username = `q_${RUN}_${i}`;
   const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD,
+    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
   });
   if (status === 200 || status === 201) return { username, token: body.token };
   if (status === 409) return { username, token: await login(username, PASSWORD) };

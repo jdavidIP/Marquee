@@ -30,7 +30,13 @@ public class ProfileVisibilityTests(MarqueeAppFactory factory)
         var username = $"u_{tag}_{Guid.NewGuid():n}"[..24];
 
         var response = await client.PostAsJsonAsync("/api/auth/register",
-            new { username, email = $"{username}@marquee.test", password = "correct horse battery staple" });
+            new
+            {
+                username,
+                email = $"{username}@marquee.test",
+                password = TestPasswords.Valid,
+                confirmPassword = TestPasswords.Valid,
+            });
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
         var body = await response.Content.ReadFromJsonAsync<AuthResponse>();

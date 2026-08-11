@@ -108,7 +108,9 @@ dotnet run
 # listens on http://localhost:5080 (the default 'http' launch profile), which the SPA targets
 ```
 
-The seeded admin (dev only) is `admin` / `admin12345` — override via the `Admin:*` config keys.
+The seeded admin (dev only) is `admin` / `seed-me-locally-1` — override via the `Admin:*` config
+keys. Seeding runs only when no admin exists, so a database created before the password policy
+(#27) landed keeps whatever it was seeded with; drop the `users` row, or the database, to re-seed.
 
 **3. Run the worker** — without it, Premieres still open but nobody's library is filled
 
@@ -259,6 +261,7 @@ earns its place alongside the trace id.
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | POST | `/api/auth/register` | – | Create account, returns JWT |
+| GET | `/api/auth/password-rules` | – | What a password must satisfy, so the form can say so up front |
 | POST | `/api/auth/login` | – | Log in, returns JWT |
 | GET | `/api/auth/me` | user | Current user |
 | POST | `/api/sessions/anonymous` | – | Issue a short-lived anonymous session so a visitor can clap |

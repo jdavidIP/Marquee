@@ -8,12 +8,15 @@ using Marquee.Api.Scheduling;
 using Marquee.Api.Security;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
+using Marquee.Domain.Options;
+using Marquee.Domain.Rules;
 using Marquee.Infrastructure;
 using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Tmdb;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -172,10 +175,21 @@ static async Task SeedAdminAsync(
 
     var username = config["Admin:Username"] ?? "admin";
     var email = (config["Admin:Email"] ?? "admin@marquee.local").ToLowerInvariant();
-    var password = config["Admin:Password"] ?? "admin12345";
+    var password = config["Admin:Password"] ?? "seed-me-locally-1";
 
     if (await db.Users.AnyAsync(u => u.Role == UserRole.Admin))
         return;
+
+    // Seeding writes a hash directly, so it does not pass through the registration policy (#27) —
+    // which is the right call, since a misconfigured password should not stop the API from starting.
+    // It is still worth saying out loud: the account with the most authority in the system is the
+    // one place a password nobody would be allowed to choose can quietly end up.
+    var policy = sp.GetRequiredService<IOptions<PasswordPolicyOptions>>().Value;
+    var verdict = PasswordPolicy.Evaluate(password, username, email, policy);
+    if (!verdict.IsAcceptable)
+        logger.LogWarning(
+            "Seeded admin password does not meet the password policy: {Reasons} Change Admin:Password before this reaches anything but a development machine.",
+            verdict.Summary);
 
     var admin = new User { Username = username, Email = email, Role = UserRole.Admin };
     admin.PasswordHash = hasher.Hash(admin, password);

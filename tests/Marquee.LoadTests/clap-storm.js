@@ -7,7 +7,7 @@
 //
 // Run:   k6 run clap-storm.js
 // Env:   API_BASE (default http://localhost:5080/api), USERS (default 300),
-//        ADMIN_USER (admin), ADMIN_PASS (admin12345)
+//        ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1)
 
 import http from 'k6/http';
 import { check } from 'k6';
@@ -17,8 +17,8 @@ import { SharedArray } from 'k6/data';
 const API = __ENV.API_BASE || 'http://localhost:5080/api';
 const USERS = parseInt(__ENV.USERS || '300', 10);
 const ADMIN_USER = __ENV.ADMIN_USER || 'admin';
-const ADMIN_PASS = __ENV.ADMIN_PASS || 'admin12345';
-const PASSWORD = 'clapstorm123';
+const ADMIN_PASS = __ENV.ADMIN_PASS || 'seed-me-locally-1';
+const PASSWORD = 'clapstorm-load-1';
 const RUN = `${Date.now()}`;
 
 const openedResponses = new Counter('claps_opened_true');
@@ -46,7 +46,8 @@ export function setup() {
   const tokens = [];
   for (let i = 0; i < USERS; i++) {
     const username = `storm_${RUN}_${i}`;
-    const reg = jsonPost('/auth/register', { username, email: `${username}@marquee.load`, password: PASSWORD });
+    const reg = jsonPost('/auth/register',
+      { username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD });
     tokens.push(reg.status === 200 || reg.status === 201
       ? reg.json('token')
       : jsonPost('/auth/login', { usernameOrEmail: username, password: PASSWORD }).json('token'));

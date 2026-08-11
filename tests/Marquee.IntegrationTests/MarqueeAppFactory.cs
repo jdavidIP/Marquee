@@ -167,7 +167,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     }
 
     public const string AdminUsername = "admin";
-    public const string AdminPassword = "admin12345";
+    public const string AdminPassword = "seed-me-locally-1";
 
     /// <summary>The TMDB double, so a test can make it start or stop failing.</summary>
     public ControllableTmdbClient Tmdb => Services.GetRequiredService<ControllableTmdbClient>();

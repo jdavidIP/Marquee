@@ -1,8 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { apiError } from '../../core/http-error';
+import { apiError, passwordProblems } from '../../core/http-error';
+import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
 
 @Component({
   selector: 'app-login',
@@ -18,23 +19,69 @@ export class LoginComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
 
+  /** The rules the server refused on, itemised — the same content as error(), listed instead. */
+  protected readonly problems = signal<PasswordProblemDto[]>([]);
+
+  /**
+   * Null until the API answers, and it may stay null: this only drives a hint and the browser's own
+   * minlength, so the form still works unaided if the call fails. The server is the authority
+   * either way, which is why nothing here is a second copy of the rules.
+   */
+  protected readonly rules = signal<PasswordRulesDto | null>(null);
+
   protected username = '';
   protected email = '';
   protected password = '';
+  protected confirmPassword = '';
+
+  /** Says what will be accepted before anything is typed, rather than after it is rejected. */
+  protected readonly passwordHint = computed(() => {
+    const r = this.rules();
+    if (!r) return null;
+
+    const parts = [`at least ${r.minLength} characters`];
+    if (r.requireLetter) parts.push('a letter');
+    if (r.requireDigit) parts.push('a number');
+
+    return `Use ${parts.join(', ')}. Avoid your username and anything widely used.`;
+  });
+
+  constructor() {
+    // Fetched once for the session rather than on entering register mode: it is a few bytes, it
+    // never changes while the page is open, and asking for it up front means the hint is already
+    // there the moment the form switches.
+    this.auth.passwordRules().subscribe({
+      next: (r) => this.rules.set(r),
+      error: () => {},
+    });
+  }
 
   toggle(): void {
     this.mode.set(this.mode() === 'login' ? 'register' : 'login');
-    this.error.set(null);
+    this.clearErrors();
+    // Deliberately not carried across: a confirmation is only meaningful next to the password it
+    // was typed against, and leaving it filled would let a stale value satisfy the check.
+    this.confirmPassword = '';
+  }
+
+  /** Both typed and different — worth saying now rather than spending a round trip on it. */
+  protected mismatched(): boolean {
+    return (
+      this.mode() === 'register' &&
+      this.confirmPassword.length > 0 &&
+      this.password !== this.confirmPassword
+    );
   }
 
   submit(): void {
-    this.error.set(null);
+    this.clearErrors();
     this.busy.set(true);
 
     const done = {
       next: () => this.router.navigate(['/premiere']),
       error: (err: unknown) => {
         this.busy.set(false);
+        this.problems.set(passwordProblems(err));
         this.error.set(apiError(err, 'Something went wrong. Please try again.'));
       },
     };
@@ -42,7 +89,14 @@ export class LoginComponent {
     if (this.mode() === 'login') {
       this.auth.login(this.username.trim(), this.password).subscribe(done);
     } else {
-      this.auth.register(this.username.trim(), this.email.trim(), this.password).subscribe(done);
+      this.auth
+        .register(this.username.trim(), this.email.trim(), this.password, this.confirmPassword)
+        .subscribe(done);
     }
+  }
+
+  private clearErrors(): void {
+    this.error.set(null);
+    this.problems.set([]);
   }
 }

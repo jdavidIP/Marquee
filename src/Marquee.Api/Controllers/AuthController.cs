@@ -26,11 +26,27 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
             var result = await auth.RegisterAsync(request, ct);
             return Ok(result);
         }
+        catch (PasswordRejectedException ex)
+        {
+            // Both shapes on purpose: `error` is the single line every Marquee failure carries and
+            // the web client already reads, `problems` is the same content itemised for a form that
+            // wants to mark each rule separately.
+            return BadRequest(new { error = ex.Message, problems = ex.Problems });
+        }
         catch (RegistrationConflictException ex)
         {
             return Conflict(new { error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// What a password has to satisfy, so the registration form can say so before anyone submits.
+    /// Anonymous, and deliberately so — it is a description of the front door, needed by people who
+    /// have not come through it yet, and it reveals nothing an attempted registration would not.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("password-rules")]
+    public ActionResult<PasswordRulesDto> PasswordRules() => Ok(auth.DescribePasswordRules());
 
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("login")]

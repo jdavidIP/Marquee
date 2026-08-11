@@ -15,7 +15,7 @@
 //
 // Usage:  node clap-storm.mjs
 // Env:    API_BASE (default http://localhost:5080/api), USERS (default 300),
-//         ADMIN_USER (admin), ADMIN_PASS (admin12345)
+//         ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1)
 //
 // After the run, verify the authoritative numbers in Postgres with the queries the script prints
 // (see docs/concurrency-findings.md for the recorded results).
@@ -23,8 +23,8 @@
 const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const USERS = parseInt(process.env.USERS ?? '300', 10);
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS ?? 'admin12345';
-const PASSWORD = 'clapstorm123';
+const ADMIN_PASS = process.env.ADMIN_PASS ?? 'seed-me-locally-1';
+const PASSWORD = 'clapstorm-load-1';
 const RUN = Date.now().toString(36);
 
 async function parse(res) {
@@ -48,7 +48,7 @@ async function login(usernameOrEmail, password) {
 async function registerOne(i) {
   const username = `storm_${RUN}_${i}`;
   const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD,
+    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
   });
   if (status === 200 || status === 201) return body.token;
   if (status === 409) return login(username, PASSWORD); // idempotent re-run

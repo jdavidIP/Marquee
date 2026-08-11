@@ -1,3 +1,5 @@
+import { PasswordProblemDto } from './models';
+
 /**
  * Turns a failed HttpClient call into something worth showing a person.
  *
@@ -23,6 +25,16 @@ export function apiError(err: unknown, fallback: string): string {
     default:
       return fallback;
   }
+}
+
+/**
+ * The individual password rules a registration was refused for (issue #27). The same content is
+ * already in the `error` sentence that {@link apiError} returns; this is for a form that would
+ * rather list three reasons than run them together into one line.
+ */
+export function passwordProblems(err: unknown): PasswordProblemDto[] {
+  const e = err as { status?: number; error?: { problems?: PasswordProblemDto[] } };
+  return e?.status === 400 && Array.isArray(e.error?.problems) ? e.error.problems : [];
 }
 
 /** True when the server flagged a refusal the caller may retry with an explicit override (§4.6). */

@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Realtime;
 using Marquee.Api.Security;
 using Marquee.Api.Services;
+using Marquee.Domain.Options;
 using Marquee.Infrastructure.Messaging;
 
 namespace Marquee.Api;
@@ -21,6 +22,11 @@ public static class ApiServiceRegistration
         services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
+
+        // Registered here rather than alongside MarqueeRulesOptions in Infrastructure: the Worker
+        // shares that registration and has no auth surface to judge a password for.
+        services.Configure<PasswordPolicyOptions>(
+            configuration.GetSection(PasswordPolicyOptions.SectionName));
 
         // --- Security and social (Iteration 5) ---
         services.Configure<AnonymousSessionOptions>(
