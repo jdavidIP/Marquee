@@ -1,5 +1,6 @@
 using Marquee.Api.Realtime;
 using Marquee.Infrastructure.Messaging;
+using Marquee.Infrastructure.Notifications;
 using Marquee.Infrastructure.Tmdb;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
@@ -163,6 +164,12 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<IPremiereBroadcaster>();
             services.AddSingleton<RecordingBroadcaster>();
             services.AddSingleton<IPremiereBroadcaster>(sp => sp.GetRequiredService<RecordingBroadcaster>());
+
+            // Same reasoning: assert a notification was dispatched without standing up SMTP or a
+            // broker to carry it there.
+            services.RemoveAll<INotificationDispatcher>();
+            services.AddSingleton<RecordingNotificationDispatcher>();
+            services.AddSingleton<INotificationDispatcher>(sp => sp.GetRequiredService<RecordingNotificationDispatcher>());
         });
     }
 
@@ -174,6 +181,9 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
     /// <summary>What has been announced over the hub, for asserting that something was.</summary>
     public RecordingBroadcaster Broadcasts => Services.GetRequiredService<RecordingBroadcaster>();
+
+    /// <summary>What has been dispatched via INotificationDispatcher, for asserting that something was.</summary>
+    public RecordingNotificationDispatcher Notifications => Services.GetRequiredService<RecordingNotificationDispatcher>();
 
     /// <summary>
     /// Fails loudly if the running app is not actually pointed at the throwaway containers.

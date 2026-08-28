@@ -1,5 +1,6 @@
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
+using Marquee.Infrastructure.Notifications;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
 using Marquee.Infrastructure.Tmdb;
@@ -95,6 +96,20 @@ public static class DependencyInjection
                 // Innermost, so it bounds a single attempt rather than the whole pipeline.
                 pipeline.AddTimeout(TimeSpan.FromSeconds(resilience.AttemptTimeoutSeconds));
             });
+        }
+
+        // --- Notifications (CLAUDE.md §6): dev-log by default, real email only once configured. ---
+        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
+        var notificationOpts = configuration.GetSection(NotificationOptions.SectionName)
+            .Get<NotificationOptions>() ?? new NotificationOptions();
+        if (string.IsNullOrWhiteSpace(notificationOpts.SmtpHost))
+        {
+            // No host -> offline stub so the app runs without a mail account (see DevNotificationDispatcher).
+            services.AddSingleton<INotificationDispatcher, DevNotificationDispatcher>();
+        }
+        else
+        {
+            services.AddSingleton<INotificationDispatcher, EmailNotificationDispatcher>();
         }
 
         return services;
