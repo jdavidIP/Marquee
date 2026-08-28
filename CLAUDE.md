@@ -84,7 +84,7 @@ The threshold, cap, and emblem formulas live in `Marquee.Domain` as pure functio
 Entities and their essential fields. Add audit fields (`CreatedAt`, `UpdatedAt`) everywhere.
 
 **User**
-`Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `CreatedAt`
+`Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `EmailConfirmedAt` (nullable, set once when the confirmation link is used, never cleared — see §4.1), `CreatedAt`
 
 **Premiere**
 `Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened` | `Missed` — see §4.5), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
@@ -128,6 +128,8 @@ These are exact. Implement them as pure functions in `Marquee.Domain` and unit-t
 
 Computed once, at Premiere creation, from the total count of registered users.
 
+**`totalRegisteredUsers` counts only confirmed accounts** (`EmailConfirmedAt` set) — issue #29. An account that has never confirmed its email does not exist for this formula at all: it cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an account does. See §4.2 for what that means for the account itself while it stays unconfirmed. This matters specifically because it is the one count in this section an attacker can inflate for free — a wave of throwaway signups moves nothing here, unlike claps, which are already guarded (Iteration 5).
+
 ```
 peak hours       = ScheduledFor local time is >= 10:00 and <= 20:00
 percentageRange  = peak     -> random between 45% and 55%
@@ -164,6 +166,15 @@ anonymousCap     = max(2, round(0.25 * registeredCap))
 Worked example: 1,000 users, threshold 500 → minParticipants = 80 → registeredCap = 6 → anonymousCap = max(2, 1.5→2) = 2.
 
 > **Known limitation — document this in a code comment, do not engineer around it in v1.** At very small user counts the 8% guarantee becomes weak (20 users → minParticipants = 2 → two people could open a Premiere alone). This is an accepted tradeoff for v1.
+
+**An unconfirmed account is not a registered participant for any purpose beyond authenticating itself** (issue #29) — it is treated fully as an anonymous session, not as a registered user with a flag:
+
+- It claps under `anonymousCap`, never `registeredCap`.
+- Its Contribution is recorded against an anonymous session id, **not** its `UserId` — the load-bearing detail, not an implementation nicety. It means the account accrues no `Contribution` row, no `LibraryEntry` row, and (per §6's friendship rules) no `Friendship` row while unconfirmed, which is what makes later deleting an unconfirmed account (the lifecycle work) safe: there is nothing keyed to its id for a cascade to reach.
+- It earns nothing per §4.3, the same as any other anonymous participant — including for a Premiere it clapped open itself. Confirming afterward does not retroactively grant that Premiere's emblem or library entry; it only makes every *subsequent* clap a registered one.
+- It cannot send or receive friend requests.
+
+Once confirmed, the account is a registered participant from that point on, immediately — no re-login required.
 
 ### 4.3 Emblem tiers
 
