@@ -155,7 +155,15 @@ public sealed class AuthService(
     /// <summary>
     /// No branch on whether <paramref name="email"/> matched anyone — the caller (AuthController)
     /// returns the same response either way, and doing the divergent work here rather than short
-    /// circuiting keeps that true even for someone timing the request, not just reading its body.
+    /// circuiting is what keeps the response body identical regardless of outcome. It does not equalise
+    /// timing (the matched path does real work the unmatched one skips); see AuthController.ForgotPassword
+    /// for that trade-off.
+    ///
+    /// Not idempotent on a retry: calling this twice for the same address mints two valid tokens and
+    /// sends two emails, rather than replaying one outcome (CLAUDE.md §7 asks retryable writes to be
+    /// idempotent). Accepted rather than fixed — RateLimitPolicies.Auth already bounds how often this
+    /// can be called, and every token minted is independently single-use and harmless on its own, so a
+    /// duplicate is an extra email, not a duplicated side effect.
     /// </summary>
     public async Task RequestPasswordResetAsync(string email, CancellationToken ct)
     {
@@ -189,6 +197,15 @@ public sealed class AuthService(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Deliberately not idempotent on a retry of an already-successful call: the token is single-use
+    /// by design (issue #31), so replaying it after success returns false — "invalid, expired, or
+    /// already used" — rather than the original success. That is a real departure from CLAUDE.md §7's
+    /// "retryable writes are idempotent" convention, kept anyway: single-use is a security property
+    /// for a credential that can take over the account, not a preference, and there is no way to
+    /// honour both at once for a one-time action. Do not "fix" this into replaying success on a used
+    /// token — that would be reopening the single-use guarantee it exists to provide.
+    /// </summary>
     public async Task<bool> ResetPasswordAsync(
         string token, string newPassword, string confirmPassword, CancellationToken ct)
     {

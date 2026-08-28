@@ -72,9 +72,14 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
     /// (issue #31). A response that differed would turn this into a user-enumeration oracle — and
     /// that matters more here than it might elsewhere, because usernames are already publicly
     /// searchable, so confirming which *emails* are registered would be a real leak on top of that.
-    /// AuthService does the divergent work internally rather than this method short-circuiting, so
-    /// the one thing this endpoint must never do stays true regardless of how the two paths are
-    /// timed, not just how they're worded.
+    /// AuthService does the divergent work internally rather than this method short-circuiting it,
+    /// which is what keeps the response body identical.
+    ///
+    /// That does not close a timing side channel — a known address does real work (generate a token,
+    /// hash it, insert a row, publish) that an unknown one skips, so the two paths take measurably
+    /// different time. Padding that out was judged not worth the complexity for v1, on the same
+    /// footing as CLAUDE.md §4.2's documented small-user-base limitation: a known, accepted gap rather
+    /// than an oversight.
     /// </summary>
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
