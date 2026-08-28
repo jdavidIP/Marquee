@@ -186,13 +186,20 @@ public class RegistrationConfirmationTests(MarqueeAppFactory factory)
         var confirmResponse = await anon.GetAsync($"/api/auth/confirm-email?token={Uri.EscapeDataString(token)}");
         confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var confirmed = await confirmResponse.Content.ReadFromJsonAsync<AuthResponse>();
-        confirmed!.User.EmailConfirmed.Should().BeTrue();
-        confirmed.User.Id.Should().Be(userId);
+        // No bearer token anywhere in the body (issue #48) — confirming must not hand out a session.
+        var confirmedBody = await confirmResponse.Content.ReadAsStringAsync();
+        confirmedBody.Should().NotContain("\"token\"",
+            "confirming must never return a credential — see AuthService.ConfirmEmailAsync's doc comment");
 
         var db2 = confirmScope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
         var stored = await db2.Users.AsNoTracking().FirstAsync(u => u.Id == userId);
         stored.EmailConfirmedAt.Should().NotBeNull();
+
+        // Replaying the same still-valid token confirms again (idempotent) but still hands back no
+        // token — the whole point of #48's fix is that this stays true on every replay, not just the first.
+        var replay = await anon.GetAsync($"/api/auth/confirm-email?token={Uri.EscapeDataString(token)}");
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await replay.Content.ReadAsStringAsync()).Should().NotContain("\"token\"");
 
         // A garbage token must not confirm anything.
         var bad = await anon.GetAsync("/api/auth/confirm-email?token=not-a-real-token");

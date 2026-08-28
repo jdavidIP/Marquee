@@ -20,11 +20,19 @@ public interface IAuthService
 
     /// <summary>
     /// Confirms the account a valid token names. Null for an invalid, tampered, or expired token, or
-    /// one whose account no longer exists. Idempotent — confirming an already-confirmed account (an
-    /// email client prefetching the link, then the user clicking it) just returns success again
-    /// rather than erroring (CLAUDE.md §7).
+    /// one whose account no longer exists; true otherwise. Idempotent — confirming an already-confirmed
+    /// account (an email client prefetching the link, then the user clicking it) just returns success
+    /// again rather than erroring (CLAUDE.md §7).
+    ///
+    /// Deliberately returns no credential (issue #48). The confirm-email token stays valid — and
+    /// therefore replayable — for its whole lifetime, unlike the reset token (#31), which is marked
+    /// used. Returning a fresh bearer token on every successful replay would mean anyone who ever
+    /// touches the link, not just the account owner, could mint themselves a live session at any point
+    /// in that window — including an email provider's automated link-scanner, which routinely
+    /// pre-fetches links before the real user ever opens the message. Confirming just flips the
+    /// account's state; the caller signs in normally afterward, like any other session.
     /// </summary>
-    Task<AuthResponse?> ConfirmEmailAsync(string token, CancellationToken ct);
+    Task<bool?> ConfirmEmailAsync(string token, CancellationToken ct);
 
     /// <summary>
     /// Starts a password reset for the given address, if an account holds it. Always succeeds from
@@ -132,7 +140,7 @@ public sealed class AuthService(
         return new AuthResponse(tokens.CreateToken(user), UserDto.From(user));
     }
 
-    public async Task<AuthResponse?> ConfirmEmailAsync(string token, CancellationToken ct)
+    public async Task<bool?> ConfirmEmailAsync(string token, CancellationToken ct)
     {
         if (!confirmationTokens.TryValidate(token, out var userId))
             return null;
@@ -147,9 +155,8 @@ public sealed class AuthService(
             await db.SaveChangesAsync(ct);
         }
 
-        // A fresh token reflecting the new state, so the tab that just confirmed can keep going
-        // without a re-login — see ClaimsPrincipalExtensions.IsEmailConfirmed's doc comment.
-        return new AuthResponse(tokens.CreateToken(user), UserDto.From(user));
+        // No token returned (issue #48) — see this method's doc comment on IAuthService for why.
+        return true;
     }
 
     /// <summary>
