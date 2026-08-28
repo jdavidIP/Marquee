@@ -34,6 +34,17 @@ public sealed record LoginRequest(
     [Required] string UsernameOrEmail,
     [Required] string Password);
 
+public sealed record ForgotPasswordRequest([Required, EmailAddress] string Email);
+
+/// <summary>
+/// Same note as RegisterRequest: NewPassword carries no length attribute — PasswordPolicy is the one
+/// place that rule lives, and ResetPasswordAsync enforces it via the same method registration does.
+/// </summary>
+public sealed record ResetPasswordRequest(
+    [Required] string Token,
+    [Required] string NewPassword,
+    [Required] string ConfirmPassword);
+
 public sealed record AuthResponse(string Token, UserDto User);
 
 /// <summary>

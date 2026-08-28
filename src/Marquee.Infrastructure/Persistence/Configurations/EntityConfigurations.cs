@@ -19,6 +19,27 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     }
 }
 
+public class PasswordResetTokenConfiguration : IEntityTypeConfiguration<PasswordResetToken>
+{
+    public void Configure(EntityTypeBuilder<PasswordResetToken> b)
+    {
+        b.ToTable("password_reset_tokens");
+        b.HasKey(t => t.Id);
+        // Hex-encoded SHA-256, always exactly 64 characters.
+        b.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
+        b.HasOne(t => t.User)
+            .WithMany()
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // The lookup the reset endpoint runs on every attempt.
+        b.HasIndex(t => t.TokenHash).IsUnique();
+
+        // "Every other outstanding token for this account" — what invalidate-on-use reads.
+        b.HasIndex(t => new { t.UserId, t.UsedAt });
+    }
+}
+
 public class MovieConfiguration : IEntityTypeConfiguration<Movie>
 {
     public void Configure(EntityTypeBuilder<Movie> b)

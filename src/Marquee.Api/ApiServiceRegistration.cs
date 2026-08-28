@@ -38,6 +38,11 @@ public static class ApiServiceRegistration
         services.Configure<EmailConfirmationOptions>(
             configuration.GetSection(EmailConfirmationOptions.SectionName));
         services.AddSingleton<IEmailConfirmationTokenService, EmailConfirmationTokenService>();
+
+        // --- Password recovery (issue #31) ---
+        services.Configure<PasswordResetOptions>(
+            configuration.GetSection(PasswordResetOptions.SectionName));
+        services.AddSingleton<IPasswordResetTokenService, PasswordResetTokenService>();
         // Scoped: it caches its answer in HttpContext.Items, so its lifetime is the request's.
         services.AddScoped<IParticipantResolver, ParticipantResolver>();
         services.AddScoped<IFriendshipService, FriendshipService>();
