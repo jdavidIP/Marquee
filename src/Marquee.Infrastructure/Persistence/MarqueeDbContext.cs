@@ -16,6 +16,7 @@ public class MarqueeDbContext(DbContextOptions<MarqueeDbContext> options) : DbCo
     public DbSet<Contribution> Contributions => Set<Contribution>();
     public DbSet<LibraryEntry> LibraryEntries => Set<LibraryEntry>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
