@@ -44,6 +44,11 @@ public class UserLibraryAndHistoryVisibilityTests(MarqueeAppFactory factory)
 
         var body = await response.Content.ReadFromJsonAsync<AuthBody>();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
+
+        // BefriendAsync below sends and accepts a friend request, which issue #29 now refuses
+        // between unconfirmed accounts.
+        await TestAuth.ConfirmAsync(factory, client, username, TestPasswords.Valid);
+
         return (client, username, body.User.Id);
     }
 
