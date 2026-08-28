@@ -55,16 +55,19 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
     /// Anonymous and rate-limited by IP for the same reason register/login are: whoever holds a
     /// token proves themselves by presenting it, not by being signed in already, and an attacker
     /// guessing at tokens has no account of their own to throttle instead.
+    ///
+    /// Returns no bearer token (issue #48) — see IAuthService.ConfirmEmailAsync's doc comment. The
+    /// caller signs in normally afterward.
     /// </summary>
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpGet("confirm-email")]
-    public async Task<ActionResult<AuthResponse>> ConfirmEmail([FromQuery] string token, CancellationToken ct)
+    public async Task<IActionResult> ConfirmEmail([FromQuery] string token, CancellationToken ct)
     {
         var result = await auth.ConfirmEmailAsync(token, ct);
-        return result is null
-            ? BadRequest(new { error = "This confirmation link is invalid or has expired." })
-            : Ok(result);
+        return result is true
+            ? Ok(new { message = "Email confirmed. Sign in to continue." })
+            : BadRequest(new { error = "This confirmation link is invalid or has expired." });
     }
 
     /// <summary>

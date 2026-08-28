@@ -19,8 +19,13 @@ public static class ClaimsPrincipalExtensions
     /// trade-off RolePermissions makes: a change takes effect on the holder's next token rather than
     /// this instant (see JwtTokenService), which is safe here because the only staleness direction is
     /// "still treated as anonymous a little longer" — never a way to gain registered status early.
-    /// AuthService.ConfirmEmailAsync reissues a token immediately so the common case — confirm, then
-    /// keep using the same session — needs no re-login to take effect.
+    ///
+    /// As of issue #48, that staleness genuinely lasts until the next login: AuthService.ConfirmEmailAsync
+    /// no longer reissues a token on confirmation (returning one on every replay of a still-valid,
+    /// never-expiring-until-24h confirm link was itself the vulnerability #48 fixes). A user who
+    /// confirms in one tab while already signed in elsewhere keeps clapping under the anonymous cap
+    /// (ParticipantResolver) in that session until they sign out and back in — this is the accepted
+    /// cost of removing the credential leak, not an oversight.
     /// </summary>
     public static bool IsEmailConfirmed(this ClaimsPrincipal principal) =>
         principal.FindFirstValue(EmailConfirmedClaimType) == bool.TrueString;
