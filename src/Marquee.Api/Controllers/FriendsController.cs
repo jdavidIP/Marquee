@@ -84,6 +84,9 @@ public class FriendsController(IFriendshipService friendships) : ControllerBase
         // Deliberately 404, not 403: telling a caller "that request exists but is not yours" would
         // confirm the existence of a request between two other people.
         FriendActionOutcome.NotAllowed => NotFound(new { error = "No such friend request." }),
+        FriendActionOutcome.NotConfirmed => StatusCode(
+            StatusCodes.Status403Forbidden,
+            new { error = "Confirm your email before sending or receiving friend requests." }),
         _ => Ok(result.Request)
     };
 }

@@ -17,7 +17,9 @@ public enum FriendActionOutcome
     AlreadyFriends,
     AlreadyPending,
     /// <summary>The request exists but this user is not its addressee, or it is no longer pending.</summary>
-    NotAllowed
+    NotAllowed,
+    /// <summary>Either party has not confirmed their email (issue #29) — an unconfirmed account can neither send nor receive.</summary>
+    NotConfirmed
 }
 
 public sealed record FriendActionResult(FriendActionOutcome Outcome, FriendRequestDto? Request = null);
@@ -54,13 +56,26 @@ public sealed class FriendshipService(
         var name = username.Trim();
         var addressee = await db.Users
             .Where(u => u.Username == name)
-            .Select(u => new { u.Id, u.Username })
+            .Select(u => new { u.Id, u.Username, Confirmed = u.EmailConfirmedAt != null })
             .FirstOrDefaultAsync(ct);
 
         if (addressee is null)
             return new FriendActionResult(FriendActionOutcome.UserNotFound);
         if (addressee.Id == requesterId)
             return new FriendActionResult(FriendActionOutcome.Self);
+
+        // Issue #29: an unconfirmed account is treated fully as an anonymous session, and an
+        // anonymous session cannot be anyone's friend. Checked both ways — this is also what stops
+        // an unconfirmed requester from ever creating a request an addressee could later accept, so
+        // nothing extra is needed on the accept/reject path.
+        if (!addressee.Confirmed)
+            return new FriendActionResult(FriendActionOutcome.NotConfirmed);
+        var requesterConfirmed = await db.Users
+            .Where(u => u.Id == requesterId)
+            .Select(u => u.EmailConfirmedAt != null)
+            .FirstOrDefaultAsync(ct);
+        if (!requesterConfirmed)
+            return new FriendActionResult(FriendActionOutcome.NotConfirmed);
 
         // Look both ways. The unique index only stops the same person asking twice; it does not stop
         // two people asking each other, and the answer to "B asks A while A's request to B is
