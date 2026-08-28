@@ -4,7 +4,10 @@ using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
+using Marquee.Infrastructure.Messaging;
+using Marquee.Infrastructure.Notifications;
 using Marquee.Infrastructure.Persistence;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +17,14 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct);
     Task<AuthResponse?> LoginAsync(LoginRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// Confirms the account a valid token names. Null for an invalid, tampered, or expired token, or
+    /// one whose account no longer exists. Idempotent — confirming an already-confirmed account (an
+    /// email client prefetching the link, then the user clicking it) just returns success again
+    /// rather than erroring (CLAUDE.md §7).
+    /// </summary>
+    Task<AuthResponse?> ConfirmEmailAsync(string token, CancellationToken ct);
 
     /// <summary>The countable rules, for a form that wants to state them up front.</summary>
     PasswordRulesDto DescribePasswordRules();
@@ -37,9 +48,13 @@ public sealed class AuthService(
     MarqueeDbContext db,
     IPasswordHasherService passwordHasher,
     IJwtTokenService tokens,
-    IOptions<PasswordPolicyOptions> passwordPolicy) : IAuthService
+    IEmailConfirmationTokenService confirmationTokens,
+    IPublishEndpoint publishEndpoint,
+    IOptions<PasswordPolicyOptions> passwordPolicy,
+    IOptions<EmailConfirmationOptions> emailConfirmation) : IAuthService
 {
     private readonly PasswordPolicyOptions _passwordPolicy = passwordPolicy.Value;
+    private readonly EmailConfirmationOptions _emailConfirmation = emailConfirmation.Value;
 
     public PasswordRulesDto DescribePasswordRules() => new(
         _passwordPolicy.MinLength,
@@ -71,6 +86,23 @@ public sealed class AuthService(
         user.PasswordHash = passwordHasher.Hash(user, request.Password);
 
         db.Users.Add(user);
+
+        // Published (not sent) before the account exists in the caller's eyes, and committed in the
+        // same SaveChanges as the insert below — the outbox pattern Iteration 4 already established,
+        // now used from a second place. Either both the account and its confirmation email exist, or
+        // neither does; there is no window where a registered user has no way to ever confirm.
+        var confirmationToken = confirmationTokens.Issue(user.Id);
+        var confirmUrl = $"{_emailConfirmation.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
+            $"?token={Uri.EscapeDataString(confirmationToken)}";
+        await publishEndpoint.Publish(
+            new SendNotification(
+                nameof(NotificationKind.EmailConfirmation),
+                user.Email,
+                user.Username,
+                confirmUrl,
+                DateTime.UtcNow.AddHours(_emailConfirmation.TokenLifetimeHours)),
+            ct);
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -81,6 +113,26 @@ public sealed class AuthService(
             throw new RegistrationConflictException("Username or email is already taken.");
         }
 
+        return new AuthResponse(tokens.CreateToken(user), UserDto.From(user));
+    }
+
+    public async Task<AuthResponse?> ConfirmEmailAsync(string token, CancellationToken ct)
+    {
+        if (!confirmationTokens.TryValidate(token, out var userId))
+            return null;
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+            return null;
+
+        if (user.EmailConfirmedAt is null)
+        {
+            user.EmailConfirmedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+
+        // A fresh token reflecting the new state, so the tab that just confirmed can keep going
+        // without a re-login — see ClaimsPrincipalExtensions.IsEmailConfirmed's doc comment.
         return new AuthResponse(tokens.CreateToken(user), UserDto.From(user));
     }
 

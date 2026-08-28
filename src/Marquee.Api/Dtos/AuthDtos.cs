@@ -48,8 +48,9 @@ public sealed record UserDto(
     string Email,
     string? Bio,
     bool IsPrivate,
-    string Role)
+    string Role,
+    bool EmailConfirmed)
 {
     public static UserDto From(User u) =>
-        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString());
+        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString(), u.EmailConfirmedAt != null);
 }
