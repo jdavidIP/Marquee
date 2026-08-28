@@ -14,6 +14,11 @@ namespace Marquee.Infrastructure.Notifications;
 /// SendNotificationConsumer, in Marquee.Worker — and a transient SMTP failure is retried by the same
 /// queue retry policy every other consumer uses (ConfigureMarqueeRetry), so no separate resilience
 /// pipeline is needed here.
+///
+/// ponytail: System.Net.Mail.SmtpClient is fine for now — it costs no extra dependency and nothing
+/// sends through it yet. It is a deliberately minimal choice, not an unconsidered default; swap for a
+/// maintained client (e.g. MailKit) if a real SMTP host surfaces delivery issues it doesn't handle
+/// well.
 /// </summary>
 public sealed class EmailNotificationDispatcher(IOptions<NotificationOptions> options) : INotificationDispatcher
 {
