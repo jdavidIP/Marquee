@@ -67,6 +67,47 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
             : Ok(result);
     }
 
+    /// <summary>
+    /// Always the same response whether or not <paramref name="request"/>'s address is registered
+    /// (issue #31). A response that differed would turn this into a user-enumeration oracle — and
+    /// that matters more here than it might elsewhere, because usernames are already publicly
+    /// searchable, so confirming which *emails* are registered would be a real leak on top of that.
+    /// AuthService does the divergent work internally rather than this method short-circuiting, so
+    /// the one thing this endpoint must never do stays true regardless of how the two paths are
+    /// timed, not just how they're worded.
+    /// </summary>
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken ct)
+    {
+        await auth.RequestPasswordResetAsync(request.Email, ct);
+        return Ok(new { message = "If that address is registered, a reset link has been sent." });
+    }
+
+    /// <summary>
+    /// What the reset link points at, once a frontend exists to collect the new password and POST
+    /// here (issue #47 tracks the confirm-email page; a reset page belongs alongside it) — unlike
+    /// confirm-email, this can never be the link itself, since setting a password needs a form.
+    /// </summary>
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var ok = await auth.ResetPasswordAsync(request.Token, request.NewPassword, request.ConfirmPassword, ct);
+            return ok
+                ? Ok(new { message = "Password reset. Sign in with your new password." })
+                : BadRequest(new { error = "This reset link is invalid, expired, or already used." });
+        }
+        catch (PasswordRejectedException ex)
+        {
+            return BadRequest(new { error = ex.Message, problems = ex.Problems });
+        }
+    }
+
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken ct)

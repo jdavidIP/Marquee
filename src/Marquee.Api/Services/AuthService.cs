@@ -26,6 +26,19 @@ public interface IAuthService
     /// </summary>
     Task<AuthResponse?> ConfirmEmailAsync(string token, CancellationToken ct);
 
+    /// <summary>
+    /// Starts a password reset for the given address, if an account holds it. Always succeeds from
+    /// the caller's point of view — see the controller for why the response must never reveal whether
+    /// the address exists (issue #31).
+    /// </summary>
+    Task RequestPasswordResetAsync(string email, CancellationToken ct);
+
+    /// <summary>
+    /// Applies a reset. False for a token that is invalid, expired, or already used; throws
+    /// PasswordRejectedException if the new password fails the same policy registration enforces.
+    /// </summary>
+    Task<bool> ResetPasswordAsync(string token, string newPassword, string confirmPassword, CancellationToken ct);
+
     /// <summary>The countable rules, for a form that wants to state them up front.</summary>
     PasswordRulesDto DescribePasswordRules();
 }
@@ -49,12 +62,15 @@ public sealed class AuthService(
     IPasswordHasherService passwordHasher,
     IJwtTokenService tokens,
     IEmailConfirmationTokenService confirmationTokens,
+    IPasswordResetTokenService resetTokens,
     IPublishEndpoint publishEndpoint,
     IOptions<PasswordPolicyOptions> passwordPolicy,
-    IOptions<EmailConfirmationOptions> emailConfirmation) : IAuthService
+    IOptions<EmailConfirmationOptions> emailConfirmation,
+    IOptions<PasswordResetOptions> passwordReset) : IAuthService
 {
     private readonly PasswordPolicyOptions _passwordPolicy = passwordPolicy.Value;
     private readonly EmailConfirmationOptions _emailConfirmation = emailConfirmation.Value;
+    private readonly PasswordResetOptions _passwordReset = passwordReset.Value;
 
     public PasswordRulesDto DescribePasswordRules() => new(
         _passwordPolicy.MinLength,
@@ -134,6 +150,83 @@ public sealed class AuthService(
         // A fresh token reflecting the new state, so the tab that just confirmed can keep going
         // without a re-login — see ClaimsPrincipalExtensions.IsEmailConfirmed's doc comment.
         return new AuthResponse(tokens.CreateToken(user), UserDto.From(user));
+    }
+
+    /// <summary>
+    /// No branch on whether <paramref name="email"/> matched anyone — the caller (AuthController)
+    /// returns the same response either way, and doing the divergent work here rather than short
+    /// circuiting keeps that true even for someone timing the request, not just reading its body.
+    /// </summary>
+    public async Task RequestPasswordResetAsync(string email, CancellationToken ct)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == normalized, ct);
+        if (user is null)
+            return;
+
+        var rawToken = resetTokens.GenerateToken();
+        var expiresAt = DateTime.UtcNow.AddMinutes(_passwordReset.TokenLifetimeMinutes);
+
+        db.PasswordResetTokens.Add(new PasswordResetToken
+        {
+            UserId = user.Id,
+            TokenHash = resetTokens.Hash(rawToken),
+            ExpiresAt = expiresAt,
+        });
+
+        // Same outbox pattern as registration's confirmation email: published before SaveChanges, so
+        // the token row and the notification commit together or not at all.
+        var resetUrl = $"{_passwordReset.BaseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+        await publishEndpoint.Publish(
+            new SendNotification(
+                nameof(NotificationKind.PasswordReset),
+                user.Email,
+                user.Username,
+                resetUrl,
+                expiresAt),
+            ct);
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> ResetPasswordAsync(
+        string token, string newPassword, string confirmPassword, CancellationToken ct)
+    {
+        var hash = resetTokens.Hash(token);
+        var now = DateTime.UtcNow;
+
+        var resetToken = await db.PasswordResetTokens
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > now, ct);
+        if (resetToken is null)
+            return false;
+
+        // Same rules as registration (#27) — a reset that enforced less would be a way around the
+        // policy, not a recovery path.
+        EnforcePasswordPolicy(newPassword, confirmPassword, resetToken.User.Username, resetToken.User.Email);
+
+        resetToken.User.PasswordHash = passwordHasher.Hash(resetToken.User, newPassword);
+        resetToken.UsedAt = now;
+
+        // Every other outstanding token for this account dies with this one. A second, unused reset
+        // link must not still work once the password has actually changed underneath it.
+        //
+        // Loaded as tracked entities rather than ExecuteUpdateAsync deliberately: ExecuteUpdateAsync
+        // sends its own UPDATE immediately, in its own transaction, separate from the SaveChangesAsync
+        // below — mixing the two would leave a real window where the other tokens are invalidated but
+        // the password change and this token's own UsedAt never commit (or the reverse), if the
+        // process died between the two calls. Nothing here needs ExecuteUpdateAsync's real reason for
+        // being (FriendshipService uses it to win a concurrency race) — this is cleanup after an
+        // already-successful validation, so one SaveChangesAsync flushing all three changes together
+        // is both simpler and actually atomic.
+        var otherTokens = await db.PasswordResetTokens
+            .Where(t => t.UserId == resetToken.UserId && t.Id != resetToken.Id && t.UsedAt == null)
+            .ToListAsync(ct);
+        foreach (var other in otherTokens)
+            other.UsedAt = now;
+
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task<AuthResponse?> LoginAsync(LoginRequest request, CancellationToken ct)
