@@ -16,9 +16,9 @@ public sealed class EmailConfirmationOptions
     public string SigningKey { get; set; } = "";
 
     /// <summary>
-    /// Where the confirm-email link points. No frontend confirmation page exists yet (tracked
-    /// separately), so this is the API's own base URL and the link opens the confirm endpoint
-    /// directly.
+    /// Where the confirm-email link points — the frontend's own origin (issue #47), matching
+    /// PasswordResetOptions.BaseUrl. The Angular route at /confirm-email reads the token and calls
+    /// the API itself; the link never opens the API directly.
     /// </summary>
-    public string BaseUrl { get; set; } = "http://localhost:5080";
+    public string BaseUrl { get; set; } = "http://localhost:4200";
 }

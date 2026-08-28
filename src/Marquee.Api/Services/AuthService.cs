@@ -116,7 +116,7 @@ public sealed class AuthService(
         // now used from a second place. Either both the account and its confirmation email exist, or
         // neither does; there is no window where a registered user has no way to ever confirm.
         var confirmationToken = confirmationTokens.Issue(user.Id);
-        var confirmUrl = $"{_emailConfirmation.BaseUrl.TrimEnd('/')}/api/auth/confirm-email" +
+        var confirmUrl = $"{_emailConfirmation.BaseUrl.TrimEnd('/')}/confirm-email" +
             $"?token={Uri.EscapeDataString(confirmationToken)}";
         await publishEndpoint.Publish(
             new SendNotification(
