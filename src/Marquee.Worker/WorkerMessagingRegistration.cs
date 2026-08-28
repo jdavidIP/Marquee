@@ -25,6 +25,7 @@ public static class WorkerMessagingRegistration
         {
             x.AddMarqueeOutbox(options, useBusOutbox: false);
             x.AddConsumer<PremiereOpenedConsumer>();
+            x.AddConsumer<SendNotificationConsumer>();
 
             x.UsingRabbitMq((context, cfg) =>
             {
@@ -44,6 +45,15 @@ public static class WorkerMessagingRegistration
                     e.UseEntityFrameworkOutbox<MarqueeDbContext>(context);
 
                     e.ConfigureConsumer<PremiereOpenedConsumer>(context);
+                });
+
+                // No UseEntityFrameworkOutbox here: this consumer touches no database and publishes
+                // nothing further, so there is nothing for the outbox to make transactional. Retry
+                // alone is enough to ride out a transient SMTP failure.
+                cfg.ReceiveEndpoint(QueueNames.NotificationDispatch, e =>
+                {
+                    e.UseMessageRetry(r => r.ConfigureMarqueeRetry(options));
+                    e.ConfigureConsumer<SendNotificationConsumer>(context);
                 });
             });
         });

@@ -13,6 +13,9 @@ public static class QueueNames
     /// <summary>API endpoint: turns a completed fan-out into the SignalR reveal.</summary>
     public const string PremiereReveal = "marquee-premiere-reveal";
 
+    /// <summary>Worker endpoint: delivers a SendNotification via whichever INotificationDispatcher is configured.</summary>
+    public const string NotificationDispatch = "marquee-notification-dispatch";
+
     /// <summary>Dead-letter queue MassTransit creates for <see cref="PremiereFanOut"/>.</summary>
     public const string PremiereFanOutError = PremiereFanOut + "_error";
 }
