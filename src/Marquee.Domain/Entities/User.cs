@@ -12,6 +12,13 @@ public class User : AuditableEntity
     public bool IsBlocked { get; set; }
     public UserRole Role { get; set; } = UserRole.User;
 
+    /// <summary>
+    /// Null until the confirmation link is used, then set once and never cleared (issue #29). An
+    /// unconfirmed account is excluded from `totalRegisteredUsers` (CLAUDE.md §4.1/§4.2) and treated
+    /// fully as an anonymous session everywhere else — see ParticipantResolver.
+    /// </summary>
+    public DateTime? EmailConfirmedAt { get; set; }
+
     public ICollection<Contribution> Contributions { get; set; } = new List<Contribution>();
     public ICollection<LibraryEntry> LibraryEntries { get; set; } = new List<LibraryEntry>();
 

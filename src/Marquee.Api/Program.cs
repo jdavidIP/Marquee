@@ -191,7 +191,9 @@ static async Task SeedAdminAsync(
             "Seeded admin password does not meet the password policy: {Reasons} Change Admin:Password before this reaches anything but a development machine.",
             verdict.Summary);
 
-    var admin = new User { Username = username, Email = email, Role = UserRole.Admin };
+    // Confirmed at seed time: the admin has to be a fully counted, fully functional registered
+    // participant from the first request, not stuck clapping under the anonymous cap (issue #29).
+    var admin = new User { Username = username, Email = email, Role = UserRole.Admin, EmailConfirmedAt = DateTime.UtcNow };
     admin.PasswordHash = hasher.Hash(admin, password);
     db.Users.Add(admin);
     await db.SaveChangesAsync();
