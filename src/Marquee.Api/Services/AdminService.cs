@@ -115,6 +115,7 @@ public sealed class AdminService(
                 u.Role.ToString(),
                 u.IsBlocked,
                 u.IsPrivate,
+                u.EmailConfirmedAt != null,
                 u.CreatedAt,
                 u.LibraryEntries.Count))
             .ToListAsync(ct);
@@ -244,7 +245,8 @@ public sealed class AdminService(
         if (premiere.Status != PremiereStatus.Scheduled)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
-        var totalUsers = await db.Users.CountAsync(ct);
+        // Confirmed only (issue #29) — see PremiereFactory.CreateAsync.
+        var totalUsers = await db.Users.CountAsync(u => u.EmailConfirmedAt != null, ct);
         var (min, max) = ThresholdCalculator.AdminBand(totalUsers, _rules);
         if (threshold < min || threshold > max)
         {
@@ -294,7 +296,8 @@ public sealed class AdminService(
         var localDate = DateOnly.FromDateTime(premiere.ScheduledFor.ToLocalTime());
         var editable = premiere.Status == PremiereStatus.Scheduled;
 
-        var totalUsers = await db.Users.CountAsync(ct);
+        // Confirmed only (issue #29) — see PremiereFactory.CreateAsync.
+        var totalUsers = await db.Users.CountAsync(u => u.EmailConfirmedAt != null, ct);
         var (min, max) = ThresholdCalculator.AdminBand(totalUsers, _rules);
 
         // An uneditable Premiere reports no windows rather than windows nobody may use.

@@ -33,6 +33,11 @@ public static class ApiServiceRegistration
             configuration.GetSection(AnonymousSessionOptions.SectionName));
         services.Configure<ClapGuardOptions>(configuration.GetSection(ClapGuardOptions.SectionName));
         services.AddSingleton<IAnonymousSessionService, AnonymousSessionService>();
+
+        // --- Email confirmation (issue #29) ---
+        services.Configure<EmailConfirmationOptions>(
+            configuration.GetSection(EmailConfirmationOptions.SectionName));
+        services.AddSingleton<IEmailConfirmationTokenService, EmailConfirmationTokenService>();
         // Scoped: it caches its answer in HttpContext.Items, so its lifetime is the request's.
         services.AddScoped<IParticipantResolver, ParticipantResolver>();
         services.AddScoped<IFriendshipService, FriendshipService>();

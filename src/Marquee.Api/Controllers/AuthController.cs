@@ -48,6 +48,25 @@ public class AuthController(IAuthService auth, MarqueeDbContext db) : Controller
     [HttpGet("password-rules")]
     public ActionResult<PasswordRulesDto> PasswordRules() => Ok(auth.DescribePasswordRules());
 
+    /// <summary>
+    /// What the confirm-email link in the notification actually opens (issue #29). GET, because a
+    /// mailto link is clicked, not submitted — the token is the credential, not the method.
+    ///
+    /// Anonymous and rate-limited by IP for the same reason register/login are: whoever holds a
+    /// token proves themselves by presenting it, not by being signed in already, and an attacker
+    /// guessing at tokens has no account of their own to throttle instead.
+    /// </summary>
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    [HttpGet("confirm-email")]
+    public async Task<ActionResult<AuthResponse>> ConfirmEmail([FromQuery] string token, CancellationToken ct)
+    {
+        var result = await auth.ConfirmEmailAsync(token, ct);
+        return result is null
+            ? BadRequest(new { error = "This confirmation link is invalid or has expired." })
+            : Ok(result);
+    }
+
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken ct)

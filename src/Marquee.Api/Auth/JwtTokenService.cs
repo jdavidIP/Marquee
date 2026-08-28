@@ -27,7 +27,10 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, user.Role.ToString()),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            // Issue #29: whether this account was confirmed at issue time — see IsEmailConfirmed's
+            // doc comment for why staleness in this one direction is acceptable.
+            new(ClaimsPrincipalExtensions.EmailConfirmedClaimType, (user.EmailConfirmedAt != null).ToString())
         };
 
         // Permissions are stamped into the token from the role at issue time, so authorisation is a
