@@ -1,14 +1,33 @@
+/*
+ * Editorial Gold on Black (issue #32) — cinematic/premiere-night, dark-only. Settled via a design
+ * canvas comparing three executions of that mood; this is the restrained, type-led one, with one
+ * deliberate exception: the curtain-fabric + progressive-bulb mechanic on the Premiere screen is
+ * kept (see premiere.component.css) because it is the app's one existing piece of genuine theatrical
+ * texture and the literal expression of "clap to open the curtain" — restraint elsewhere is what
+ * earns it staying.
+ */
 :root {
-  --bg: #0f0d14;
-  --panel: #1b1723;
-  --panel-2: #241f2f;
-  --ink: #f4f0ff;
-  --muted: #a79fbd;
-  --gold: #f5c451;
-  --gold-dim: #7a6329;
-  --accent: #e0567b;
+  --bg: #0d0c11;
+  --panel: #17151d;
+  --panel-2: #1e1c26;
+  --ink: #f2eef9;
+  --muted: #93899f;
+  --gold: #e8b649;
+  --gold-dim: #6b552a;
+  --accent: #d9557a;
   --ok: #57c98a;
-  --border: #322b40;
+  --border: #29262f;
+
+  /* The Premiere stage's curtain fabric — its own small palette, not reused elsewhere. */
+  --curtain-a: #7c1230;
+  --curtain-b: #5d0c24;
+  --curtain-c: #8d1637;
+  --curtain-d: #4b0a1d;
+
+  /* Cormorant Garamond for anything that reads as a headline or a title; IBM Plex Sans for
+     everything functional — labels, body copy, controls. Loaded in index.html. */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -18,8 +37,10 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
 }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; }
 
 button { font: inherit; cursor: pointer; }
 a { color: inherit; }

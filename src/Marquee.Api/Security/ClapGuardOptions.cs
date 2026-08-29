@@ -14,7 +14,7 @@ public sealed class ClapGuardOptions
     /// enthusiastic real tapping — the per-participant cap (§4.2) is what bounds their total
     /// influence; this only stops a script from spending it in one burst.
     /// </summary>
-    public int MinIntervalMs { get; set; } = 250;
+    public int MinIntervalMs { get; set; } = 75;
 
     /// <summary>
     /// How long a completed Idempotency-Key keeps replaying its original response. Long enough to

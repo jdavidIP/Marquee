@@ -1,41 +1,44 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 14px 28px;
-  background: var(--panel);
+  gap: 28px;
+  padding: 18px 32px;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
 .brand {
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--gold);
 }
 
 .nav {
   display: flex;
-  gap: 18px;
+  gap: 26px;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .nav a {
   text-decoration: none;
   color: var(--muted);
-  padding: 4px 2px;
-  border-bottom: 2px solid transparent;
+  padding: 4px 0;
 }
 
 .nav a.active {
-  color: var(--ink);
-  border-bottom-color: var(--gold);
+  color: var(--gold);
 }
 
 .account {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  font-size: 0.82rem;
 }
 
 /* An anchor since it leads to your own profile, but styled as the quiet label it has always been. */
@@ -47,10 +50,11 @@
   border: none;
   color: var(--accent);
   padding: 0;
+  font-size: inherit;
 }
 
 .content {
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 32px 24px;
 }
