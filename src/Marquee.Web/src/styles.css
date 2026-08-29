@@ -7,6 +7,8 @@
  * earns it staying.
  */
 :root {
+  color-scheme: dark;
+
   --bg: #0d0c11;
   --panel: #17151d;
   --panel-2: #1e1c26;
@@ -45,3 +47,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; }
 button { font: inherit; cursor: pointer; }
 a { color: inherit; }
 input { font: inherit; }
+
+/* Windows Chromium does not reliably theme the native <select> popup from color-scheme alone —
+   style the options directly so the dropdown list isn't white-on-white. */
+select option {
+  background: var(--panel);
+  color: var(--ink);
+}
