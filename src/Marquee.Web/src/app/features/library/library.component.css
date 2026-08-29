@@ -27,21 +27,21 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 }
 
 .control__input {
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   color: inherit;
   padding: 8px 10px;
   font: inherit;
   width: 100%;
 }
 
-.control__input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.control__input:focus-visible { outline: none; border-color: var(--gold); }
 
 .direction {
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   color: inherit;
   cursor: pointer;
   font-size: 1rem;
@@ -53,7 +53,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .clear {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
@@ -73,9 +73,9 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 }
 
 .pager__button {
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -93,10 +93,6 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 }
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -106,6 +102,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   aspect-ratio: 2 / 3;
   object-fit: cover;
   display: block;
+  border: 1px solid var(--border);
 }
 
 .poster.placeholder {
@@ -118,18 +115,20 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   color: var(--muted);
 }
 
-.body { padding: 14px; }
+.body { padding: 14px 0; }
 h2 { font-size: 1rem; margin: 0 0 4px; }
 .year { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
 .rating { color: var(--gold); font-size: 0.85rem; margin: 0 0 10px; }
 
 .emblem {
-  display: inline-block;
-  font-size: 0.72rem;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--gold-dim);
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-top: 1px solid var(--gold-dim);
+  padding: 6px 0 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--gold);
-  font-weight: 700;
 }
-.emblem.none { background: var(--panel-2); color: var(--muted); }
+.emblem.none { border-top-color: var(--border); color: var(--muted); }
