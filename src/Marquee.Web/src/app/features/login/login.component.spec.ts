@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
@@ -130,6 +130,34 @@ describe('LoginComponent', () => {
       'correct horse battery staple 7',
       'correct horse battery staple 7',
     );
+  });
+
+  it('shows the check-your-email panel instead of navigating straight in (issue #47)', () => {
+    const c = make();
+    c['mode'].set('register');
+    c['username'] = 'ana';
+    c['email'] = 'ana@marquee.test';
+    c['password'] = 'correct horse battery staple 7';
+    c['confirmPassword'] = 'correct horse battery staple 7';
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate');
+
+    c['submit']();
+
+    expect(c['justRegistered']()).toBe(true);
+    expect(c['busy']()).toBe(false);
+    // Confirming is not a gate — nothing here should have sent the browser anywhere on its own.
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('continue() leaves the panel for the app itself', () => {
+    const c = make();
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate');
+
+    c['continue']();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/premiere']);
   });
 
   it('lists every rule the server refused on', () => {

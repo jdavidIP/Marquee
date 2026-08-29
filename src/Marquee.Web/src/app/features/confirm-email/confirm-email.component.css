@@ -1,0 +1,30 @@
+/* Mirrors login.component.css's auth panel — duplicated rather than shared, since Angular scopes
+   component styles and this is the only other page that needs the same look. */
+.auth {
+  max-width: 380px;
+  margin: 40px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+}
+
+h1 { margin: 0 0 6px; font-size: 1.4rem; }
+.sub { margin: 0 0 22px; color: var(--muted); font-size: 0.9rem; }
+.sub.ok { color: var(--ok); }
+
+.err { color: var(--accent); font-size: 0.85rem; margin: 0 0 22px; }
+
+.primary {
+  display: inline-block;
+  background: var(--gold);
+  color: #241a00;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 20px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.switch { display: block; margin-top: 6px; }

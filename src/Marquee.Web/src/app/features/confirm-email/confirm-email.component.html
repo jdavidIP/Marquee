@@ -1,0 +1,18 @@
+<section class="auth">
+  @switch (status()) {
+    @case ('checking') {
+      <h1>Confirming your email…</h1>
+      <p class="sub">Just a moment.</p>
+    }
+    @case ('confirmed') {
+      <h1>Email confirmed</h1>
+      <p class="sub ok">Your account is confirmed. Sign in to continue.</p>
+      <a class="primary" routerLink="/login">Sign in</a>
+    }
+    @case ('failed') {
+      <h1>Confirmation failed</h1>
+      <p class="err">{{ error() }}</p>
+      <a class="switch link" routerLink="/login">Back to sign in</a>
+    }
+  }
+</section>

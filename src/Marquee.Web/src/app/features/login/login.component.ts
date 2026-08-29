@@ -19,6 +19,15 @@ export class LoginComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
 
+  /**
+   * Shown in place of the form after a successful registration, instead of navigating straight to
+   * /premiere (issue #47) — registration creates an unconfirmed account, and leaving with no mention
+   * of that was the gap #47's own text called out. The account already works meanwhile (an
+   * unconfirmed user claps as an anonymous participant — issue #29), so this never blocks entry,
+   * it only makes sure the person knows there is a link waiting in their inbox.
+   */
+  protected readonly justRegistered = signal(false);
+
   /** The rules the server refused on, itemised — the same content as error(), listed instead. */
   protected readonly problems = signal<PasswordProblemDto[]>([]);
 
@@ -77,22 +86,34 @@ export class LoginComponent {
     this.clearErrors();
     this.busy.set(true);
 
-    const done = {
-      next: () => this.router.navigate(['/premiere']),
-      error: (err: unknown) => {
-        this.busy.set(false);
-        this.problems.set(passwordProblems(err));
-        this.error.set(apiError(err, 'Something went wrong. Please try again.'));
-      },
+    const onError = (err: unknown): void => {
+      this.busy.set(false);
+      this.problems.set(passwordProblems(err));
+      this.error.set(apiError(err, 'Something went wrong. Please try again.'));
     };
 
     if (this.mode() === 'login') {
-      this.auth.login(this.username.trim(), this.password).subscribe(done);
+      this.auth
+        .login(this.username.trim(), this.password)
+        .subscribe({ next: () => this.router.navigate(['/premiere']), error: onError });
     } else {
       this.auth
         .register(this.username.trim(), this.email.trim(), this.password, this.confirmPassword)
-        .subscribe(done);
+        .subscribe({
+          // Straight to /premiere would say nothing about the confirmation email just sent — this
+          // panel is that message, not an extra gate (see justRegistered's doc comment).
+          next: () => {
+            this.busy.set(false);
+            this.justRegistered.set(true);
+          },
+          error: onError,
+        });
     }
+  }
+
+  /** Leaves the "check your email" panel for the app itself — the account already works meanwhile. */
+  continue(): void {
+    this.router.navigate(['/premiere']);
   }
 
   private clearErrors(): void {
