@@ -95,6 +95,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .card {
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--border);
 }
 
 .poster {
@@ -102,7 +103,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   aspect-ratio: 2 / 3;
   object-fit: cover;
   display: block;
-  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .poster.placeholder {
@@ -115,7 +116,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   color: var(--muted);
 }
 
-.body { padding: 14px 0; }
+.body { padding: 12px 14px 14px; background: var(--panel); }
 h2 { font-size: 1rem; margin: 0 0 4px; }
 .year { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
 .rating { color: var(--gold); font-size: 0.85rem; margin: 0 0 10px; }

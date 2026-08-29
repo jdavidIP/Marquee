@@ -58,6 +58,14 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly isOpen = computed(() => isOpenStatus(this.premiere()?.status));
 
+  /** The revealed title, split into words then letters, so the marquee sign can wrap whole words
+   * onto their own line rather than breaking a word mid-tile. */
+  protected readonly titleWords = computed(() => {
+    const title = this.premiere()?.movie?.title;
+    if (!title) return [];
+    return title.split(' ').filter((w) => w.length > 0).map((w) => w.split(''));
+  });
+
   protected readonly capReached = computed(() => {
     const p = this.premiere();
     return !!p && p.myClaps >= p.registeredClapCap;

@@ -42,6 +42,143 @@ h1 {
 }
 
 /* ---------------------------------------------------------------------------
+   The sign. Always shows the header line; the title fills in with lit letter
+   tiles once the Premiere opens. Each word is its own non-wrapping group, so
+   a long title wraps onto another line rather than splitting a word across
+   two — the sign grows taller instead of truncating.
+   --------------------------------------------------------------------------- */
+
+.peak-wrap {
+  max-width: 460px;
+  margin: 0 auto;
+  position: relative;
+  height: 20px;
+}
+.peak {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 46px solid transparent;
+  border-right: 46px solid transparent;
+  border-bottom: 18px solid var(--gold-dim);
+}
+.peak-beacon {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+
+.sign {
+  max-width: 460px;
+  margin: 0 auto 10px;
+  display: grid;
+  grid-template-columns: 18px 1fr 18px;
+  grid-template-rows: 18px 1fr 18px;
+  background: var(--gold-dim);
+  padding: 1px;
+}
+.row-bulbs {
+  grid-column: 1 / 4;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--panel-2);
+}
+.row-bulbs.top {
+  grid-row: 1;
+}
+.row-bulbs.bottom {
+  grid-row: 3;
+}
+.col-bulbs {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  background: var(--panel-2);
+}
+.col-bulbs.left {
+  grid-row: 2;
+  grid-column: 1;
+}
+.col-bulbs.right {
+  grid-row: 2;
+  grid-column: 3;
+}
+.sign-bulb {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  opacity: 0.5;
+  flex-shrink: 0;
+  transition: background 0.35s ease, opacity 0.35s ease, box-shadow 0.35s ease;
+}
+.sign-bulb.lit {
+  background: var(--gold);
+  opacity: 1;
+  box-shadow: 0 0 5px var(--gold);
+}
+
+.sign-body {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  background: var(--panel-2);
+  padding: 16px 14px;
+  text-align: center;
+}
+.sign-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+.word {
+  display: flex;
+  gap: 2px;
+}
+.tile {
+  min-width: 18px;
+  height: 22px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gold-dim);
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--gold);
+  background: var(--panel);
+  text-shadow: 0 0 5px rgba(232, 182, 73, 0.5);
+}
+.tile.dim {
+  color: var(--gold-dim);
+  text-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
    The marquee. Everything here is driven by the component's single progress
    value: the bulbs get a `lit` class, the curtain panels get a transform.
    Nothing about the marquee is stored as its own piece of state.

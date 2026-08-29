@@ -25,6 +25,51 @@
       <span class="live" [class.on]="realtime.connected()" [title]="realtime.connected() ? 'Live' : 'Reconnecting…'"></span>
     </p>
 
+    <!-- The sign: always shows the header line; the title fills in with lit letter tiles once
+         the Premiere opens. Wrapping is word-safe — each word is its own non-wrapping group, so a
+         long title grows the sign taller instead of splitting a word across lines. -->
+    <div class="peak-wrap"><div class="peak"></div><div class="peak-beacon"></div></div>
+    <div class="sign">
+      <div class="row-bulbs top">
+        @for (lit of bulbs(); track $index) {
+          @if ($index % 4 === 0) { <span class="sign-bulb" [class.lit]="lit"></span> }
+        }
+      </div>
+      <div class="col-bulbs left">
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+      </div>
+      <div class="sign-body">
+        <p class="sign-label">Today's premiere</p>
+        <div class="tiles">
+          @if (isOpen() && titleWords().length > 0) {
+            @for (word of titleWords(); track $index) {
+              <span class="word">
+                @for (letter of word; track $index) {
+                  <span class="tile">{{ letter }}</span>
+                }
+              </span>
+            }
+          } @else {
+            <span class="word">
+              <span class="tile dim">?</span><span class="tile dim">?</span><span class="tile dim">?</span>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-bulbs right">
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+        <span class="sign-bulb" [class.lit]="isOpen()"></span>
+      </div>
+      <div class="row-bulbs bottom">
+        @for (lit of bulbs(); track $index) {
+          @if ($index % 4 === 0) { <span class="sign-bulb" [class.lit]="lit"></span> }
+        }
+      </div>
+    </div>
+
     <!-- The marquee. Bulbs and curtain are both drawn from progress() — one value, two views. -->
     <div class="marquee">
       <div class="bulbs top">
