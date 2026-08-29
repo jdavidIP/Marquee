@@ -83,6 +83,30 @@ export class AuthService {
     });
   }
 
+  /**
+   * Always the same response shape whether or not the address is registered (issue #31) — the
+   * caller shows whatever message comes back without branching on it, which is what actually keeps
+   * that guarantee visible in the UI rather than just in the API contract.
+   */
+  forgotPassword(email: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${environment.apiBase}/auth/forgot-password`, {
+      email,
+    });
+  }
+
+  /** No sign-in as a side effect, same reasoning as confirmEmail — just a message, nothing to store. */
+  resetPassword(
+    token: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${environment.apiBase}/auth/reset-password`, {
+      token,
+      newPassword,
+      confirmPassword,
+    });
+  }
+
   login(usernameOrEmail: string, password: string): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${environment.apiBase}/auth/login`, { usernameOrEmail, password })

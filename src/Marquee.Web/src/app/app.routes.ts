@@ -17,6 +17,15 @@ export const routes: Routes = [
       ),
   },
   {
+    // Same reasoning as confirm-email — reachable with no session, since resetting a password is
+    // exactly what someone locked out of their account needs (issue #50).
+    path: 'reset-password',
+    loadComponent: () =>
+      import('./features/reset-password/reset-password.component').then(
+        (m) => m.ResetPasswordComponent,
+      ),
+  },
+  {
     path: 'premiere',
     canActivate: [authGuard],
     loadComponent: () => import('./features/premiere/premiere.component').then((m) => m.PremiereComponent),

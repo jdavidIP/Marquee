@@ -17,6 +17,7 @@ import { PasswordRulesDto } from '../../core/models';
 describe('LoginComponent', () => {
   let registerSpy: jasmine.Spy;
   let loginSpy: jasmine.Spy;
+  let forgotPasswordSpy: jasmine.Spy;
 
   const rules: PasswordRulesDto = {
     minLength: 12,
@@ -29,6 +30,7 @@ describe('LoginComponent', () => {
     options: {
       rules?: PasswordRulesDto | (() => ReturnType<typeof throwError>);
       registerResult?: (() => ReturnType<typeof throwError>) | null;
+      forgotPasswordResult?: () => ReturnType<typeof throwError>;
     } = {},
   ) {
     TestBed.resetTestingModule();
@@ -40,6 +42,13 @@ describe('LoginComponent', () => {
         options.registerResult ? options.registerResult() : of({ token: 't', user: {} }),
       );
     loginSpy = jasmine.createSpy('login').and.returnValue(of({ token: 't', user: {} }));
+    forgotPasswordSpy = jasmine
+      .createSpy('forgotPassword')
+      .and.returnValue(
+        options.forgotPasswordResult
+          ? options.forgotPasswordResult()
+          : of({ message: 'If that address is registered, a reset link has been sent.' }),
+      );
 
     TestBed.configureTestingModule({
       imports: [LoginComponent],
@@ -50,6 +59,7 @@ describe('LoginComponent', () => {
           useValue: {
             register: registerSpy,
             login: loginSpy,
+            forgotPassword: forgotPasswordSpy,
             passwordRules: () =>
               typeof rulesResult === 'function' ? rulesResult() : of(rulesResult),
           },
@@ -226,5 +236,45 @@ describe('LoginComponent', () => {
     // A confirmation only means anything beside the password it was typed against; carrying it
     // across would let a stale value satisfy the check on the way back.
     expect(c['confirmPassword']).toBe('');
+  });
+
+  it('shows the server\'s own message after requesting a reset (issue #50)', () => {
+    const c = make();
+    c['openForgotPassword']();
+    c['forgotEmail'] = ' ana@marquee.test ';
+
+    c['requestReset']();
+
+    expect(forgotPasswordSpy).toHaveBeenCalledWith(' ana@marquee.test '.trim());
+    expect(c['resetRequested']()).toBe(true);
+    expect(c['resetMessage']()).toBe('If that address is registered, a reset link has been sent.');
+  });
+
+  it('backToSignIn() clears the request state', () => {
+    const c = make();
+    c['openForgotPassword']();
+    c['forgotEmail'] = 'ana@marquee.test';
+    c['requestReset']();
+    expect(c['resetRequested']()).toBe(true);
+
+    c['backToSignIn']();
+
+    expect(c['mode']()).toBe('login');
+    expect(c['resetRequested']()).toBe(false);
+    expect(c['resetMessage']()).toBeNull();
+    expect(c['forgotEmail']).toBe('');
+  });
+
+  it('surfaces a failed reset request the same way as any other API error', () => {
+    const c = make({
+      forgotPasswordResult: () => throwError(() => new HttpErrorResponse({ status: 429 })),
+    });
+    c['openForgotPassword']();
+    c['forgotEmail'] = 'ana@marquee.test';
+
+    c['requestReset']();
+
+    expect(c['resetRequested']()).toBe(false);
+    expect(c['error']()).toBeTruthy();
   });
 });

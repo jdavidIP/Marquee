@@ -6,6 +6,32 @@
       confirming just unlocks full participation in a Premiere.
     </p>
     <button class="primary" type="button" (click)="continue()">Continue to Marquee</button>
+  } @else if (mode() === 'forgot') {
+    @if (resetRequested()) {
+      <h1>Check your email</h1>
+      <p class="sub ok">{{ resetMessage() }}</p>
+      <button class="switch link" (click)="backToSignIn()">Back to sign in</button>
+    } @else {
+      <h1>Reset your password</h1>
+      <p class="sub">Enter the email on your account and we'll send a link to reset it.</p>
+
+      <form (ngSubmit)="requestReset()" #rf="ngForm">
+        <label>
+          <span>Email</span>
+          <input name="forgotEmail" type="email" [(ngModel)]="forgotEmail" required autocomplete="email" />
+        </label>
+
+        @if (error()) {
+          <p class="err">{{ error() }}</p>
+        }
+
+        <button class="primary" type="submit" [disabled]="busy() || rf.invalid">
+          {{ busy() ? 'Please wait…' : 'Send reset link' }}
+        </button>
+      </form>
+
+      <button class="switch link" (click)="backToSignIn()">Back to sign in</button>
+    }
   } @else {
   <h1>{{ mode() === 'login' ? 'Sign in to Marquee' : 'Create your account' }}</h1>
   <p class="sub">Four times a day a Premiere appears. Clap together to open it.</p>
@@ -32,6 +58,10 @@
              [attr.minlength]="mode() === 'register' ? rules()?.minLength : null"
              autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}" />
     </label>
+
+    @if (mode() === 'login') {
+      <button class="switch link" type="button" (click)="openForgotPassword()">Forgot your password?</button>
+    }
 
     @if (mode() === 'register') {
       @if (passwordHint(); as hint) {
