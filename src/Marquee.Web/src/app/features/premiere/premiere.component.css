@@ -18,10 +18,7 @@ h1 {
 
 .empty,
 .stage-wrap {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 32px;
+  padding: 32px 0;
 }
 
 .stage-wrap {
@@ -54,8 +51,8 @@ h1 {
   max-width: 460px;
   margin: 0 auto 28px;
   padding: 12px;
-  border: 2px solid var(--gold-dim);
-  border-radius: 14px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
   background: var(--panel-2);
 }
 
@@ -73,8 +70,8 @@ h1 {
 }
 
 .bulb {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--gold-dim);
   opacity: 0.45;
@@ -86,7 +83,7 @@ h1 {
 .bulb.lit {
   background: var(--gold);
   opacity: 1;
-  box-shadow: 0 0 8px var(--gold);
+  box-shadow: 0 0 6px var(--gold);
 }
 
 .stage {
@@ -125,14 +122,14 @@ h1 {
   bottom: 0;
   width: 50%;
   background:
-    repeating-linear-gradient(90deg, #7c1230 0 10px, #5d0c24 10px 20px),
-    linear-gradient(180deg, #8d1637, #4b0a1d);
+    repeating-linear-gradient(90deg, var(--curtain-a) 0 10px, var(--curtain-b) 10px 20px),
+    linear-gradient(180deg, var(--curtain-c), var(--curtain-d));
   transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
   will-change: transform;
 }
 .curtain.left {
   left: 0;
-  border-right: 1px solid #3d0817;
+  border-right: 1px solid var(--curtain-d);
 }
 .curtain.right {
   right: 0;
@@ -157,21 +154,29 @@ h1 {
 }
 
 .clap {
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+  padding: 16px 40px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: transform 0.05s ease, background 0.2s ease, color 0.2s ease;
+}
+.clap:hover:not(:disabled) {
   background: var(--gold);
   color: #241a00;
-  border: none;
-  border-radius: 999px;
-  padding: 16px 40px;
-  font-size: 1.15rem;
-  font-weight: 800;
-  transition: transform 0.05s ease;
 }
 .clap:active {
   transform: scale(0.96);
 }
 .clap:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
+  border-color: var(--border);
+  color: var(--muted);
 }
 
 .mine {
@@ -189,12 +194,16 @@ h1 {
 }
 
 .primary {
-  background: var(--gold);
-  color: #241a00;
-  border: none;
-  border-radius: 8px;
-  padding: 11px 18px;
-  font-weight: 700;
+  display: inline-block;
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+  padding: 12px 24px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   margin-top: 14px;
 }
 .asLink {
