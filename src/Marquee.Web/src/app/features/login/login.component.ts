@@ -15,9 +15,14 @@ export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
-  protected readonly mode = signal<'login' | 'register'>('login');
+  protected readonly mode = signal<'login' | 'register' | 'forgot'>('login');
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+
+  /** Whether the forgot-password request has been sent — shows the server's own response text instead of the form. */
+  protected readonly resetRequested = signal(false);
+  protected readonly resetMessage = signal<string | null>(null);
+  protected forgotEmail = '';
 
   /**
    * Shown in place of the form after a successful registration, instead of navigating straight to
@@ -71,6 +76,41 @@ export class LoginComponent {
     // Deliberately not carried across: a confirmation is only meaningful next to the password it
     // was typed against, and leaving it filled would let a stale value satisfy the check.
     this.confirmPassword = '';
+  }
+
+  openForgotPassword(): void {
+    this.mode.set('forgot');
+    this.clearErrors();
+  }
+
+  backToSignIn(): void {
+    this.mode.set('login');
+    this.resetRequested.set(false);
+    this.resetMessage.set(null);
+    this.forgotEmail = '';
+    this.clearErrors();
+  }
+
+  /**
+   * Always shows the server's own response message (issue #31: identical wording whether or not the
+   * address exists). Nothing here branches on the outcome — there is only one outcome from the
+   * caller's point of view, by design.
+   */
+  requestReset(): void {
+    this.clearErrors();
+    this.busy.set(true);
+
+    this.auth.forgotPassword(this.forgotEmail.trim()).subscribe({
+      next: (r) => {
+        this.busy.set(false);
+        this.resetRequested.set(true);
+        this.resetMessage.set(r.message);
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(apiError(err, 'Something went wrong. Please try again.'));
+      },
+    });
   }
 
   /** Both typed and different — worth saying now rather than spending a round trip on it. */
