@@ -1,30 +1,28 @@
-/* Mirrors login.component.css's auth panel — duplicated rather than shared, since Angular scopes
-   component styles and this is the only other page that needs the same look. */
 .auth {
-  max-width: 380px;
-  margin: 40px auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+  max-width: 400px;
+  margin: 40px auto 0;
   text-align: center;
 }
 
-h1 { margin: 0 0 6px; font-size: 1.4rem; }
-.sub { margin: 0 0 22px; color: var(--muted); font-size: 0.9rem; }
+h1 { margin: 0 0 8px; font-size: 2.2rem; }
+.sub { margin: 0 0 30px; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 .sub.ok { color: var(--ok); }
 
-.err { color: var(--accent); font-size: 0.85rem; margin: 0 0 22px; }
+.err { color: var(--accent); font-size: 0.85rem; margin: 0 0 30px; }
 
 .primary {
   display: inline-block;
-  background: var(--gold);
-  color: #241a00;
-  border: none;
-  border-radius: 8px;
-  padding: 11px 20px;
-  font-weight: 700;
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+  padding: 12px 30px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   text-decoration: none;
 }
 
-.switch { display: block; margin-top: 6px; }
+.switch { display: block; margin-top: 8px; background: none; border: none; padding: 0; color: var(--muted); font-size: 0.8rem; }
+.switch:hover { color: var(--gold); }

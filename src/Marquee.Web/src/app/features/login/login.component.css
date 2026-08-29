@@ -1,47 +1,63 @@
 .auth {
-  max-width: 380px;
-  margin: 40px auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+  max-width: 400px;
+  margin: 40px auto 0;
+  padding: 0;
 }
 
-h1 { margin: 0 0 6px; font-size: 1.4rem; }
-.sub { margin: 0 0 22px; color: var(--muted); font-size: 0.9rem; }
+h1 { font-size: 2.4rem; margin: 0 0 8px; }
+.sub { margin: 0 0 30px; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
 .sub.ok { color: var(--ok); }
 
-form { display: flex; flex-direction: column; gap: 14px; }
+form { display: flex; flex-direction: column; gap: 18px; }
 
-label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 0.72rem; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted); }
 
 input {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 8px 2px;
   color: var(--ink);
 }
 
-input:focus { outline: none; border-color: var(--gold); }
+input:focus { outline: none; border-bottom-color: var(--gold); }
 
 .primary {
-  margin-top: 6px;
-  background: var(--gold);
-  color: #241a00;
-  border: none;
-  border-radius: 8px;
-  padding: 11px;
-  font-weight: 700;
+  margin-top: 8px;
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 0;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.primary:disabled { opacity: 0.5; cursor: default; }
+.primary:disabled { opacity: 0.4; cursor: default; border-color: var(--border); color: var(--muted); }
 
 .err { color: var(--accent); font-size: 0.85rem; margin: 0; }
 
 /* Each refused rule on its own line, indented like the list it is. */
 .err--list { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 
-.hint { margin: -6px 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+.hint { margin: -10px 0 0; color: var(--muted); font-size: 0.78rem; line-height: 1.4; }
 
-.switch { margin-top: 18px; display: block; text-align: center; width: 100%; }
+.switch {
+  margin-top: 4px;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.switch:hover { color: var(--gold); }
