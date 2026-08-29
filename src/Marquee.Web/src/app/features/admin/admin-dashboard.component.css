@@ -25,9 +25,8 @@ h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04e
 }
 
 .tile {
-  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 16px;
 }
 
@@ -48,9 +47,8 @@ h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04e
 .tile--alarm .tile__value { color: var(--accent); }
 
 .premiere {
-  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 16px;
 }
 

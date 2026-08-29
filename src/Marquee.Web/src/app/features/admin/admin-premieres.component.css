@@ -33,9 +33,8 @@
 }
 
 .card {
-  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 16px;
 }
 
@@ -142,9 +141,8 @@
 .editor {
   margin-top: 12px;
   padding: 12px;
-  background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .editor__hint {
@@ -176,9 +174,9 @@
 }
 
 .editor__field input {
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   padding: 7px 10px;
   font-variant-numeric: tabular-nums;

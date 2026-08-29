@@ -2,9 +2,8 @@
    charged per component against the 4 kB anyComponentStyle budget. */
 
 .panel {
-  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 16px;
   margin-bottom: 20px;
 }
@@ -81,9 +80,9 @@
 }
 
 .editor__input {
-  background: var(--panel-2);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   padding: 8px 12px;
   font: inherit;
@@ -149,9 +148,9 @@
 
 .action,
 a.action {
-  background: var(--panel-2);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   padding: 5px 12px;
   white-space: nowrap;

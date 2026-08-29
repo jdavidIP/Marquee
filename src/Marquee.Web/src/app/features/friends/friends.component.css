@@ -9,9 +9,8 @@
 }
 
 .panel {
-  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 0;
   padding: 16px;
   margin-bottom: 20px;
 }
@@ -45,9 +44,9 @@
 }
 
 .search {
-  background: var(--panel-2);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   padding: 8px 12px;
   min-width: 240px;
@@ -114,9 +113,9 @@
 }
 
 button.action {
-  background: var(--panel-2);
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   padding: 5px 12px;
   white-space: nowrap;
