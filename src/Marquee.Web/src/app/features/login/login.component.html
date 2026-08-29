@@ -1,4 +1,12 @@
 <section class="auth">
+  @if (justRegistered()) {
+    <h1>Check your email</h1>
+    <p class="sub ok">
+      We sent a confirmation link to {{ email }}. You can start exploring Marquee right away —
+      confirming just unlocks full participation in a Premiere.
+    </p>
+    <button class="primary" type="button" (click)="continue()">Continue to Marquee</button>
+  } @else {
   <h1>{{ mode() === 'login' ? 'Sign in to Marquee' : 'Create your account' }}</h1>
   <p class="sub">Four times a day a Premiere appears. Clap together to open it.</p>
 
@@ -62,4 +70,5 @@
   <button class="switch link" (click)="toggle()">
     {{ mode() === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in' }}
   </button>
+  }
 </section>

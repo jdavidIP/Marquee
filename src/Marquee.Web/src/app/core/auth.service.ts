@@ -73,6 +73,16 @@ export class AuthService {
     return this.http.get<PasswordRulesDto>(`${environment.apiBase}/auth/password-rules`);
   }
 
+  /**
+   * Confirms the account the token names. No sign-in as a side effect (issue #48) — the response is
+   * just a message, so this deliberately does not pipe through `store()` the way register/login do.
+   */
+  confirmEmail(token: string): Observable<{ message: string }> {
+    return this.http.get<{ message: string }>(`${environment.apiBase}/auth/confirm-email`, {
+      params: { token },
+    });
+  }
+
   login(usernameOrEmail: string, password: string): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${environment.apiBase}/auth/login`, { usernameOrEmail, password })

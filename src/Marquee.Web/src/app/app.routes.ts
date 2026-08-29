@@ -9,6 +9,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    // No authGuard: this is exactly what someone without a session yet needs to open (issue #47).
+    path: 'confirm-email',
+    loadComponent: () =>
+      import('./features/confirm-email/confirm-email.component').then(
+        (m) => m.ConfirmEmailComponent,
+      ),
+  },
+  {
     path: 'premiere',
     canActivate: [authGuard],
     loadComponent: () => import('./features/premiere/premiere.component').then((m) => m.PremiereComponent),
