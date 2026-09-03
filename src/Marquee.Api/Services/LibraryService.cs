@@ -9,17 +9,13 @@ namespace Marquee.Api.Services;
 
 public interface ILibraryService
 {
-    Task<PagedResult<LibraryEntryDto>> GetForUserAsync(Guid userId, LibraryQuery query, CancellationToken ct);
-
     /// <summary>
-    /// A library page with the header stats the screen shows next to the title (platinum count,
-    /// Premieres attended). Named for the caller's own use (LibraryController.Mine) but not
-    /// restricted to it — UsersController's library action calls this too, for the same reason it
-    /// reuses <see cref="GetForUserAsync"/>: the stats describe the account being viewed, not the
-    /// viewer, so anyone already entitled to see the entries is entitled to these. Wraps
-    /// <see cref="GetForUserAsync"/> rather than duplicating its query.
+    /// One page of a library, plus the header stats the screen shows next to the title (platinum
+    /// count, Premieres attended). Used for both LibraryController.Mine and UsersController's
+    /// library action — the stats describe the account being viewed, not the viewer, so anyone
+    /// already entitled to see the entries at all is entitled to these too.
     /// </summary>
-    Task<MyLibraryPageDto> GetMyLibraryAsync(Guid userId, LibraryQuery query, CancellationToken ct);
+    Task<LibraryPageDto> GetLibraryPageAsync(Guid userId, LibraryQuery query, CancellationToken ct);
 
     /// <summary>The filter values worth offering for this particular library.</summary>
     Task<LibraryFiltersDto> GetFiltersAsync(Guid userId, CancellationToken ct);
@@ -31,7 +27,8 @@ public sealed class LibraryService(
 {
     private readonly TmdbOptions _tmdb = tmdbOptions.Value;
 
-    public async Task<PagedResult<LibraryEntryDto>> GetForUserAsync(
+    /// <summary>The entries themselves, searched/filtered/sorted/paged — no header stats attached.</summary>
+    private async Task<PagedResult<LibraryEntryDto>> QueryEntriesAsync(
         Guid userId, LibraryQuery query, CancellationToken ct)
     {
         var filtered = Filter(db.LibraryEntries.AsNoTracking().Where(e => e.UserId == userId), query);
@@ -81,9 +78,9 @@ public sealed class LibraryService(
         return new PagedResult<LibraryEntryDto>(items, total, query.Page, query.PageSize);
     }
 
-    public async Task<MyLibraryPageDto> GetMyLibraryAsync(Guid userId, LibraryQuery query, CancellationToken ct)
+    public async Task<LibraryPageDto> GetLibraryPageAsync(Guid userId, LibraryQuery query, CancellationToken ct)
     {
-        var page = await GetForUserAsync(userId, query, ct);
+        var page = await QueryEntriesAsync(userId, query, ct);
 
         // Same "best tier per movie" rule as the page projection above — a re-premiere's better
         // tier counts, never shadowed by an earlier lesser one on the same film.
@@ -95,7 +92,7 @@ public sealed class LibraryService(
         var premieresAttended = await db.Contributions.AsNoTracking()
             .CountAsync(c => c.UserId == userId, ct);
 
-        return new MyLibraryPageDto(
+        return new LibraryPageDto(
             page.Items, page.Total, page.Page, page.PageSize, platinumCount, premieresAttended);
     }
 

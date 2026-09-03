@@ -2,14 +2,14 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { LibraryFiltersDto, LibraryQuery, MyLibraryPageDto } from './models';
+import { LibraryFiltersDto, LibraryQuery, LibraryPageDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class LibraryService {
   constructor(private http: HttpClient) {}
 
-  mine(query: LibraryQuery = {}): Observable<MyLibraryPageDto> {
-    return this.http.get<MyLibraryPageDto>(`${environment.apiBase}/library`, {
+  mine(query: LibraryQuery = {}): Observable<LibraryPageDto> {
+    return this.http.get<LibraryPageDto>(`${environment.apiBase}/library`, {
       params: toParams(query),
     });
   }
@@ -24,8 +24,8 @@ export class LibraryService {
    * viewed, not the viewer, so anyone entitled to see the entries sees these too. A 403 means the
    * account is private, not that something failed.
    */
-  forUser(username: string, query: LibraryQuery = {}): Observable<MyLibraryPageDto> {
-    return this.http.get<MyLibraryPageDto>(
+  forUser(username: string, query: LibraryQuery = {}): Observable<LibraryPageDto> {
+    return this.http.get<LibraryPageDto>(
       `${environment.apiBase}/users/${encodeURIComponent(username)}/library`,
       { params: toParams(query) },
     );

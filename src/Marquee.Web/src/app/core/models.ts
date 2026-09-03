@@ -292,11 +292,11 @@ export interface PagedResult<T> {
 }
 
 /**
- * The signed-in caller's own library page, plus the header stats the library screen shows next to
- * the title. Distinct from `PagedResult<LibraryEntryDto>`, which is what someone else's library
- * returns — a stranger's header shows different stats entirely.
+ * A library page plus the header stats the screen shows next to the title. Returned for any
+ * library the caller is entitled to see — self, a friend's, or a public account's — since the
+ * stats describe the account being viewed, not the viewer.
  */
-export interface MyLibraryPageDto extends PagedResult<LibraryEntryDto> {
+export interface LibraryPageDto extends PagedResult<LibraryEntryDto> {
   platinumCount: number;
   premieresAttended: number;
 }

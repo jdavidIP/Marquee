@@ -64,13 +64,13 @@ public sealed record LibraryFiltersDto(
     int? MaxYear);
 
 /// <summary>
-/// A library page plus the two header stats the screen shows next to the title. Not restricted to
-/// "my own" despite the name — anyone entitled to see a library's entries at all (self, a friend,
-/// or the public if the account isn't private) sees these too, since they describe the account
-/// being viewed, not the viewer. A future shared-Premieres stat for viewing someone else's library
-/// is viewer-relative and does not belong here; it would sit alongside this, not replace it.
+/// A library page plus the two header stats the screen shows next to the title. Returned for any
+/// library the caller is entitled to see — self, a friend's, or a public account's — since the
+/// stats describe the account being viewed, not the viewer. A future shared-Premieres stat for
+/// viewing someone else's library is viewer-relative and does not belong here; it would sit
+/// alongside this, not replace it.
 /// </summary>
-public sealed record MyLibraryPageDto(
+public sealed record LibraryPageDto(
     IReadOnlyList<LibraryEntryDto> Items,
     int Total,
     int Page,

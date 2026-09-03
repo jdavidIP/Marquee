@@ -8,7 +8,7 @@ import {
   LibraryEntryDto,
   LibraryFiltersDto,
   LibraryQuery,
-  MyLibraryPageDto,
+  LibraryPageDto,
   PagedResult,
 } from '../../core/models';
 
@@ -48,7 +48,7 @@ describe('LibraryComponent', () => {
     total = items.length,
     platinumCount = 0,
     premieresAttended = total,
-  ): MyLibraryPageDto {
+  ): LibraryPageDto {
     return { ...page(items, total), platinumCount, premieresAttended };
   }
 
@@ -277,7 +277,7 @@ describe('LibraryComponent', () => {
 
     function makeForUser(
       username: string,
-      result: MyLibraryPageDto | (() => ReturnType<typeof throwError>) = myPage([entry('Alien')]),
+      result: LibraryPageDto | (() => ReturnType<typeof throwError>) = myPage([entry('Alien')]),
     ) {
       TestBed.resetTestingModule();
       forUserSpy = jasmine.createSpy('forUser').and.returnValue(

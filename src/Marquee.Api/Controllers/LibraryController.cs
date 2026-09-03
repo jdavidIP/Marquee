@@ -18,7 +18,7 @@ public class LibraryController(ILibraryService library) : ControllerBase
     /// acquired first.
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<MyLibraryPageDto>> Mine(
+    public async Task<ActionResult<LibraryPageDto>> Mine(
         [FromQuery] string? search = null,
         [FromQuery] int? genreId = null,
         [FromQuery] int? minYear = null,
@@ -36,7 +36,7 @@ public class LibraryController(ILibraryService library) : ControllerBase
         var (p, ps) = Paging.Clamp(page, pageSize);
         var query = new LibraryQuery(search, genreId, minYear, maxYear, sort, desc, p, ps);
 
-        return Ok(await library.GetMyLibraryAsync(userId.Value, query, ct));
+        return Ok(await library.GetLibraryPageAsync(userId.Value, query, ct));
     }
 
     /// <summary>

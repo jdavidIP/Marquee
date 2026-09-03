@@ -97,7 +97,7 @@ public class UsersController(
     /// </summary>
     [Authorize]
     [HttpGet("{username}/library")]
-    public async Task<ActionResult<MyLibraryPageDto>> Library(
+    public async Task<ActionResult<LibraryPageDto>> Library(
         string username,
         [FromQuery] string? search,
         [FromQuery] int? genreId,
@@ -116,7 +116,7 @@ public class UsersController(
         var (p, ps) = Paging.Clamp(page, pageSize);
         var query = new LibraryQuery(search, genreId, minYear, maxYear, sort, desc, p, ps);
 
-        return Ok(await library.GetMyLibraryAsync(entitlement!.UserId, query, ct));
+        return Ok(await library.GetLibraryPageAsync(entitlement!.UserId, query, ct));
     }
 
     /// <summary>The genre/year filter values worth offering for this user's library — see LibraryController.Filters.</summary>
