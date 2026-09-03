@@ -12,7 +12,9 @@
     } @else {
       <p class="sub">Premieres appear four times a day. Check back soon.</p>
     }
-    @if (error()) { <p class="err">{{ error() }}</p> }
+    @if (error()) {
+      <p class="err">{{ error() }}</p>
+    }
   </section>
 } @else {
   <section class="stage-wrap" [class.revealed]="isOpen()">
@@ -78,8 +80,14 @@
             <span class="mystery">?</span>
           }
         </div>
-        <div class="curtain left" [style.transform]="'translateX(-' + curtainTravelPct() + '%)'"></div>
-        <div class="curtain right" [style.transform]="'translateX(' + curtainTravelPct() + '%)'"></div>
+        <div
+          class="curtain left"
+          [style.transform]="'translateX(-' + curtainTravelPct() + '%)'"
+        ></div>
+        <div
+          class="curtain right"
+          [style.transform]="'translateX(' + curtainTravelPct() + '%)'"
+        ></div>
       </div>
 
       <div class="side">
@@ -125,7 +133,11 @@
               <span class="pip-label">Your claps</span>
               <div class="pip-row">
                 @for (filled of pips(); track $index) {
-                  <span class="pip" [class.pip--filled]="filled" [class.pip--capped]="filled && capReached()"></span>
+                  <span
+                    class="pip"
+                    [class.pip--filled]="filled"
+                    [class.pip--capped]="filled && capReached()"
+                  ></span>
                 }
               </div>
             </div>
@@ -139,7 +151,9 @@
             >
               {{ clapButtonLabel() }}
             </button>
-            @if (capNote()) { <span class="cap-note">{{ capNote() }}</span> }
+            @if (capNote()) {
+              <span class="cap-note">{{ capNote() }}</span>
+            }
           </div>
         } @else {
           <a routerLink="/login" class="primary asLink">Log in to clap</a>
@@ -153,24 +167,29 @@
           <div class="reveal-info">
             <span class="reveal-title">
               {{ movie.title }}
-              @if (movie.releaseYear) { <span class="reveal-year">{{ movie.releaseYear }}</span> }
+              @if (movie.releaseYear) {
+                <span class="reveal-year">{{ movie.releaseYear }}</span>
+              }
             </span>
             @if (revealVisitor()) {
               <span class="reveal-stat">
-                You helped open this one, but it is not kept. Create an account before the next
-                Premiere and the film lands in your library.
+                You helped open this one, but it is not kept. Create an account, and the next
+                Premiere you clap for will land in your library.
               </span>
             } @else {
               <span class="reveal-stat">
                 @if (auth.isLoggedIn() && premiere()!.myClaps > 0) {
                   Added to your library ·
                 }
-                {{ movie.voteAverage | number: '1.1-1' }} average from {{ movie.voteCount | number }} votes
+                {{ movie.voteAverage | number: '1.1-1' }} average from
+                {{ movie.voteCount | number }} votes
               </span>
             }
           </div>
           @if (revealVisitor()) {
-            <a routerLink="/login" [queryParams]="{ mode: 'register' }" class="createAccount">Create account</a>
+            <a routerLink="/login" [queryParams]="{ mode: 'register' }" class="createAccount"
+              >Create account</a
+            >
           } @else if (premiere()!.myEmblemTier; as tier) {
             <div class="emblem-badge">
               <span class="emblem-dot"></span>
@@ -184,6 +203,8 @@
       }
     }
 
-    @if (error()) { <p class="err">{{ error() }}</p> }
+    @if (error()) {
+      <p class="err">{{ error() }}</p>
+    }
   </section>
 }
