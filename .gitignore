@@ -503,3 +503,6 @@ npm-debug.log*
 
 # Claude Code local config (agents, settings) — not shared to the remote repo
 .claude/
+
+# Scratch doc fed to a design agent for the issue #32 redesign — not shipped app documentation
+FRONTEND_DESIGN_CONTEXT.md
