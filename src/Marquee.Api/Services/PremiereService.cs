@@ -95,7 +95,8 @@ public sealed class PremiereService(
             return null;
 
         var counts = await LiveCountsAsync(premiere, viewer, ct);
-        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer);
+        return premiere.ToDto(
+            premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
     }
 
     public async Task<PremiereDto?> GetActiveAsync(Participant? viewer, CancellationToken ct)
@@ -110,7 +111,8 @@ public sealed class PremiereService(
             return null;
 
         var counts = await LiveCountsAsync(premiere, viewer, ct);
-        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer);
+        return premiere.ToDto(
+            premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
     }
 
     /// <summary>
@@ -425,7 +427,7 @@ public sealed class PremiereService(
         return meta;
     }
 
-    private readonly record struct LiveCounts(int Total, int Contributors, int MyClaps);
+    private readonly record struct LiveCounts(int Total, int Contributors, int MyClaps, int? MyEmblemTier);
 
     // Live counts come from Redis while a Premiere is Active; once terminal, from the durable record.
     private async Task<LiveCounts> LiveCountsAsync(Premiere premiere, Participant? viewer, CancellationToken ct)
@@ -437,24 +439,33 @@ public sealed class PremiereService(
             var mine = viewer is Participant p
                 ? (int)await counters.GetParticipantClapsAsync(premiere.ScopeId, premiere.Id, p, ct)
                 : 0;
-            return new LiveCounts(total, contributors, mine);
+            // Emblems are assigned once the Premiere opens (§4.3) — nothing to show while Active.
+            return new LiveCounts(total, contributors, mine, null);
         }
 
         var persistedContributors = await db.Contributions.CountAsync(c => c.PremiereId == premiere.Id, ct);
-        var myClaps = await MyClapsAsync(premiere.Id, viewer, ct);
-        return new LiveCounts(premiere.TotalClaps, persistedContributors, myClaps);
+        var (myClaps, myEmblemTier) = await MyContributionAsync(premiere.Id, viewer, ct);
+        return new LiveCounts(premiere.TotalClaps, persistedContributors, myClaps, myEmblemTier);
     }
 
-    private async Task<int> MyClapsAsync(Guid premiereId, Participant? viewer, CancellationToken ct)
+    /// <summary>
+    /// The viewer's own claps and emblem tier for a terminal Premiere, from the single Contribution
+    /// row that carries both. Tier is null for an anonymous participant (never earns one, §4.3) and
+    /// can briefly be null for a registered one too, right after Opened — the Worker assigns it
+    /// asynchronously once it consumes the open event, not synchronously in the clap path.
+    /// </summary>
+    private async Task<(int ClapCount, int? EmblemTier)> MyContributionAsync(
+        Guid premiereId, Participant? viewer, CancellationToken ct)
     {
         if (viewer is not Participant p)
-            return 0;
+            return (0, null);
 
         var query = p.IsAnonymous
             ? db.Contributions.Where(c => c.PremiereId == premiereId && c.AnonymousSessionId == p.AnonymousSessionId)
             : db.Contributions.Where(c => c.PremiereId == premiereId && c.UserId == p.UserId);
 
-        return await query.Select(c => c.ClapCount).FirstOrDefaultAsync(ct);
+        var row = await query.Select(c => new { c.ClapCount, c.EmblemTier }).FirstOrDefaultAsync(ct);
+        return row is null ? (0, null) : (row.ClapCount, row.EmblemTier);
     }
 
     private async Task<ClapResponse> BuildClapResponseAsync(

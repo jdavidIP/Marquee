@@ -64,6 +64,12 @@ export interface PremiereDto {
   myClaps: number;
   myCap: number;
   movie: MovieDto | null;
+  /**
+   * Assigned once the Premiere opens (CLAUDE.md §4.3); null until then, always null for an
+   * anonymous participant, and can briefly stay null right after opening — the Worker assigns it
+   * asynchronously, a moment after the reveal itself lands.
+   */
+  myEmblemTier: number | null;
 }
 
 export interface ClapResponse {

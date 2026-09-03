@@ -36,7 +36,14 @@ public sealed record PremiereDto(
     DateTime? OpenedAt,
     int MyClaps,
     int MyCap,
-    MovieDto? Movie);
+    MovieDto? Movie,
+    /// <summary>
+    /// Assigned at open time (CLAUDE.md §4.3), null until then and always null for an anonymous
+    /// participant. Persisted asynchronously by the Worker once the Premiere opens (see
+    /// PremiereOpenedConsumer), so it can briefly stay null for a few moments right after Opened —
+    /// the caller who crossed the threshold reads it before the Worker has caught up.
+    /// </summary>
+    int? MyEmblemTier);
 
 /// <summary>
 /// One face in the Premiere crowd/lobby strip (issue #55). Friends-first, then most-recent,

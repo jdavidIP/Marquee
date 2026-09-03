@@ -14,7 +14,7 @@ internal static class PremiereMapping
 
     public static PremiereDto ToDto(
         this Premiere premiere, Movie? movie, int totalClaps, int contributors, int myClaps,
-        TmdbOptions tmdb, Participant? viewer = null) =>
+        TmdbOptions tmdb, Participant? viewer = null, int? myEmblemTier = null) =>
         new(premiere.Id,
             premiere.ScopeId,
             premiere.Status.ToString(),
@@ -34,5 +34,6 @@ internal static class PremiereMapping
             // Movie stays hidden until the Premiere opens (CLAUDE.md — reveal only on open).
             // HasRevealed, not IsTerminal: a Missed Premiere is finished but never showed its film,
             // and that film is still available for a future Premiere to use.
-            premiere.HasRevealed && movie is not null ? MovieDtoFactory.Create(movie, tmdb) : null);
+            premiere.HasRevealed && movie is not null ? MovieDtoFactory.Create(movie, tmdb) : null,
+            myEmblemTier);
 }
