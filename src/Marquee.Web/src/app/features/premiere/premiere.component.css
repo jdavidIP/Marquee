@@ -476,6 +476,11 @@
   gap: 24px;
   flex-wrap: wrap;
 }
+/* Teal border marks the conversion moment — a visitor's reveal pitches an account, not a badge. */
+.reveal--visitor {
+  border-color: var(--accent-teal);
+  background: #111d2a;
+}
 .reveal-info {
   display: flex;
   flex-direction: column;
@@ -517,6 +522,20 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent-amber);
+}
+
+.createAccount {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bg-page);
+  background: var(--accent-teal);
+  padding: 13px 20px;
+  border-radius: 999px;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
 @keyframes bulbPulse {

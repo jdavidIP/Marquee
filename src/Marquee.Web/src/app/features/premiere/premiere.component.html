@@ -149,20 +149,29 @@
 
     @if (isOpen()) {
       @if (premiere()!.movie; as movie) {
-        <div class="reveal">
+        <div class="reveal" [class.reveal--visitor]="revealVisitor()">
           <div class="reveal-info">
             <span class="reveal-title">
               {{ movie.title }}
               @if (movie.releaseYear) { <span class="reveal-year">{{ movie.releaseYear }}</span> }
             </span>
-            <span class="reveal-stat">
-              @if (auth.isLoggedIn() && premiere()!.myClaps > 0) {
-                Added to your library ·
-              }
-              {{ movie.voteAverage | number: '1.1-1' }} average from {{ movie.voteCount | number }} votes
-            </span>
+            @if (revealVisitor()) {
+              <span class="reveal-stat">
+                You helped open this one, but it is not kept. Create an account before the next
+                Premiere and the film lands in your library.
+              </span>
+            } @else {
+              <span class="reveal-stat">
+                @if (auth.isLoggedIn() && premiere()!.myClaps > 0) {
+                  Added to your library ·
+                }
+                {{ movie.voteAverage | number: '1.1-1' }} average from {{ movie.voteCount | number }} votes
+              </span>
+            }
           </div>
-          @if (premiere()!.myEmblemTier; as tier) {
+          @if (revealVisitor()) {
+            <a routerLink="/login" [queryParams]="{ mode: 'register' }" class="createAccount">Create account</a>
+          } @else if (premiere()!.myEmblemTier; as tier) {
             <div class="emblem-badge">
               <span class="emblem-dot"></span>
               <span>Emblem tier {{ tier }}</span>

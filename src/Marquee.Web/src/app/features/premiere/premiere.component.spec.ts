@@ -231,18 +231,70 @@ describe('PremiereComponent', () => {
     expect(c['canParticipate']()).toBe(false);
   });
 
-  it('reads the cap and cap note from myCap, not the registered cap — the anonymous cap is lower', () => {
+  it('reads the cap from myCap, not the registered cap — the anonymous cap is lower', () => {
     const c = make(false, 'anon-token');
     c['premiere'].set(
-      premiere({ status: 'Active', myClaps: 2, myCap: 2, registeredClapCap: 6, anonymousClapCap: 2 }),
+      premiere({ status: 'Active', myClaps: 1, myCap: 2, registeredClapCap: 6, anonymousClapCap: 2 }),
     );
-    expect(c['capReached']()).toBe(true);
-    expect(c['capNote']()).toBe('You have spent your cap of 2 claps — the rest is up to the room');
+    expect(c['capReached']()).toBe(false);
+    expect(c['pips']()).toEqual([true, false]);
   });
 
-  it('says nothing was kept, not "in your library", once revealed for a signed-out viewer', () => {
+  it('contrasts the visitor cap against the registered one, both capped and not', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(
+      premiere({ status: 'Active', myClaps: 1, myCap: 2, registeredClapCap: 6 }),
+    );
+    expect(c['capNote']()).toBe('Visitors get 2 claps and keep nothing. An account gets you 6 and the film.');
+
+    c['premiere'].set(premiere({ status: 'Active', myClaps: 2, myCap: 2, registeredClapCap: 6 }));
+    expect(c['capNote']()).toBe('That is the whole visitor cap of 2 claps — an account gets you 6');
+  });
+
+  it('says to create an account, not "in your library", once revealed for a signed-out viewer', () => {
     const c = make(false, 'anon-token');
     c['premiere'].set(premiere({ status: 'Opened', myClaps: 2, myCap: 2 }));
-    expect(c['clapButtonLabel']()).toBe('Nothing kept');
+    expect(c['clapButtonLabel']()).toBe('Create an account');
+    expect(c['revealVisitor']()).toBe(true);
+  });
+
+  it('never marks a visitor reveal for a signed-in viewer', () => {
+    const c = make(true);
+    c['premiere'].set(premiere({ status: 'Opened' }));
+    expect(c['revealVisitor']()).toBe(false);
+  });
+
+  it('draws faceless, ringless discs for a visitor instead of the real lobby faces', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(premiere({ status: 'Active' }));
+    // The backend never hands a stranger real identities — Faces stays empty even though people
+    // clapped, and the client is meant to draw min(9, registeredCount) blanks instead.
+    c['lobby'].set(
+      lobby({
+        registeredCount: 12,
+        faces: [{ userId: '1', username: 'Ada', avatarUrl: null, isFriend: true }],
+      }),
+    );
+    const faces = c['faces']();
+    expect(faces.length).toBe(9);
+    expect(faces.every((f: { initials: string; isFriend: boolean }) => f.initials === '' && !f.isFriend)).toBe(true);
+  });
+
+  it('never names a friend or a registered count to a visitor in the crowd note', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(premiere({ status: 'Active' }));
+
+    c['lobby'].set(lobby({ registeredCount: 4, anonymousCount: 3 }));
+    expect(c['crowdNote']()).toBe('3 more clapped anonymously, like you. Sign in to see which of your friends are here.');
+
+    c['lobby'].set(lobby({ registeredCount: 4, anonymousCount: 0 }));
+    expect(c['crowdNote']()).toBe('Sign in to see which of your friends are here.');
+  });
+
+  it('tells a visitor how many contributors keep the film once revealed', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(premiere({ status: 'Opened', contributors: 5 }));
+    c['lobby'].set(lobby({ registeredCount: 3 }));
+    expect(c['crowdNote']()).toBe('5 people opened this Premiere together. 3 of them keep the film.');
   });
 });

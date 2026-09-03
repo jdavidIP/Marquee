@@ -12,6 +12,8 @@ import { environment } from '../../../environments/environment';
 
 /** Bulbs around the marquee frame, one row top and bottom. */
 const BULB_COUNT = 22;
+/** Matches the backend's LobbyDto.Faces cap — also what a visitor's blank-disc count is clamped to. */
+const MAX_LOBBY_FACES = 9;
 /** How long after a reveal to re-fetch once, to pick up MyEmblemTier if the Worker had not
  *  assigned it yet at the moment of reveal (it does so asynchronously, not in the clap path). */
 const EMBLEM_SETTLE_DELAY_MS = 1500;
@@ -92,6 +94,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly isOpen = computed(() => isOpenStatus(this.premiere()?.status));
 
+  /** The reveal banner swaps to a conversion pitch — no emblem, nothing kept — for a visitor. */
+  protected readonly revealVisitor = computed(() => this.isOpen() && !this.auth.isLoggedIn());
+
   /** myCap, not registeredClapCap — an anonymous participant's cap is lower (§4.2). */
   protected readonly capReached = computed(() => {
     const p = this.premiere();
@@ -122,9 +127,10 @@ export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly signCaption = computed(() => {
     const p = this.premiere();
     if (!p) return '';
-    return this.isOpen()
+    if (!this.isOpen()) return 'Clap to open the curtain';
+    return this.auth.isLoggedIn()
       ? "Now showing · added to every clapper's library"
-      : 'Clap to open the curtain';
+      : 'Now showing · kept by everyone with an account';
   });
 
   /** Movie title split into per-letter tiles, grouped by word so a wrap never splits a word. */
@@ -135,15 +141,36 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly showFaces = computed(() => !this.isOpen() && this.faces().length > 0);
 
-  protected readonly faces = computed<Face[]>(() =>
-    (this.lobby()?.faces ?? []).map((f) => ({
+  /**
+   * A visitor sees a crowd, not a social graph: the backend never hands a stranger the identities
+   * behind a Premiere's clappers, so Faces comes back empty for an anonymous viewer regardless of
+   * how many people are actually there (LobbyDto's own doc comment). Draw that many faceless,
+   * ringless discs instead of leaving the strip blank — same size, overlap and pop-in as a real
+   * face, just nobody behind it.
+   */
+  protected readonly faces = computed<Face[]>(() => {
+    const l = this.lobby();
+    if (!l) return [];
+
+    if (!this.auth.isLoggedIn()) {
+      const blankCount = Math.min(MAX_LOBBY_FACES, l.registeredCount);
+      return Array.from({ length: blankCount }, (_, i) => ({
+        userId: `blank-${i}`,
+        initials: '',
+        avatarUrl: null,
+        isFriend: false,
+        bg: 'var(--muted-3)',
+      }));
+    }
+
+    return l.faces.map((f) => ({
       userId: f.userId,
       initials: f.avatarUrl ? '' : initialsOf(f.username),
       avatarUrl: f.avatarUrl,
       isFriend: f.isFriend,
       bg: monogramColor(f.userId),
-    })),
-  );
+    }));
+  });
 
   protected readonly lobbyLabel = computed(() =>
     this.isOpen() ? 'Who opened it' : 'In the lobby',
@@ -152,19 +179,31 @@ export class PremiereComponent implements OnInit, OnDestroy {
   /**
    * The strip's crowd note. Friends in the lobby sample are named (capped to three); the anonymous
    * count always comes from the lobby endpoint's real tally, not a guess — never color/text alone
-   * (CLAUDE.md's convention carried from the prior system applies to this line too).
+   * (CLAUDE.md's convention carried from the prior system applies to this line too). A visitor
+   * gets its own copy: they never see friend identities (Faces is always empty for them), and the
+   * pitch is explicitly "sign in to see who's here" rather than a fact they cannot act on.
    */
   protected readonly crowdNote = computed(() => {
     const p = this.premiere();
     const l = this.lobby();
     if (!p || !l) return '';
+    const visitor = !this.auth.isLoggedIn();
 
     if (this.isOpen()) {
+      if (visitor) {
+        return `${p.contributors.toLocaleString()} people opened this Premiere together. ${l.registeredCount.toLocaleString()} of them keep the film.`;
+      }
       const who = p.contributors === 1 ? 'person opened' : 'people opened';
       const friendCount = l.faces.filter((f) => f.isFriend).length;
       return friendCount > 0
         ? `${p.contributors.toLocaleString()} ${who} this Premiere together, ${friendCount} of them your friends.`
         : `${p.contributors.toLocaleString()} ${who} this Premiere together.`;
+    }
+
+    if (visitor) {
+      return l.anonymousCount > 0
+        ? `${l.anonymousCount.toLocaleString()} more clapped anonymously, like you. Sign in to see which of your friends are here.`
+        : 'Sign in to see which of your friends are here.';
     }
 
     const friendNames = l.faces.filter((f) => f.isFriend).map((f) => f.username);
@@ -190,15 +229,21 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly clapButtonLabel = computed(() => {
     if (!this.premiere()) return 'No Premiere live';
-    if (this.isOpen()) return this.auth.isLoggedIn() ? 'In your library' : 'Nothing kept';
+    if (this.isOpen()) return this.auth.isLoggedIn() ? 'In your library' : 'Create an account';
     return this.capReached() ? 'You are capped' : 'Clap';
   });
 
   protected readonly capNote = computed(() => {
     const p = this.premiere();
     if (!p || this.isOpen()) return '';
-    return this.capReached()
-      ? `You have spent your cap of ${p.myCap} claps — the rest is up to the room`
+    const visitor = !this.auth.isLoggedIn();
+    if (this.capReached()) {
+      return visitor
+        ? `That is the whole visitor cap of ${p.myCap} claps — an account gets you ${p.registeredClapCap}`
+        : `You have spent your cap of ${p.myCap} claps — the rest is up to the room`;
+    }
+    return visitor
+      ? `Visitors get ${p.myCap} claps and keep nothing. An account gets you ${p.registeredClapCap} and the film.`
       : `Cap of ${p.myCap} claps per person, so no one opens a Premiere alone`;
   });
 
