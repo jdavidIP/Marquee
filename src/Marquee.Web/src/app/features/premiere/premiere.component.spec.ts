@@ -6,6 +6,7 @@ import { PremiereComponent } from './premiere.component';
 import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
 import { AuthService } from '../../core/auth.service';
+import { AnonymousSessionService } from '../../core/anonymous-session.service';
 import { LobbyDto, PremiereDto } from '../../core/models';
 
 /**
@@ -42,7 +43,7 @@ describe('PremiereComponent', () => {
     return { premiereId: 'p1', faces: [], registeredCount: 0, anonymousCount: 0, ...overrides };
   }
 
-  function make(loggedIn = true) {
+  function make(loggedIn = true, anonSessionToken: string | null = null) {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [PremiereComponent],
@@ -71,6 +72,10 @@ describe('PremiereComponent', () => {
           },
         },
         { provide: AuthService, useValue: { isLoggedIn: signal(loggedIn), user: signal(null) } },
+        {
+          provide: AnonymousSessionService,
+          useValue: { session: signal(anonSessionToken ? { token: anonSessionToken } : null), ensure: () => Promise.resolve() },
+        },
       ],
     });
 
@@ -212,5 +217,32 @@ describe('PremiereComponent', () => {
     expect(monogram.bg).toBeTruthy();
     expect(photo.initials).toBe('');
     expect(photo.avatarUrl).toBe('https://example.com/a.png');
+  });
+
+  // --- Anonymous participation (issue #57) ---
+
+  it('lets a signed-out visitor with a valid anonymous session participate', () => {
+    const c = make(false, 'anon-token');
+    expect(c['canParticipate']()).toBe(true);
+  });
+
+  it('does not let a signed-out visitor with no session participate', () => {
+    const c = make(false, null);
+    expect(c['canParticipate']()).toBe(false);
+  });
+
+  it('reads the cap and cap note from myCap, not the registered cap — the anonymous cap is lower', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(
+      premiere({ status: 'Active', myClaps: 2, myCap: 2, registeredClapCap: 6, anonymousClapCap: 2 }),
+    );
+    expect(c['capReached']()).toBe(true);
+    expect(c['capNote']()).toBe('You have spent your cap of 2 claps — the rest is up to the room');
+  });
+
+  it('says nothing was kept, not "in your library", once revealed for a signed-out viewer', () => {
+    const c = make(false, 'anon-token');
+    c['premiere'].set(premiere({ status: 'Opened', myClaps: 2, myCap: 2 }));
+    expect(c['clapButtonLabel']()).toBe('Nothing kept');
   });
 });

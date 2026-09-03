@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
+import { AnonymousSessionService } from '../../core/anonymous-session.service';
 import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
 import { ClapResponse, LobbyDto, PremiereDto } from '../../core/models';
@@ -48,6 +49,7 @@ function formatClock(totalSeconds: number): string {
 export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly auth = inject(AuthService);
   protected readonly realtime = inject(RealtimeService);
+  private readonly anon = inject(AnonymousSessionService);
   private readonly premieres = inject(PremiereService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -90,9 +92,10 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly isOpen = computed(() => isOpenStatus(this.premiere()?.status));
 
+  /** myCap, not registeredClapCap — an anonymous participant's cap is lower (§4.2). */
   protected readonly capReached = computed(() => {
     const p = this.premiere();
-    return !!p && p.myClaps >= p.registeredClapCap;
+    return !!p && p.myClaps >= p.myCap;
   });
 
   protected readonly remainingSeconds = computed(() => {
@@ -187,7 +190,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   protected readonly clapButtonLabel = computed(() => {
     if (!this.premiere()) return 'No Premiere live';
-    if (this.isOpen()) return 'In your library';
+    if (this.isOpen()) return this.auth.isLoggedIn() ? 'In your library' : 'Nothing kept';
     return this.capReached() ? 'You are capped' : 'Clap';
   });
 
@@ -195,8 +198,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
     const p = this.premiere();
     if (!p || this.isOpen()) return '';
     return this.capReached()
-      ? `You have spent your cap of ${p.registeredClapCap} claps — the rest is up to the room`
-      : `Cap of ${p.registeredClapCap} claps per person, so no one opens a Premiere alone`;
+      ? `You have spent your cap of ${p.myCap} claps — the rest is up to the room`
+      : `Cap of ${p.myCap} claps per person, so no one opens a Premiere alone`;
   });
 
   private pollHandle: ReturnType<typeof setInterval> | null = null;
@@ -204,9 +207,20 @@ export class PremiereComponent implements OnInit, OnDestroy {
   private lobbyPollHandle: ReturnType<typeof setInterval> | null = null;
   private emblemSettleHandle: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * Whether this viewer can clap at all — signed in, or holding a valid anonymous session (§4.2).
+   * Not auth.isLoggedIn() alone: a signed-out visitor is a participant too, just capped lower and
+   * earning nothing kept.
+   */
+  protected readonly canParticipate = computed(() => this.auth.isLoggedIn() || !!this.anon.session());
+
   ngOnInit(): void {
-    this.load(true);
     this.subscribeToRealtime();
+
+    // The very first getActive() must not race ensure() — a request that goes out before the
+    // anonymous session exists carries no identity at all, and would render with the registered
+    // cap instead of the anonymous one until whatever happens to refresh it next.
+    void this.initialLoad();
 
     // Fallback only — the socket is the primary path, so this ticks slowly and skips entirely
     // while the connection is healthy.
@@ -215,6 +229,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
     }, environment.fallbackPollIntervalMs);
 
     this.clockHandle = setInterval(() => this.nowMs.set(Date.now()), 1000);
+  }
+
+  private async initialLoad(): Promise<void> {
+    if (!this.auth.isLoggedIn()) {
+      // Best-effort: the issuing endpoint is rate-limited by IP and can legitimately fail, in
+      // which case canParticipate() just stays false and the screen degrades to watch-only.
+      await this.anon.ensure();
+    }
+    this.load(true);
   }
 
   ngOnDestroy(): void {
