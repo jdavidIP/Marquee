@@ -27,7 +27,13 @@
       <!-- Your own name is the way to your profile: it is where you already look for it. -->
       @if (auth.user()?.username; as me) {
         <a class="who" [routerLink]="['/u', me]" routerLinkActive="active">
-          <span class="who__monogram">{{ initials(me) }}</span>
+          <!-- One disc, drawn either way: a picture when there is one, the initials when there is
+               not. Nothing sets a picture yet, so today this is always the monogram. -->
+          @if (auth.user()?.avatarUrl; as avatar) {
+            <img class="who__face" [src]="avatar" alt="" />
+          } @else {
+            <span class="who__face who__face--monogram">{{ initials(me) }}</span>
+          }
           <span class="who__name">{{ me }}</span>
         </a>
       }

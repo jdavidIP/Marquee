@@ -21,6 +21,7 @@ public sealed record ProfileEntitlement(
     Guid UserId,
     string Username,
     string? Bio,
+    string? AvatarUrl,
     bool IsPrivate,
     DateTime CreatedAt,
     bool Entitled,
@@ -83,7 +84,8 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         // though the profile is private — privacy applies to strangers, not to friends.
         if (!resolved.Entitled)
             return new LimitedProfileDto(
-                resolved.Username, resolved.Bio, resolved.FriendshipStatus, resolved.FriendRequestOutgoing);
+                resolved.Username, resolved.Bio, resolved.AvatarUrl,
+                resolved.FriendshipStatus, resolved.FriendRequestOutgoing);
 
         var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == resolved.UserId, ct);
         var premieresAttended = await db.Contributions.CountAsync(c => c.UserId == resolved.UserId, ct);
@@ -95,6 +97,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
             resolved.UserId,
             resolved.Username,
             resolved.Bio,
+            resolved.AvatarUrl,
             resolved.IsPrivate,
             resolved.CreatedAt,
             moviesCollected,
@@ -112,7 +115,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         var user = await db.Users
             .AsNoTracking()
             .Where(u => u.Username == name)
-            .Select(u => new { u.Id, u.Username, u.Bio, u.IsPrivate, u.CreatedAt })
+            .Select(u => new { u.Id, u.Username, u.Bio, u.AvatarUrl, u.IsPrivate, u.CreatedAt })
             .FirstOrDefaultAsync(ct);
 
         if (user is null)
@@ -132,7 +135,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         var entitled = isSelf || viewer.IsAdmin || isFriend || !user.IsPrivate;
 
         return new ProfileEntitlement(
-            user.Id, user.Username, user.Bio, user.IsPrivate, user.CreatedAt, entitled, status, outgoing);
+            user.Id, user.Username, user.Bio, user.AvatarUrl, user.IsPrivate, user.CreatedAt, entitled, status, outgoing);
     }
 
     /// <summary>

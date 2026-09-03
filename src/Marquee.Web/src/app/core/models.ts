@@ -5,6 +5,8 @@ export interface UserDto {
   bio: string | null;
   isPrivate: boolean;
   role: string;
+  /** Null for anyone who has not set a picture — a monogram of the username stands in. */
+  avatarUrl: string | null;
 }
 
 export interface AuthResponse {
@@ -120,6 +122,8 @@ export interface FullProfileDto {
   id: string;
   username: string;
   bio: string | null;
+  /** Null for anyone who has not set a picture — a monogram of the username stands in. */
+  avatarUrl: string | null;
   isPrivate: boolean;
   createdAt: string;
   moviesCollected: number;
@@ -146,6 +150,8 @@ export interface FullProfileDto {
 export interface LimitedProfileDto {
   username: string;
   bio: string | null;
+  /** Kept even on a restricted profile: a picture is part of the public identity, like the name. */
+  avatarUrl: string | null;
   friendshipStatus: string | null;
   friendRequestOutgoing: boolean | null;
 }

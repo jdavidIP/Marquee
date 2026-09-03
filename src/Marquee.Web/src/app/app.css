@@ -78,12 +78,18 @@
   text-decoration: none;
 }
 
-.who__monogram {
+/* The same disc whether it holds a picture or two letters, so one does not jump when the other
+   replaces it. */
+.who__face {
   flex: none;
   width: 26px;
   height: 26px;
   border-radius: 999px;
   border: 2px solid var(--ink-cream);
+  object-fit: cover;
+}
+
+.who__face--monogram {
   background: var(--monogram-bg);
   display: flex;
   align-items: center;

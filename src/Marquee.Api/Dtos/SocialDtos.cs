@@ -10,6 +10,8 @@ public sealed record FullProfileDto(
     Guid Id,
     string Username,
     string? Bio,
+    /// <summary>Null for anyone who has not set a picture — the client draws a monogram instead.</summary>
+    string? AvatarUrl,
     bool IsPrivate,
     DateTime CreatedAt,
     int MoviesCollected,
@@ -38,6 +40,12 @@ public sealed record FullProfileDto(
 public sealed record LimitedProfileDto(
     string Username,
     string? Bio,
+    /// <summary>
+    /// Kept here alongside Bio rather than withheld: a picture is part of the public identity a
+    /// private account still presents, the same as its name. Privacy restricts the account's own
+    /// detail — counts, history — not the face on the door.
+    /// </summary>
+    string? AvatarUrl,
     /// <summary>
     /// Pending or null. Never Accepted — an accepted friend is entitled to the full profile, so
     /// this type is never the one returned for them.
