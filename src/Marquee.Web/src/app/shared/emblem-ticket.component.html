@@ -1,0 +1,10 @@
+<div class="ticket" [style.background-image]="material().gradient" [style.border-color]="material().edge">
+  <div class="ticket__counterfoil" [style.border-right-color]="material().dash">
+    <span class="ticket__tier" [style.color]="material().ink">{{ tier() }}</span>
+  </div>
+  <div class="ticket__body">
+    <span class="ticket__name" [style.color]="material().ink">{{ material().name }}</span>
+  </div>
+  <span class="ticket__notch ticket__notch--top"></span>
+  <span class="ticket__notch ticket__notch--bottom"></span>
+</div>

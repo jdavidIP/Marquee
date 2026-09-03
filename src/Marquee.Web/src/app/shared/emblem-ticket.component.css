@@ -1,0 +1,70 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.ticket {
+  position: relative;
+  width: 100%;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid;
+  border-bottom: 1px solid;
+}
+
+.ticket__counterfoil {
+  width: 46px;
+  flex: none;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px dashed;
+}
+
+.ticket__tier {
+  font-family: var(--font-numeral);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.ticket__body {
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket__name {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Die-cut punch notches — filled with the library card's own background so they read as cut
+   through the ticket rather than a badge stuck on it. #0f1524 is the card panel tone the design
+   handoff uses (library.dc.html); whatever builds the card around this ticket needs the same
+   background for the illusion to hold. */
+.ticket__notch {
+  position: absolute;
+  left: 38px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #0f1524;
+}
+.ticket__notch--top {
+  top: -7px;
+}
+.ticket__notch--bottom {
+  bottom: -7px;
+}
