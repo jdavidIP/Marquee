@@ -20,7 +20,12 @@ public sealed record FullProfileDto(
     /// <summary>Pending / Accepted / null — the viewer's own relationship to this profile.</summary>
     string? FriendshipStatus,
     /// <summary>True when the viewer sent the pending request, false when they received it.</summary>
-    bool? FriendRequestOutgoing);
+    bool? FriendRequestOutgoing,
+    /// <summary>
+    /// Premieres both the viewer and this account contributed to. Null when there is no viewer to
+    /// share with — anonymous, or the account's own profile — same as FriendshipStatus.
+    /// </summary>
+    int? SharedPremieresAttended);
 
 /// <summary>
 /// A private profile seen by a stranger. MARQUEE_PLAN.md is explicit that the *account's own*
@@ -52,7 +57,14 @@ public sealed record LimitedProfileDto(
     /// </summary>
     string? FriendshipStatus,
     /// <summary>True when the viewer sent the pending request, false when they received it.</summary>
-    bool? FriendRequestOutgoing);
+    bool? FriendRequestOutgoing,
+    /// <summary>
+    /// Same viewer-relative exception as FriendshipStatus: describes the viewer's own overlap with
+    /// this account, not the account's private detail, so it survives the privacy restriction —
+    /// it's what a locked library's teaser line reads from. Null when there is no viewer to share
+    /// with (anonymous).
+    /// </summary>
+    int? SharedPremieresAttended);
 
 /// <summary>
 /// A search hit. Deliberately identical for public and private users — private profiles stay

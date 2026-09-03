@@ -133,6 +133,8 @@ export interface FullProfileDto {
   friendshipStatus: string | null;
   /** True when the viewer sent the pending request, false when they received it. */
   friendRequestOutgoing: boolean | null;
+  /** Premieres both the viewer and this account contributed to. Null for anonymous or self. */
+  sharedPremieresAttended: number | null;
 }
 
 /**
@@ -154,6 +156,8 @@ export interface LimitedProfileDto {
   avatarUrl: string | null;
   friendshipStatus: string | null;
   friendRequestOutgoing: boolean | null;
+  /** Same viewer-relative exception as friendshipStatus — what a locked library's teaser reads. */
+  sharedPremieresAttended: number | null;
 }
 
 export type ProfileDto = FullProfileDto | LimitedProfileDto;
