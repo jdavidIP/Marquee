@@ -352,17 +352,15 @@ public sealed class PremiereService(
 
     public async Task<LobbyDto?> GetLobbyAsync(Guid premiereId, Participant? viewer, CancellationToken ct)
     {
-        var premiere = await db.Premieres
-            .AsNoTracking()
-            .Where(p => p.Id == premiereId)
-            .Select(p => new { p.Id, p.ScopeId, p.Status })
-            .FirstOrDefaultAsync(ct);
-
-        if (premiere is null || premiere.Status != PremiereStatus.Active)
+        // Cache-first like GetActiveAsync/GetAsync — this endpoint only ever wants an Active
+        // Premiere's ScopeId/Status, and PremiereMeta already carries exactly that in Redis, so
+        // there is no reason to fall back on Postgres before checking there first.
+        var meta = await ResolveMetaAsync(premiereId, ct);
+        if (meta is null || meta.Status != PremiereStatus.Active)
             return null;
 
-        var registeredCount = await counters.GetRegisteredContributorCountAsync(premiere.ScopeId, premiereId, ct);
-        var anonymousCount = await counters.GetAnonymousContributorCountAsync(premiere.ScopeId, premiereId, ct);
+        var registeredCount = await counters.GetRegisteredContributorCountAsync(meta.ScopeId, premiereId, ct);
+        var anonymousCount = await counters.GetAnonymousContributorCountAsync(meta.ScopeId, premiereId, ct);
 
         // An anonymous viewer sees a crowd, not a social graph: this endpoint hands out no
         // identities to one, only the counts needed to draw faceless discs (CLAUDE.md's crowd-strip
@@ -371,8 +369,8 @@ public sealed class PremiereService(
             return new LobbyDto(premiereId, [], (int)registeredCount, (int)anonymousCount);
 
         await friendships.EnsureFriendGraphLoadedAsync(registered.UserId, ct);
-        var friendIdsTask = counters.GetFriendContributorsAsync(premiere.ScopeId, premiereId, registered.UserId, ct);
-        var recentIdsTask = counters.GetRecentContributorsAsync(premiere.ScopeId, premiereId, LobbySampleSize, ct);
+        var friendIdsTask = counters.GetFriendContributorsAsync(meta.ScopeId, premiereId, registered.UserId, ct);
+        var recentIdsTask = counters.GetRecentContributorsAsync(meta.ScopeId, premiereId, LobbySampleSize, ct);
         await Task.WhenAll(friendIdsTask, recentIdsTask);
 
         var friendIds = new HashSet<Guid>(friendIdsTask.Result);
