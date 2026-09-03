@@ -296,22 +296,21 @@ public sealed class PremiereService(
     public async Task<IReadOnlyList<FriendContributorDto>?> GetFriendContributorsAsync(
         Guid premiereId, Guid viewerId, CancellationToken ct)
     {
-        var premiere = await db.Premieres
-            .AsNoTracking()
-            .Where(p => p.Id == premiereId)
-            .Select(p => new { p.Id, p.ScopeId, p.Status })
-            .FirstOrDefaultAsync(ct);
-
-        if (premiere is null)
+        // Cache-first like GetActiveAsync/GetAsync/GetLobbyAsync — a miss still falls back to
+        // Postgres (below, inside ResolveMetaAsync) and caches the result with the same bounded TTL
+        // as everything else, so looking up a long-closed Premiere here does not leave anything
+        // behind that outlives the rest of the hot-path data.
+        var meta = await ResolveMetaAsync(premiereId, ct);
+        if (meta is null)
             return null;
 
         IReadOnlyList<Guid> friendIds;
-        if (premiere.Status == PremiereStatus.Active)
+        if (meta.Status == PremiereStatus.Active)
         {
             // A cold cache would silently intersect against an empty set, so make sure the viewer's
             // friends are actually in Redis before trusting the result.
             await friendships.EnsureFriendGraphLoadedAsync(viewerId, ct);
-            friendIds = await counters.GetFriendContributorsAsync(premiere.ScopeId, premiereId, viewerId, ct);
+            friendIds = await counters.GetFriendContributorsAsync(meta.ScopeId, premiereId, viewerId, ct);
         }
         else
         {
