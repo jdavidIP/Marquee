@@ -53,6 +53,22 @@ public class PremieresController(IPremiereService premieres, IParticipantResolve
         return dto is null ? NotFound() : Ok(dto);
     }
 
+    /// <summary>
+    /// The crowd/lobby strip's data for this Premiere, from the caller's own point of view (issue
+    /// #55). Open to anonymous callers like <see cref="Clap"/> and <see cref="Active"/> — an
+    /// anonymous viewer gets no identities back (see <see cref="IPremiereService.GetLobbyAsync"/>),
+    /// only the counts needed to draw faceless discs, so there is no privacy reason to require a
+    /// session. 404 covers both "no such Premiere" and "not currently Active" — the client already
+    /// tracks the Premiere's own status locally and only polls this while it already believes the
+    /// Premiere is live, so it has no need to tell the two apart from this response.
+    /// </summary>
+    [HttpGet("{id:guid}/lobby")]
+    public async Task<ActionResult<LobbyDto>> Lobby(Guid id, CancellationToken ct)
+    {
+        var dto = await premieres.GetLobbyAsync(id, participants.Resolve(HttpContext), ct);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
     /// <summary>One Premiere by id. Live counts arrive over SignalR; this is the initial load.</summary>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PremiereDto>> Get(Guid id, CancellationToken ct)

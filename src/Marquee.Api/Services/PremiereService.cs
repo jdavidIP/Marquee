@@ -27,6 +27,15 @@ public interface IPremiereService
     /// </summary>
     Task<IReadOnlyList<FriendContributorDto>?> GetFriendContributorsAsync(
         Guid premiereId, Guid viewerId, CancellationToken ct);
+
+    /// <summary>
+    /// The Premiere crowd/lobby strip's data (issue #55). Null unless the Premiere is currently
+    /// Active — the strip is a live-window feature, and once a Premiere opens the frontend already
+    /// has everything it needs (the reveal payload) to show a summary line instead, so there is
+    /// nothing this endpoint needs to answer for a Premiere that has not started yet or has already
+    /// finished.
+    /// </summary>
+    Task<LobbyDto?> GetLobbyAsync(Guid premiereId, Participant? viewer, CancellationToken ct);
 }
 
 public enum ClapOutcome
@@ -336,6 +345,71 @@ public sealed class PremiereService(
             .OrderBy(u => u.Username)
             .Select(u => new FriendContributorDto(u.Id, u.Username))
             .ToListAsync(ct);
+    }
+
+    /// <summary>Faces shown at once in the lobby strip — the design's own cap (issue #55).</summary>
+    private const int LobbySampleSize = 9;
+
+    public async Task<LobbyDto?> GetLobbyAsync(Guid premiereId, Participant? viewer, CancellationToken ct)
+    {
+        var premiere = await db.Premieres
+            .AsNoTracking()
+            .Where(p => p.Id == premiereId)
+            .Select(p => new { p.Id, p.ScopeId, p.Status })
+            .FirstOrDefaultAsync(ct);
+
+        if (premiere is null || premiere.Status != PremiereStatus.Active)
+            return null;
+
+        var registeredCount = await counters.GetRegisteredContributorCountAsync(premiere.ScopeId, premiereId, ct);
+        var anonymousCount = await counters.GetAnonymousContributorCountAsync(premiere.ScopeId, premiereId, ct);
+
+        // An anonymous viewer sees a crowd, not a social graph: this endpoint hands out no
+        // identities to one, only the counts needed to draw faceless discs (CLAUDE.md's crowd-strip
+        // design; same posture as the hub's "only public aggregates" rule for the group broadcast).
+        if (viewer is not { Kind: ParticipantKind.Registered } registered)
+            return new LobbyDto(premiereId, [], (int)registeredCount, (int)anonymousCount);
+
+        await friendships.EnsureFriendGraphLoadedAsync(registered.UserId, ct);
+        var friendIdsTask = counters.GetFriendContributorsAsync(premiere.ScopeId, premiereId, registered.UserId, ct);
+        var recentIdsTask = counters.GetRecentContributorsAsync(premiere.ScopeId, premiereId, LobbySampleSize, ct);
+        await Task.WhenAll(friendIdsTask, recentIdsTask);
+
+        var friendIds = new HashSet<Guid>(friendIdsTask.Result);
+        var recentIds = recentIdsTask.Result;
+
+        // Friends first (in recency order among themselves where possible), then the most recent
+        // non-friends fill the rest. recentIds is only a capped sample of the full contributor set,
+        // so a friend who clapped outside that window still belongs at the front — the second loop
+        // catches any friend the first one missed.
+        var seen = new HashSet<Guid>();
+        var ordered = new List<Guid>(LobbySampleSize);
+        void Add(Guid id)
+        {
+            if (seen.Add(id))
+                ordered.Add(id);
+        }
+        foreach (var id in recentIds.Where(friendIds.Contains)) Add(id);
+        foreach (var id in friendIds) Add(id);
+        foreach (var id in recentIds) Add(id);
+
+        var sample = ordered.Take(LobbySampleSize).ToList();
+        if (sample.Count == 0)
+            return new LobbyDto(premiereId, [], (int)registeredCount, (int)anonymousCount);
+
+        var users = await db.Users
+            .AsNoTracking()
+            .Where(u => sample.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username, u.AvatarUrl })
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        // Preserve `sample`'s friends-first/recency order — the dictionary lookup above has none.
+        var faces = sample
+            .Where(users.ContainsKey)
+            .Select(id => new LobbyFaceDto(id, users[id].Username, users[id].AvatarUrl, friendIds.Contains(id)))
+            .ToList();
+
+        return new LobbyDto(premiereId, faces, (int)registeredCount, (int)anonymousCount);
     }
 
     // Cache-first metadata resolution; a miss (cold cache / restart) is backfilled from Postgres.

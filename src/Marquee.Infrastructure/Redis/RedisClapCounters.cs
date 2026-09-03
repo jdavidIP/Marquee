@@ -15,12 +15,17 @@ public sealed class RedisClapCounters(IConnectionMultiplexer redis, IOptions<Red
     private readonly IDatabase _db = redis.GetDatabase();
     private readonly RedisOptions _options = options.Value;
 
-    // KEYS: 1=participant counter, 2=total counter, 3=contributors set (for this kind), 4=closed flag
-    // ARGV: 1=cap, 2=participant set member, 3=ttl seconds
+    // KEYS: 1=participant counter, 2=total counter, 3=contributors set (for this kind), 4=closed
+    //       flag, 5=recent-contributors ZSET (registered only; a real key is always passed, but the
+    //       script only touches it when ARGV[4]=='1')
+    // ARGV: 1=cap, 2=participant set member, 3=ttl seconds, 4="1" if registered else "0", 5=now
+    //       (unix milliseconds, for the ZSET score)
     // Returns {outcome, participantClaps, total} where outcome 0=counted, 1=capReached, 2=closed.
     // The closed check and both increments are one atomic step, so once the open cutoff is set no
     // clap can slip through counted-but-ungranted. The script is identical for registered and
-    // anonymous participants — only the keys handed to it differ (Iteration 5).
+    // anonymous participants — only the keys handed to it differ (Iteration 5) — except for the
+    // recency ZADD, which only registered claps perform (issue #55: anonymous contributors never
+    // occupy a lobby face slot, so there is nothing to order them among).
     private const string ClapScript = @"
 if redis.call('EXISTS', KEYS[4]) == 1 then
   return {2, 0, tonumber(redis.call('GET', KEYS[2]) or '0')}
@@ -38,6 +43,11 @@ redis.call('SADD', KEYS[3], ARGV[2])
 redis.call('EXPIRE', KEYS[1], ttl)
 redis.call('EXPIRE', KEYS[2], ttl)
 redis.call('EXPIRE', KEYS[3], ttl)
+if ARGV[4] == '1' then
+  redis.call('ZADD', KEYS[5], ARGV[5], ARGV[2])
+  redis.call('ZREMRANGEBYRANK', KEYS[5], 0, -51)
+  redis.call('EXPIRE', KEYS[5], ttl)
+end
 return {0, nu, nt}";
 
     // Release the lock only if the token matches, so we never delete a lock another caller re-took.
@@ -57,12 +67,15 @@ end";
             RedisKeys.Claps(scopeId, premiereId),
             RedisKeys.ContributorsFor(scopeId, premiereId, participant),
             RedisKeys.Closed(scopeId, premiereId),
+            RedisKeys.RecentContributors(scopeId, premiereId),
         };
         var ttlSeconds = _options.KeyTtlHours * 3600;
-        var member = participant.Kind == ParticipantKind.Registered
-            ? participant.UserId.ToString()
-            : participant.AnonymousSessionId!;
-        var argv = new RedisValue[] { cap, member, ttlSeconds };
+        var isRegistered = participant.Kind == ParticipantKind.Registered;
+        var member = isRegistered ? participant.UserId.ToString() : participant.AnonymousSessionId!;
+        var argv = new RedisValue[]
+        {
+            cap, member, ttlSeconds, isRegistered ? "1" : "0", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
 
         var result = (RedisValue[])(await _db.ScriptEvaluateAsync(ClapScript, keys, argv))!;
         var outcome = (long)result[0] switch
@@ -171,6 +184,25 @@ end";
         return result;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetRecentContributorsAsync(
+        string scopeId, Guid premiereId, int count, CancellationToken ct)
+    {
+        var members = await _db.SortedSetRangeByRankAsync(
+            RedisKeys.RecentContributors(scopeId, premiereId), 0, count - 1, Order.Descending);
+
+        var result = new List<Guid>(members.Length);
+        foreach (var m in members)
+            if (Guid.TryParse(m, out var id))
+                result.Add(id);
+        return result;
+    }
+
+    public Task<long> GetRegisteredContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct) =>
+        _db.SetLengthAsync(RedisKeys.Contributors(scopeId, premiereId));
+
+    public Task<long> GetAnonymousContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct) =>
+        _db.SetLengthAsync(RedisKeys.AnonymousContributors(scopeId, premiereId));
+
     public async Task<string?> TryAcquireOpenLockAsync(
         string scopeId, Guid premiereId, TimeSpan ttl, CancellationToken ct)
     {
@@ -200,6 +232,7 @@ end";
             RedisKeys.Claps(scopeId, premiereId),
             RedisKeys.Contributors(scopeId, premiereId),
             RedisKeys.AnonymousContributors(scopeId, premiereId),
+            RedisKeys.RecentContributors(scopeId, premiereId),
             RedisKeys.Closed(scopeId, premiereId),
             // Per-participant keys expire via TTL; deleting them needs a scan and isn't worth it here.
         });

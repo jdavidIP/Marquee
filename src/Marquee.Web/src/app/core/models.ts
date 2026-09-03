@@ -206,6 +206,25 @@ export interface FriendContributorsResponse {
   friends: FriendContributorDto[];
 }
 
+/** One face in the Premiere crowd/lobby strip. */
+export interface LobbyFaceDto {
+  userId: string;
+  username: string;
+  avatarUrl: string | null;
+  isFriend: boolean;
+}
+
+/**
+ * The crowd/lobby strip's data for the caller. `faces` is empty for an anonymous viewer — draw
+ * `min(9, registeredCount)` faceless discs instead of leaving the strip blank.
+ */
+export interface LobbyDto {
+  premiereId: string;
+  faces: LobbyFaceDto[];
+  registeredCount: number;
+  anonymousCount: number;
+}
+
 export interface LibraryEntryDto {
   movieId: string;
   movie: MovieDto;

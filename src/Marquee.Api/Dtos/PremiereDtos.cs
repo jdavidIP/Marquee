@@ -38,6 +38,27 @@ public sealed record PremiereDto(
     int MyCap,
     MovieDto? Movie);
 
+/// <summary>
+/// One face in the Premiere crowd/lobby strip (issue #55). Friends-first, then most-recent,
+/// resolved fresh per request per viewer — like <see cref="FriendContributorDto"/>, this is never
+/// broadcast, because "who is here" is a different, personal answer for every viewer.
+/// </summary>
+public sealed record LobbyFaceDto(Guid UserId, string Username, string? AvatarUrl, bool IsFriend);
+
+/// <summary>
+/// The Premiere crowd/lobby strip's data for one viewer. <see cref="Faces"/> is empty for an
+/// anonymous caller — not because nobody clapped, but because an anonymous viewer sees a crowd, not
+/// a social graph, and the identities of registered contributors are not this endpoint's to hand a
+/// stranger. The client draws <c>min(9, RegisteredCount)</c> faceless discs for that case instead.
+/// </summary>
+public sealed record LobbyDto(
+    Guid PremiereId,
+    /// <summary>Capped sample (≤9), friends first, then most recently clapped.</summary>
+    IReadOnlyList<LobbyFaceDto> Faces,
+    int RegisteredCount,
+    /// <summary>Never given a face; folded into the crowd strip's caption line instead.</summary>
+    int AnonymousCount);
+
 public sealed record ClapResponse(
     Guid PremiereId,
     string Status,
