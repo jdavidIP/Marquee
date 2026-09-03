@@ -16,23 +16,56 @@
   </section>
 } @else {
   <section class="stage-wrap" [class.revealed]="isOpen()">
-    <p class="kicker">
-      @if (isOpen()) {
-        The Premiere opened{{ premiere()!.status === 'AutoOpened' ? ' on the timer' : '' }}
-      } @else {
-        A Premiere is live
-      }
-      <span class="live" [class.on]="realtime.connected()" [title]="realtime.connected() ? 'Live' : 'Reconnecting…'"></span>
-    </p>
+    <div class="status-row">
+      <div class="status-left">
+        <span
+          class="dot"
+          [class.dot--open]="isOpen()"
+          [title]="realtime.connected() ? 'Live' : 'Reconnecting…'"
+        ></span>
+        <span class="status-text">{{ statusText() }}</span>
+      </div>
+      <span class="timer">{{ timerLabel() }}</span>
+    </div>
 
-    <!-- The marquee. Bulbs and curtain are both drawn from progress() — one value, two views. -->
-    <div class="marquee">
-      <div class="bulbs top">
-        @for (lit of bulbs(); track $index) {
-          <span class="bulb" [class.lit]="lit"></span>
+    <!-- The marquee sign. Bulbs, curtain and the caption are all drawn from progress()/isOpen() —
+         nothing about the marquee is its own piece of state. -->
+    <div class="sign">
+      <div class="bulb-row top">
+        @for (b of bulbs(); track $index) {
+          <span class="bulb" [class.lit]="b.lit" [style.animation-delay]="b.delay"></span>
+        }
+      </div>
+      <div class="bulb-row bottom">
+        @for (b of bulbs(); track $index) {
+          <span class="bulb" [class.lit]="b.lit" [style.animation-delay]="b.delay"></span>
         }
       </div>
 
+      <div class="sign-face">
+        <span class="kicker-script">{{ kicker() }}</span>
+        @if (isOpen()) {
+          <div class="tiles">
+            @for (w of titleWords(); track $index) {
+              <div class="tile-word">
+                @for (l of w.letters; track $index) {
+                  <span class="tile">{{ l }}</span>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="tiles">
+            @for (i of [0, 1, 2, 3, 4]; track i) {
+              <span class="tile tile--hidden">?</span>
+            }
+          </div>
+        }
+        <span class="sign-caption">{{ signCaption() }}</span>
+      </div>
+    </div>
+
+    <div class="body-row">
       <div class="stage">
         <div class="behind">
           @if (premiere()!.movie; as movie) {
@@ -49,63 +82,99 @@
         <div class="curtain right" [style.transform]="'translateX(' + curtainTravelPct() + '%)'"></div>
       </div>
 
-      <div class="bulbs bottom">
-        @for (lit of bulbs(); track $index) {
-          <span class="bulb" [class.lit]="lit"></span>
+      <div class="side">
+        <div class="progress-block">
+          <div class="progress-head">
+            <div class="claps-num">
+              <span class="claps">{{ premiere()!.totalClaps | number }}</span>
+              <span class="of">of {{ premiere()!.threshold | number }} claps</span>
+            </div>
+            <span class="pct">{{ progressPct() }}%</span>
+          </div>
+          <div class="bar"><div class="bar-fill" [style.width.%]="progressPct()"></div></div>
+        </div>
+
+        <div class="lobby-block">
+          <div class="lobby-head">
+            <span class="lobby-label">{{ lobbyLabel() }}</span>
+            <span class="lobby-count">{{ premiere()!.contributors | number }} clapping</span>
+          </div>
+          @if (showFaces()) {
+            <div class="face-row">
+              @for (f of faces(); track f.userId) {
+                <span
+                  class="face"
+                  [class.face--friend]="f.isFriend"
+                  [style.background-color]="f.avatarUrl ? null : f.bg"
+                >
+                  @if (f.avatarUrl) {
+                    <img [src]="f.avatarUrl" alt="" />
+                  } @else {
+                    {{ f.initials }}
+                  }
+                </span>
+              }
+            </div>
+          }
+          <span class="crowd-note">{{ crowdNote() }}</span>
+        </div>
+
+        @if (auth.isLoggedIn()) {
+          <div class="clap-block">
+            <div class="pip-head">
+              <span class="pip-label">Your claps</span>
+              <div class="pip-row">
+                @for (filled of pips(); track $index) {
+                  <span class="pip" [class.pip--filled]="filled" [class.pip--capped]="filled && capReached()"></span>
+                }
+              </div>
+            </div>
+            <button
+              class="clap-btn"
+              [class.clap-btn--on]="clapButtonState() === 'on'"
+              [class.clap-btn--capped]="clapButtonState() === 'capped'"
+              [class.clap-btn--off]="clapButtonState() === 'off'"
+              (click)="clap()"
+              [disabled]="clapButtonState() !== 'on' || clapping()"
+            >
+              {{ clapButtonLabel() }}
+            </button>
+            @if (capNote()) { <span class="cap-note">{{ capNote() }}</span> }
+          </div>
+        } @else {
+          <a routerLink="/login" class="primary asLink">Log in to clap</a>
         }
       </div>
     </div>
 
     @if (isOpen()) {
-      <!-- Reveal -->
       @if (premiere()!.movie; as movie) {
-        <div class="movie">
-          <h1>{{ movie.title }}</h1>
-          @if (movie.releaseYear) { <p class="year">{{ movie.releaseYear }}</p> }
-          <p class="rating">★ {{ movie.voteAverage | number: '1.1-1' }} · {{ movie.voteCount | number }} votes</p>
-          <p class="overview">{{ movie.overview }}</p>
-          <p class="counts">
-            Opened with <strong>{{ premiere()!.totalClaps | number }}</strong> claps from
-            {{ premiere()!.contributors | number }}
-            {{ premiere()!.contributors === 1 ? 'person' : 'people' }}.
-          </p>
-          @if (premiere()!.myClaps > 0) {
-            <p class="added">
-              Added to your library — you contributed {{ premiere()!.myClaps }}
-              clap{{ premiere()!.myClaps === 1 ? '' : 's' }}.
-            </p>
-            <a routerLink="/library" class="primary asLink">See your library</a>
+        <div class="reveal">
+          <div class="reveal-info">
+            <span class="reveal-title">
+              {{ movie.title }}
+              @if (movie.releaseYear) { <span class="reveal-year">{{ movie.releaseYear }}</span> }
+            </span>
+            <span class="reveal-stat">
+              @if (premiere()!.myClaps > 0) {
+                Added to your library ·
+              }
+              {{ movie.voteAverage | number: '1.1-1' }} average from {{ movie.voteCount | number }} votes
+            </span>
+          </div>
+          @if (premiere()!.myEmblemTier; as tier) {
+            <div class="emblem-badge">
+              <span class="emblem-dot"></span>
+              <span>Emblem tier {{ tier }}</span>
+            </div>
           }
         </div>
+        @if (premiere()!.myClaps > 0) {
+          <a routerLink="/library" class="primary asLink">See your library</a>
+        }
       }
-    } @else {
-      <!-- Active: clap to open -->
-      <h1>Clap to open it</h1>
-
-      <p class="counts">
-        <strong>{{ premiere()!.totalClaps | number }}</strong> / {{ premiere()!.threshold | number }} claps
-        <span class="pct">({{ progressPct() }}%)</span>
-      </p>
-      <p class="contributors">
-        {{ premiere()!.contributors | number }}
-        {{ premiere()!.contributors === 1 ? 'person is' : 'people are' }} clapping
-      </p>
-
-      @if (auth.isLoggedIn()) {
-        <button class="clap" (click)="clap()" [disabled]="clapping() || capReached()">👏 Clap</button>
-        <p class="mine">
-          You: {{ premiere()!.myClaps }} / {{ premiere()!.registeredClapCap }} claps
-          @if (capReached()) { <span class="capped">· you've reached your cap</span> }
-        </p>
-      } @else {
-        <a routerLink="/login" class="primary asLink">Log in to clap</a>
-      }
-
-      @if (premiere()!.expiresAt; as expiresAt) {
-        <p class="expiry">Opens for everyone at {{ expiresAt | date: 'shortTime' }} whatever happens.</p>
-      }
-
-      @if (error()) { <p class="err">{{ error() }}</p> }
     }
+
+    @if (error()) { <p class="err">{{ error() }}</p> }
   </section>
 }

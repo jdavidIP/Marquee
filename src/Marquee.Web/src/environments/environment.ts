@@ -8,4 +8,8 @@ export const environment = {
   // Safety net only: if the socket drops and cannot reconnect, fall back to a slow poll so the
   // page still moves. The socket is the primary path.
   fallbackPollIntervalMs: 10000,
+  // The Premiere crowd/lobby strip is deliberately REST-polled rather than pushed over the hub —
+  // "who is here" is a personal, per-viewer answer, and the hub only ever broadcasts shared,
+  // impersonal counts (see RealtimeDtos.cs).
+  lobbyPollIntervalMs: 4000,
 };

@@ -25,6 +25,7 @@ describe('ProfileComponent payload shapes', () => {
       id: 'other-id',
       username: 'ana',
       bio: 'Likes westerns.',
+      avatarUrl: null,
       isPrivate: false,
       createdAt: '2026-01-01T00:00:00Z',
       moviesCollected: 3,
@@ -32,6 +33,7 @@ describe('ProfileComponent payload shapes', () => {
       friendCount: 2,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
       ...overrides,
     };
   }
@@ -40,8 +42,10 @@ describe('ProfileComponent payload shapes', () => {
     return {
       username: 'ana',
       bio: 'Likes westerns.',
+      avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
       ...overrides,
     };
   }
@@ -165,6 +169,7 @@ describe('isFullProfile', () => {
       id: 'x',
       username: 'ana',
       bio: null,
+      avatarUrl: null,
       isPrivate: true,
       createdAt: '2026-01-01T00:00:00Z',
       moviesCollected: 1,
@@ -172,13 +177,16 @@ describe('isFullProfile', () => {
       friendCount: 1,
       friendshipStatus: 'Accepted',
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
     };
 
     const limitedProfile: LimitedProfileDto = {
       username: 'ana',
       bio: null,
+      avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
     };
 
     expect(isFullProfile(privateButEntitled)).toBe(true);
