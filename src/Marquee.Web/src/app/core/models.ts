@@ -235,12 +235,21 @@ export interface LobbyDto {
   anonymousCount: number;
 }
 
+/** One Contribution's emblem toward a movie in the library — which Premiere scope it was earned in. */
+export interface EmblemDto {
+  tier: number | null;
+  scopeId: string;
+}
+
 export interface LibraryEntryDto {
   movieId: string;
   movie: MovieDto;
   premiereId: string;
   acquiredAt: string;
+  /** The best tier across `emblems` — the only one currently shown. */
   emblemTier: number | null;
+  /** Every emblem earned for this movie. Not consumed by the UI yet; kept for planned scope-aware views. */
+  emblems: EmblemDto[];
 }
 
 /** What a library listing can be ordered by. Mirrors the API's LibrarySort enum by name. */
@@ -280,6 +289,16 @@ export interface PagedResult<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+/**
+ * The signed-in caller's own library page, plus the header stats the library screen shows next to
+ * the title. Distinct from `PagedResult<LibraryEntryDto>`, which is what someone else's library
+ * returns — a stranger's header shows different stats entirely.
+ */
+export interface MyLibraryPageDto extends PagedResult<LibraryEntryDto> {
+  platinumCount: number;
+  premieresAttended: number;
 }
 
 /** What a premiere history listing can be ordered by. Mirrors the API's PremiereHistorySort enum. */

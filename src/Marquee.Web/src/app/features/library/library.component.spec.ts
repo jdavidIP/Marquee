@@ -4,7 +4,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LibraryComponent } from './library.component';
 import { LibraryService } from '../../core/library.service';
-import { LibraryEntryDto, LibraryFiltersDto, LibraryQuery, PagedResult } from '../../core/models';
+import {
+  LibraryEntryDto,
+  LibraryFiltersDto,
+  LibraryQuery,
+  MyLibraryPageDto,
+  PagedResult,
+} from '../../core/models';
 
 /**
  * The screen's job is to turn the controls into one query and send it, and to tell an empty library
@@ -29,11 +35,21 @@ describe('LibraryComponent', () => {
       premiereId: 'p1',
       acquiredAt: '2026-01-01T00:00:00Z',
       emblemTier: 3,
+      emblems: [{ tier: 3, scopeId: 'global' }],
     };
   }
 
   function page(items: LibraryEntryDto[], total = items.length): PagedResult<LibraryEntryDto> {
     return { items, total, page: 1, pageSize: 24 };
+  }
+
+  function myPage(
+    items: LibraryEntryDto[],
+    total = items.length,
+    platinumCount = 0,
+    premieresAttended = total,
+  ): MyLibraryPageDto {
+    return { ...page(items, total), platinumCount, premieresAttended };
   }
 
   const filters: LibraryFiltersDto = {
@@ -52,6 +68,7 @@ describe('LibraryComponent', () => {
     TestBed.configureTestingModule({
       imports: [LibraryComponent],
       providers: [
+        provideRouter([]),
         { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(available) } },
       ],
     });
@@ -158,6 +175,26 @@ describe('LibraryComponent', () => {
     expect(c['filtered']()).toBe(true);
   });
 
+  it('shows the marquee-sign empty state, not the no-results copy, for a genuinely empty library', () => {
+    TestBed.resetTestingModule();
+    mineSpy = jasmine.createSpy('mine').and.returnValue(of(myPage([], 0)));
+
+    TestBed.configureTestingModule({
+      imports: [LibraryComponent],
+      providers: [
+        provideRouter([]),
+        { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(filters) } },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(LibraryComponent);
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Watch the marquee');
+    expect(text).not.toContain('Nothing in your library matches that');
+  });
+
   it('clears every filter at once and reloads', fakeAsync(() => {
     const c = make();
 
@@ -171,6 +208,20 @@ describe('LibraryComponent', () => {
     expect(lastQuery().search).toBe('');
     expect(lastQuery().genreId).toBeNull();
   }));
+
+  it('reads the header stats from the response for your own library', () => {
+    const c = make(myPage([entry('Alien')], 12, 2, 18));
+
+    expect(c['platinumCount']()).toBe(2);
+    expect(c['premieresAttended']()).toBe(18);
+    expect(c['headline']()).toBe('12 films, 12 nights');
+  });
+
+  it('reads the header stats singular for exactly one film', () => {
+    const c = make(myPage([entry('Alien')], 1, 0, 1));
+
+    expect(c['headline']()).toBe('1 film, 1 night');
+  });
 
   it('does not offer a next page when everything already fits on one', () => {
     const c = make(page([entry('Alien')], 1));
@@ -201,6 +252,7 @@ describe('LibraryComponent', () => {
     TestBed.configureTestingModule({
       imports: [LibraryComponent],
       providers: [
+        provideRouter([]),
         {
           provide: LibraryService,
           useValue: {
@@ -225,7 +277,7 @@ describe('LibraryComponent', () => {
 
     function makeForUser(
       username: string,
-      result: PagedResult<LibraryEntryDto> | (() => ReturnType<typeof throwError>) = page([entry('Alien')]),
+      result: MyLibraryPageDto | (() => ReturnType<typeof throwError>) = myPage([entry('Alien')]),
     ) {
       TestBed.resetTestingModule();
       forUserSpy = jasmine.createSpy('forUser').and.returnValue(
@@ -253,6 +305,29 @@ describe('LibraryComponent', () => {
       fixture.detectChanges();
       return fixture;
     }
+
+    it("reads someone else's header stats too — they describe the account, not the viewer", () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 3, 7));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['platinumCount']()).toBe(3);
+      expect(c['premieresAttended']()).toBe(7);
+    });
+
+    it('hides the header stats once a newly-routed username turns out to be forbidden', () => {
+      // Regression guard: navigating from a visible profile to a forbidden one must not leave the
+      // previous profile's stats on screen just because the signals were never reset to zero.
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 3, 7));
+      let text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('Platinum');
+
+      forUserSpy.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+      fixture.componentRef.setInput('username', 'bob');
+      fixture.detectChanges();
+
+      text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).not.toContain('Platinum');
+    });
 
     it('calls forUser rather than mine when a username is routed', () => {
       makeForUser('ana');

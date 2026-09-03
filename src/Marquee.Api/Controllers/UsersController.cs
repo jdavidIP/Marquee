@@ -91,11 +91,13 @@ public class UsersController(
     /// A user's library — movies they collected from Premieres they clapped for — visible to the
     /// same audience as their friend list, and shaped by the same search/filter/sort as the caller's
     /// own (LibraryController.Mine, issue #26): reused, not duplicated, since the entries mean the
-    /// same thing either way.
+    /// same thing either way. Includes the same header stats Mine does (platinum count, Premieres
+    /// attended) — those describe the account being viewed, not the viewer, so anyone entitled to
+    /// see the entries at all (ResolveEntitledAsync already gated that above) is entitled to them.
     /// </summary>
     [Authorize]
     [HttpGet("{username}/library")]
-    public async Task<ActionResult<PagedResult<LibraryEntryDto>>> Library(
+    public async Task<ActionResult<MyLibraryPageDto>> Library(
         string username,
         [FromQuery] string? search,
         [FromQuery] int? genreId,
@@ -114,7 +116,7 @@ public class UsersController(
         var (p, ps) = Paging.Clamp(page, pageSize);
         var query = new LibraryQuery(search, genreId, minYear, maxYear, sort, desc, p, ps);
 
-        return Ok(await library.GetForUserAsync(entitlement!.UserId, query, ct));
+        return Ok(await library.GetMyLibraryAsync(entitlement!.UserId, query, ct));
     }
 
     /// <summary>The genre/year filter values worth offering for this user's library — see LibraryController.Filters.</summary>

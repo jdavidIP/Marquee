@@ -12,8 +12,12 @@ public interface ILibraryService
     Task<PagedResult<LibraryEntryDto>> GetForUserAsync(Guid userId, LibraryQuery query, CancellationToken ct);
 
     /// <summary>
-    /// The signed-in caller's own page, with the header stats the library screen shows next to the
-    /// title. Wraps <see cref="GetForUserAsync"/> rather than duplicating its query.
+    /// A library page with the header stats the screen shows next to the title (platinum count,
+    /// Premieres attended). Named for the caller's own use (LibraryController.Mine) but not
+    /// restricted to it — UsersController's library action calls this too, for the same reason it
+    /// reuses <see cref="GetForUserAsync"/>: the stats describe the account being viewed, not the
+    /// viewer, so anyone already entitled to see the entries is entitled to these. Wraps
+    /// <see cref="GetForUserAsync"/> rather than duplicating its query.
     /// </summary>
     Task<MyLibraryPageDto> GetMyLibraryAsync(Guid userId, LibraryQuery query, CancellationToken ct);
 

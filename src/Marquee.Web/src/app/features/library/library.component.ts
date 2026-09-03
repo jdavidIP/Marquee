@@ -4,11 +4,15 @@ import { RouterLink } from '@angular/router';
 import { LibraryService } from '../../core/library.service';
 import { apiError, isForbidden } from '../../core/http-error';
 import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort } from '../../core/models';
+import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
 /** Matches the API's own default, so the first page asked for is the page it would have sent. */
 const PAGE_SIZE = 24;
+
+/** Purely decorative — the empty state's dimmed marquee sign, unlit and static. */
+const DIM_BULB_COUNT = Array.from({ length: 16 });
 
 interface SortOption {
   readonly value: LibrarySort;
@@ -18,12 +22,14 @@ interface SortOption {
 @Component({
   selector: 'app-library',
   standalone: true,
-  imports: [DecimalPipe, RouterLink],
+  imports: [DecimalPipe, RouterLink, EmblemTicketComponent],
   templateUrl: './library.component.html',
   styleUrl: './library.component.css',
 })
 export class LibraryComponent implements OnDestroy {
   private readonly library = inject(LibraryService);
+
+  protected readonly dimBulbs = DIM_BULB_COUNT;
 
   /**
    * Set only when routed at /u/:username/library — viewing someone else's collection rather than
@@ -39,6 +45,10 @@ export class LibraryComponent implements OnDestroy {
   protected readonly error = signal<string | null>(null);
   /** A 403 from a private account being viewed — reads as "private", not as a failure. */
   protected readonly forbidden = signal(false);
+
+  /** Describe the account being viewed, not the viewer — shown for anyone entitled to the entries. */
+  protected readonly platinumCount = signal(0);
+  protected readonly premieresAttended = signal(0);
 
   /** Available filter values, as the API reports them for this library. */
   protected readonly genres = signal<GenreDto[]>([]);
@@ -77,6 +87,16 @@ export class LibraryComponent implements OnDestroy {
 
   /** Ascending is only worth offering once there is a field whose order means something. */
   protected readonly descending = computed(() => this.desc() ?? this.sort() !== 'Title');
+
+  /**
+   * "Twelve films, twelve nights" — reuses the one number honestly for both halves rather than
+   * inventing a second figure; the header's separate "Premieres attended" stat is what carries the
+   * precise, possibly-larger count when a film was re-premiered and attended more than once.
+   */
+  protected readonly headline = computed(() => {
+    const n = this.total();
+    return `${n} film${n === 1 ? '' : 's'}, ${n} night${n === 1 ? '' : 's'}`;
+  });
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -157,6 +177,20 @@ export class LibraryComponent implements OnDestroy {
     return tier ? `Emblem tier ${tier}` : 'No emblem';
   }
 
+  /** "3 days ago", "2 weeks ago", "1 month ago" — coarse on purpose, this is flavor text on a card. */
+  protected acquiredLabel(acquiredAt: string): string {
+    const days = Math.floor((Date.now() - new Date(acquiredAt).getTime()) / 86_400_000);
+    if (days <= 0) return 'Today';
+    if (days === 1) return '1 day ago';
+    if (days < 7) return `${days} days ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 5) return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return months <= 1 ? '1 month ago' : `${months} months ago`;
+    const years = Math.floor(days / 365);
+    return years <= 1 ? '1 year ago' : `${years} years ago`;
+  }
+
   /** Any change to what is being asked for starts again at page one. */
   private reset(): void {
     this.page.set(1);
@@ -189,6 +223,10 @@ export class LibraryComponent implements OnDestroy {
       next: (result) => {
         this.entries.set(result.items);
         this.total.set(result.total);
+        // Describes the account being viewed, not the viewer — shown for anyone entitled to see
+        // the entries at all (self, a friend, or a public account), same as the entries themselves.
+        this.platinumCount.set(result.platinumCount);
+        this.premieresAttended.set(result.premieresAttended);
         this.loading.set(false);
         this.forbidden.set(false);
         this.error.set(null);

@@ -1,155 +1,200 @@
 @if (username(); as u) {
   <p class="back"><a routerLink="/u/{{ u }}">Back to profile</a></p>
-  <h1>{{ u }}'s library</h1>
-} @else {
-  <h1>Your library</h1>
 }
 
-@if (forbidden()) {
-  <p class="muted">This account is private. Become friends to see their library.</p>
-} @else {
-
-<section class="controls">
-
-  <div class="control control--search">
-    <label class="control__label" for="library-search">Search</label>
-    <input
-      id="library-search"
-      class="control__input"
-      type="search"
-      placeholder="Title…"
-      [value]="search()"
-      (input)="onSearchInput($any($event.target).value)"
-    />
-  </div>
-
-  <!-- Genres and years come from the API and describe this library, so nothing here offers a
-       filter that would return an empty grid. -->
-  @if (genres().length > 0) {
-    <div class="control">
-      <label class="control__label" for="library-genre">Genre</label>
-      <select
-        id="library-genre"
-        class="control__input"
-        [value]="genreId() ?? ''"
-        (change)="onGenreChange($any($event.target).value)"
-      >
-        <option value="">Any genre</option>
-        @for (genre of genres(); track genre.tmdbId) {
-          <option [value]="genre.tmdbId">{{ genre.name }}</option>
-        }
-      </select>
+<section class="library-card">
+  <div class="header">
+    <div class="header__title">
+      <span class="eyebrow">{{ username() ? (username() + "'s library") : 'Your library' }}</span>
+      <h1 class="headline">{{ headline() }}</h1>
     </div>
-  }
-
-  @if (years().length > 1) {
-    <div class="control">
-      <label class="control__label" for="library-min-year">From</label>
-      <select
-        id="library-min-year"
-        class="control__input"
-        [value]="minYear() ?? ''"
-        (change)="onMinYearChange($any($event.target).value)"
-      >
-        <option value="">Any year</option>
-        @for (year of years(); track year) {
-          <option [value]="year">{{ year }}</option>
-        }
-      </select>
-    </div>
-
-    <div class="control">
-      <label class="control__label" for="library-max-year">To</label>
-      <select
-        id="library-max-year"
-        class="control__input"
-        [value]="maxYear() ?? ''"
-        (change)="onMaxYearChange($any($event.target).value)"
-      >
-        <option value="">Any year</option>
-        @for (year of years(); track year) {
-          <option [value]="year">{{ year }}</option>
-        }
-      </select>
-    </div>
-  }
-
-  <div class="control">
-    <label class="control__label" for="library-sort">Sort by</label>
-    <div class="control__row">
-      <select
-        id="library-sort"
-        class="control__input"
-        [value]="sort()"
-        (change)="onSortChange($any($event.target).value)"
-      >
-        @for (option of sortOptions; track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
-      <button
-        class="direction"
-        type="button"
-        (click)="toggleDirection()"
-        [attr.aria-label]="descending() ? 'Sort ascending' : 'Sort descending'"
-        [title]="descending() ? 'Descending' : 'Ascending'"
-      >
-        {{ descending() ? '↓' : '↑' }}
-      </button>
-    </div>
-  </div>
-
-  @if (filtered()) {
-    <button class="clear" type="button" (click)="clearFilters()">Clear filters</button>
-  }
-</section>
-
-@if (error()) {
-  <p class="err">{{ error() }}</p>
-}
-
-@if (loading()) {
-  <p class="muted">Loading…</p>
-} @else if (entries().length === 0) {
-  <!-- An empty library and an empty result are different situations and read differently: one is a
-       prompt to go and start collecting, the other is a prompt to widen the filters. -->
-  @if (filtered()) {
-    <p class="muted">No movies match those filters.</p>
-  } @else {
-    <p class="muted">No movies yet. Clap open a Premiere to start your collection.</p>
-  }
-} @else {
-  <p class="count">
-    {{ total() | number }} {{ total() === 1 ? 'movie' : 'movies' }}@if (filtered()) { matched }
-  </p>
-
-  <div class="grid">
-    @for (entry of entries(); track entry.movieId) {
-      <article class="card">
-        @if (entry.movie.posterUrl) {
-          <img class="poster" [src]="entry.movie.posterUrl" [alt]="entry.movie.title" />
-        } @else {
-          <div class="poster placeholder">{{ entry.movie.title }}</div>
-        }
-        <div class="body">
-          <h2>{{ entry.movie.title }}</h2>
-          @if (entry.movie.releaseYear) { <p class="year">{{ entry.movie.releaseYear }}</p> }
-          <p class="rating">★ {{ entry.movie.voteAverage | number: '1.1-1' }}</p>
-          <span class="emblem" [class.none]="!entry.emblemTier">{{ emblemLabel(entry.emblemTier) }}</span>
+    @if (!forbidden()) {
+      <div class="header__stats">
+        <div class="stat">
+          <span class="stat__value stat__value--amber">{{ platinumCount() | number }}</span>
+          <span class="stat__label">Platinum</span>
         </div>
-      </article>
+        <div class="stat">
+          <span class="stat__value">{{ premieresAttended() | number }}</span>
+          <span class="stat__label">Premieres attended</span>
+        </div>
+      </div>
     }
   </div>
 
-  @if (totalPages() > 1) {
-    <nav class="pager">
-      <button class="pager__button" type="button" (click)="previous()" [disabled]="!canPrevious()">
-        Previous
-      </button>
-      <span class="pager__position">Page {{ page() }} of {{ totalPages() }}</span>
-      <button class="pager__button" type="button" (click)="next()" [disabled]="!canNext()">Next</button>
-    </nav>
-  }
-}
+  @if (forbidden()) {
+    <p class="muted">This account is private. Become friends to see their library.</p>
+  } @else {
+    <section class="controls">
+      <div class="control control--search">
+        <label class="control__label" for="library-search">Search</label>
+        <input
+          id="library-search"
+          class="control__input control__input--search"
+          type="search"
+          placeholder="Search titles"
+          [value]="search()"
+          (input)="onSearchInput($any($event.target).value)"
+        />
+      </div>
 
-}
+      <!-- Genres and years come from the API and describe this library, so nothing here offers a
+           filter that would return an empty grid. -->
+      @if (genres().length > 0) {
+        <div class="control">
+          <label class="control__label" for="library-genre">Genre</label>
+          <select
+            id="library-genre"
+            class="control__input"
+            [value]="genreId() ?? ''"
+            (change)="onGenreChange($any($event.target).value)"
+          >
+            <option value="">Any genre</option>
+            @for (genre of genres(); track genre.tmdbId) {
+              <option [value]="genre.tmdbId">{{ genre.name }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      @if (years().length > 1) {
+        <div class="control">
+          <label class="control__label" for="library-min-year">From</label>
+          <select
+            id="library-min-year"
+            class="control__input"
+            [value]="minYear() ?? ''"
+            (change)="onMinYearChange($any($event.target).value)"
+          >
+            <option value="">Any year</option>
+            @for (year of years(); track year) {
+              <option [value]="year">{{ year }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="control">
+          <label class="control__label" for="library-max-year">To</label>
+          <select
+            id="library-max-year"
+            class="control__input"
+            [value]="maxYear() ?? ''"
+            (change)="onMaxYearChange($any($event.target).value)"
+          >
+            <option value="">Any year</option>
+            @for (year of years(); track year) {
+              <option [value]="year">{{ year }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      <div class="control">
+        <label class="control__label" for="library-sort">Sort by</label>
+        <div class="control__row">
+          <select
+            id="library-sort"
+            class="control__input"
+            [value]="sort()"
+            (change)="onSortChange($any($event.target).value)"
+          >
+            @for (option of sortOptions; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+          </select>
+          <button
+            class="direction"
+            type="button"
+            (click)="toggleDirection()"
+            [attr.aria-label]="descending() ? 'Sort ascending' : 'Sort descending'"
+            [title]="descending() ? 'Descending' : 'Ascending'"
+          >
+            {{ descending() ? '↓' : '↑' }}
+          </button>
+        </div>
+      </div>
+
+      @if (filtered()) {
+        <button class="clear" type="button" (click)="clearFilters()">Clear filters</button>
+      }
+
+      <span class="result-count">
+        {{ total() | number }} {{ total() === 1 ? 'film' : 'films' }}
+      </span>
+    </section>
+
+    @if (error()) {
+      <p class="err">{{ error() }}</p>
+    }
+
+    @if (loading()) {
+      <p class="muted">Loading…</p>
+    } @else if (entries().length === 0) {
+      <!-- An empty library and an empty result are different situations and read differently: one
+           is a prompt to go and start collecting, the other is a prompt to widen the filters. -->
+      @if (filtered()) {
+        <p class="no-results">Nothing in your library matches that. Try another title or year.</p>
+      } @else if (!username()) {
+        <div class="empty-state">
+          <div class="empty-sign">
+            <div class="empty-sign__bulbs">
+              @for (b of dimBulbs; track $index) { <span class="empty-sign__bulb"></span> }
+            </div>
+            <div class="empty-sign__face">
+              <span class="empty-sign__kicker">Tonight</span>
+              <span class="empty-sign__big">4 a day</span>
+              <span class="empty-sign__caption">Premieres appear at random times</span>
+            </div>
+            <div class="empty-sign__bulbs">
+              @for (b of dimBulbs; track $index) { <span class="empty-sign__bulb"></span> }
+            </div>
+          </div>
+          <p class="empty-copy">
+            Nothing here yet. Films arrive when you clap one open — at times nobody knows in
+            advance.
+          </p>
+          <a routerLink="/premiere" class="watch-marquee">Watch the marquee</a>
+        </div>
+      } @else {
+        <p class="muted">{{ username() }} hasn't collected anything yet.</p>
+      }
+    } @else {
+      <div class="grid">
+        @for (entry of entries(); track entry.movieId) {
+          <article class="card">
+            @if (entry.movie.posterUrl) {
+              <img class="poster" [src]="entry.movie.posterUrl" [alt]="entry.movie.title" />
+            } @else {
+              <div class="poster placeholder">{{ entry.movie.title }}</div>
+            }
+            @if (entry.emblemTier; as tier) {
+              <div [attr.aria-label]="emblemLabel(tier)">
+                <app-emblem-ticket [tier]="tier" />
+              </div>
+            }
+            <div class="body">
+              <h2>{{ entry.movie.title }}</h2>
+              <div class="meta-row">
+                <span class="meta-row__left">
+                  @if (entry.movie.releaseYear) { {{ entry.movie.releaseYear }} · }
+                  ★ {{ entry.movie.voteAverage | number: '1.1-1' }}
+                </span>
+                <span class="meta-row__right">{{ acquiredLabel(entry.acquiredAt) }}</span>
+              </div>
+            </div>
+          </article>
+        }
+      </div>
+
+      @if (totalPages() > 1) {
+        <nav class="pager">
+          <button class="pager__button" type="button" (click)="previous()" [disabled]="!canPrevious()">
+            Previous
+          </button>
+          <span class="pager__position">Page {{ page() }} of {{ totalPages() }}</span>
+          <button class="pager__button" type="button" (click)="next()" [disabled]="!canNext()">Next</button>
+        </nav>
+      }
+    }
+  }
+</section>

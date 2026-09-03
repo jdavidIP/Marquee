@@ -64,10 +64,11 @@ public sealed record LibraryFiltersDto(
     int? MaxYear);
 
 /// <summary>
-/// The signed-in caller's own library page, plus the two header stats the library screen shows
-/// next to the title. Distinct from the plain <see cref="PagedResult{T}"/> someone else's library
-/// returns (<c>GetForUserAsync</c>) — a stranger's library header shows different stats entirely
-/// (shared-Premieres count, "gold or better"), not these two.
+/// A library page plus the two header stats the screen shows next to the title. Not restricted to
+/// "my own" despite the name — anyone entitled to see a library's entries at all (self, a friend,
+/// or the public if the account isn't private) sees these too, since they describe the account
+/// being viewed, not the viewer. A future shared-Premieres stat for viewing someone else's library
+/// is viewer-relative and does not belong here; it would sit alongside this, not replace it.
 /// </summary>
 public sealed record MyLibraryPageDto(
     IReadOnlyList<LibraryEntryDto> Items,
