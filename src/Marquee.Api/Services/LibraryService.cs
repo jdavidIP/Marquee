@@ -11,6 +11,12 @@ public interface ILibraryService
 {
     Task<PagedResult<LibraryEntryDto>> GetForUserAsync(Guid userId, LibraryQuery query, CancellationToken ct);
 
+    /// <summary>
+    /// The signed-in caller's own page, with the header stats the library screen shows next to the
+    /// title. Wraps <see cref="GetForUserAsync"/> rather than duplicating its query.
+    /// </summary>
+    Task<MyLibraryPageDto> GetMyLibraryAsync(Guid userId, LibraryQuery query, CancellationToken ct);
+
     /// <summary>The filter values worth offering for this particular library.</summary>
     Task<LibraryFiltersDto> GetFiltersAsync(Guid userId, CancellationToken ct);
 }
@@ -41,22 +47,52 @@ public sealed class LibraryService(
         // tier earned on a later re-premiere is not shadowed by the one earned when the entry was
         // first created (issue #37). Looked up for this page only — the whole point of paging is not
         // to touch the rest.
+        //
+        // Every Contribution is kept (not just the best), each carrying its Premiere's scope — the
+        // current UI still only shows the single best tier below, but scope-aware library views are
+        // planned, and that needs the full per-scope emblem list rather than just its maximum.
         var movieIds = entries.Select(e => e.MovieId).ToList();
-        var tiers = await db.Contributions
+        var contributions = await db.Contributions
             .AsNoTracking()
             .Where(c => c.UserId == userId && movieIds.Contains(c.Premiere.MovieId))
-            .GroupBy(c => c.Premiere.MovieId)
-            .Select(g => new { MovieId = g.Key, BestTier = g.Max(c => c.EmblemTier) })
-            .ToDictionaryAsync(x => x.MovieId, x => x.BestTier, ct);
+            .Select(c => new { c.Premiere.MovieId, c.EmblemTier, c.Premiere.ScopeId })
+            .ToListAsync(ct);
+
+        var byMovie = contributions
+            .GroupBy(c => c.MovieId)
+            .ToDictionary(
+                g => g.Key,
+                g => (
+                    BestTier: g.Max(c => c.EmblemTier),
+                    Emblems: (IReadOnlyList<EmblemDto>)g.Select(c => new EmblemDto(c.EmblemTier, c.ScopeId)).ToList()));
 
         var items = entries.Select(e =>
         {
-            tiers.TryGetValue(e.MovieId, out var tier);
+            byMovie.TryGetValue(e.MovieId, out var emblems);
             return new LibraryEntryDto(
-                e.MovieId, MovieDtoFactory.Create(e.Movie, _tmdb), e.PremiereId, e.AcquiredAt, tier);
+                e.MovieId, MovieDtoFactory.Create(e.Movie, _tmdb), e.PremiereId, e.AcquiredAt,
+                emblems.BestTier, emblems.Emblems ?? []);
         }).ToList();
 
         return new PagedResult<LibraryEntryDto>(items, total, query.Page, query.PageSize);
+    }
+
+    public async Task<MyLibraryPageDto> GetMyLibraryAsync(Guid userId, LibraryQuery query, CancellationToken ct)
+    {
+        var page = await GetForUserAsync(userId, query, ct);
+
+        // Same "best tier per movie" rule as the page projection above — a re-premiere's better
+        // tier counts, never shadowed by an earlier lesser one on the same film.
+        var platinumCount = await db.Contributions.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .GroupBy(c => c.Premiere.MovieId)
+            .CountAsync(g => g.Max(c => c.EmblemTier) == 5, ct);
+
+        var premieresAttended = await db.Contributions.AsNoTracking()
+            .CountAsync(c => c.UserId == userId, ct);
+
+        return new MyLibraryPageDto(
+            page.Items, page.Total, page.Page, page.PageSize, platinumCount, premieresAttended);
     }
 
     public async Task<LibraryFiltersDto> GetFiltersAsync(Guid userId, CancellationToken ct)
