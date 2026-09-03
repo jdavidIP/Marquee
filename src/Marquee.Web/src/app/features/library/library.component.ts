@@ -2,9 +2,12 @@ import { Component, OnDestroy, computed, effect, inject, input, signal, untracke
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LibraryService } from '../../core/library.service';
+import { UsersService } from '../../core/users.service';
+import { FriendsService } from '../../core/friends.service';
 import { apiError, isForbidden } from '../../core/http-error';
-import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort } from '../../core/models';
+import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort, ProfileDto } from '../../core/models';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
+import { initialsOf } from '../../core/avatar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -28,8 +31,11 @@ interface SortOption {
 })
 export class LibraryComponent implements OnDestroy {
   private readonly library = inject(LibraryService);
+  private readonly users = inject(UsersService);
+  private readonly friends = inject(FriendsService);
 
   protected readonly dimBulbs = DIM_BULB_COUNT;
+  protected readonly ghostTiles = Array.from({ length: 12 });
 
   /**
    * Set only when routed at /u/:username/library — viewing someone else's collection rather than
@@ -49,6 +55,15 @@ export class LibraryComponent implements OnDestroy {
   /** Describe the account being viewed, not the viewer — shown for anyone entitled to the entries. */
   protected readonly platinumCount = signal(0);
   protected readonly premieresAttended = signal(0);
+
+  /**
+   * The target's profile — fetched only when viewing someone else's library. Profile always
+   * resolves (privacy restricts detail, not existence), independently of whether the library
+   * itself 403s, which is exactly what lets the private-library lock screen still show an avatar,
+   * a relationship pill and the shared-Premieres teaser.
+   */
+  protected readonly profile = signal<ProfileDto | null>(null);
+  protected readonly sendingRequest = signal(false);
 
   /** Available filter values, as the API reports them for this library. */
   protected readonly genres = signal<GenreDto[]>([]);
@@ -89,14 +104,39 @@ export class LibraryComponent implements OnDestroy {
   protected readonly descending = computed(() => this.desc() ?? this.sort() !== 'Title');
 
   /**
-   * "Twelve films, twelve nights" — reuses the one number honestly for both halves rather than
-   * inventing a second figure; the header's separate "Premieres attended" stat is what carries the
-   * precise, possibly-larger count when a film was re-premiered and attended more than once.
+   * "Twelve films, eighteen nights" — films is the current (possibly filtered) result count;
+   * nights is premieresAttended, which can run ahead of it when a film was re-premiered and
+   * attended more than once (one film, two nights).
    */
   protected readonly headline = computed(() => {
-    const n = this.total();
-    return `${n} film${n === 1 ? '' : 's'}, ${n} night${n === 1 ? '' : 's'}`;
+    const films = this.total();
+    const nights = this.premieresAttended();
+    return `${films} film${films === 1 ? '' : 's'}, ${nights} night${nights === 1 ? '' : 's'}`;
   });
+
+  protected readonly avatarUrl = computed(() => this.profile()?.avatarUrl ?? null);
+  protected readonly bio = computed(() => this.profile()?.bio ?? null);
+  protected readonly sharedNights = computed(() => this.profile()?.sharedPremieresAttended ?? null);
+
+  protected readonly initials = computed(() => {
+    const name = this.username();
+    return name ? initialsOf(name) : '';
+  });
+
+  /** Mirrors ProfileComponent's own relationship/canAdd logic — same fields, same meaning. */
+  protected readonly relationship = computed(() => {
+    const p = this.profile();
+    if (!p) return null;
+    if (p.friendshipStatus === 'Accepted') return 'Friends';
+    if (p.friendshipStatus === 'Pending') {
+      return p.friendRequestOutgoing ? 'Request sent' : 'Wants to be friends';
+    }
+    return null;
+  });
+
+  protected readonly canAddFriend = computed(
+    () => this.profile() !== null && this.profile()!.friendshipStatus === null,
+  );
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -109,8 +149,29 @@ export class LibraryComponent implements OnDestroy {
       this.username();
       untracked(() => {
         this.loadFilters();
+        this.loadProfile();
         this.reset();
       });
+    });
+  }
+
+  /**
+   * Sends the request, then reloads rather than patching the signal optimistically — same
+   * approach as ProfileComponent's addFriend, so the pill reflects whatever the server actually
+   * recorded (an already-pending request from the other side resolves to "Friends" server-side,
+   * not to what a naive client-side guess would show).
+   */
+  protected addFriend(): void {
+    const name = this.username();
+    if (!name) return;
+
+    this.sendingRequest.set(true);
+    this.friends.sendRequest(name).subscribe({
+      next: () => {
+        this.sendingRequest.set(false);
+        this.loadProfile();
+      },
+      error: () => this.sendingRequest.set(false),
     });
   }
 
@@ -266,6 +327,24 @@ export class LibraryComponent implements OnDestroy {
       // would just repeat it. For everyone else this stays what it always was: the listing still
       // works unfiltered, so nothing here should interrupt a screen that is otherwise fine.
       error: () => {},
+    });
+  }
+
+  /**
+   * Independent of load()'s own request: profile always resolves with 200 regardless of whether
+   * the library itself 403s (privacy restricts detail, not existence), which is exactly what lets
+   * the private-library lock screen still show an avatar, a relationship pill and the
+   * shared-Premieres teaser.
+   */
+  private loadProfile(): void {
+    const username = this.username();
+    if (!username) {
+      this.profile.set(null);
+      return;
+    }
+    this.users.profile(username).subscribe({
+      next: (p) => this.profile.set(p),
+      error: () => this.profile.set(null),
     });
   }
 }

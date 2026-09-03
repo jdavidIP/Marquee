@@ -76,12 +76,162 @@
 .stat__value--amber {
   color: var(--accent-amber);
 }
+.stat__value--teal {
+  color: var(--accent-teal);
+}
 .stat__label {
   font-family: var(--font-body);
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted-2);
+}
+
+/* Someone else's identity — avatar, relationship pill, bio, on both the public and private views */
+
+.identity-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.identity-avatar {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  border-radius: 999px;
+  border: 2px solid var(--muted-3);
+  object-fit: cover;
+}
+.identity-avatar--monogram {
+  background: var(--monogram-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink-steel);
+}
+.identity-avatar--friend {
+  border-color: var(--accent-teal);
+  box-shadow: 0 0 14px rgba(79, 214, 209, 0.35);
+}
+
+.identity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.identity-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.identity-name {
+  font-family: var(--font-numeral);
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: var(--ink-cream);
+}
+.identity-copy {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: #93a0b8;
+}
+
+.pill {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--muted-3);
+  color: var(--ink-steel);
+  white-space: nowrap;
+}
+.pill--teal {
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
+}
+.pill--neutral {
+  border-color: var(--muted-3);
+  color: var(--muted-2);
+}
+
+.send-request {
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-cream);
+  background: transparent;
+  color: var(--ink-cream);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.send-request:hover:not(:disabled) {
+  background: var(--ink-cream);
+  color: #0a0d16;
+}
+.send-request:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Private library — blurred ghost grid behind a lock message */
+
+.ghost-lock {
+  position: relative;
+  padding: 70px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  background: #0f1524;
+  overflow: hidden;
+}
+.ghost-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 18px;
+  padding: 18px;
+  opacity: 0.18;
+  filter: blur(2px);
+}
+.ghost-tile {
+  background: repeating-linear-gradient(135deg, #1b2136 0 10px, #161c2e 10px 20px);
+}
+.lock-message {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.lock-title {
+  font-family: var(--font-numeral);
+  font-size: 30px;
+  letter-spacing: 0.05em;
+  color: var(--ink-cream);
+}
+.lock-teaser {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: #93a0b8;
+  text-align: center;
+  max-width: 420px;
 }
 
 /* Toolbar — every control from before, restyled */

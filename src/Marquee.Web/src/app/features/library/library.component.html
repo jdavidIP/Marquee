@@ -3,27 +3,87 @@
 }
 
 <section class="library-card">
-  <div class="header">
-    <div class="header__title">
-      <span class="eyebrow">{{ username() ? (username() + "'s library") : 'Your library' }}</span>
-      <h1 class="headline">{{ headline() }}</h1>
+  @if (username() && profile()) {
+    <div class="identity-row">
+      @if (avatarUrl(); as url) {
+        <img
+          class="identity-avatar"
+          [class.identity-avatar--friend]="relationship() === 'Friends'"
+          [src]="url"
+          alt=""
+        />
+      } @else {
+        <span class="identity-avatar identity-avatar--monogram" [class.identity-avatar--friend]="relationship() === 'Friends'">
+          {{ initials() }}
+        </span>
+      }
+      <div class="identity-info">
+        <div class="identity-name-row">
+          <span class="identity-name">{{ username() }}</span>
+          @if (forbidden()) {
+            <span class="pill pill--neutral">Private</span>
+          } @else if (relationship(); as r) {
+            <span class="pill" [class.pill--teal]="r === 'Friends'" [class.pill--neutral]="r !== 'Friends'">{{ r }}</span>
+          }
+        </div>
+        <span class="identity-copy">
+          @if (forbidden()) {
+            Profile is public. The library is not.
+          } @else if (bio(); as b) {
+            {{ b }}
+          }
+        </span>
+      </div>
+      @if (forbidden() && canAddFriend()) {
+        <button class="send-request" type="button" (click)="addFriend()" [disabled]="sendingRequest()">
+          {{ sendingRequest() ? 'Sending…' : 'Send friend request' }}
+        </button>
+      }
     </div>
-    @if (!forbidden()) {
+  }
+
+  @if (!forbidden()) {
+    <div class="header">
+      <div class="header__title">
+        <span class="eyebrow">{{ username() ? (username() + "'s library") : 'Your library' }}</span>
+        <h1 class="headline">{{ headline() }}</h1>
+      </div>
       <div class="header__stats">
         <div class="stat">
           <span class="stat__value stat__value--amber">{{ platinumCount() | number }}</span>
           <span class="stat__label">Platinum</span>
         </div>
-        <div class="stat">
-          <span class="stat__value">{{ premieresAttended() | number }}</span>
-          <span class="stat__label">Premieres attended</span>
-        </div>
+        @if (username()) {
+          <div class="stat">
+            <span class="stat__value stat__value--teal">{{ sharedNights() ?? 0 | number }}</span>
+            <span class="stat__label">Nights you shared</span>
+          </div>
+        } @else {
+          <div class="stat">
+            <span class="stat__value">{{ premieresAttended() | number }}</span>
+            <span class="stat__label">Premieres attended</span>
+          </div>
+        }
       </div>
-    }
-  </div>
+    </div>
+  }
 
   @if (forbidden()) {
-    <p class="muted">This account is private. Become friends to see their library.</p>
+    <div class="ghost-lock">
+      <div class="ghost-grid">
+        @for (i of ghostTiles; track $index) {
+          <div class="ghost-tile"></div>
+        }
+      </div>
+      <div class="lock-message">
+        <span class="lock-title">This library is private</span>
+        @if (sharedNights() !== null) {
+          <span class="lock-teaser">
+            You have both clapped at {{ sharedNights() }} of the same Premieres, for what it is worth.
+          </span>
+        }
+      </div>
+    </div>
   } @else {
     <section class="controls">
       <div class="control control--search">

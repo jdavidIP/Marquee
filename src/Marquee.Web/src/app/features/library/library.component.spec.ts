@@ -4,12 +4,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LibraryComponent } from './library.component';
 import { LibraryService } from '../../core/library.service';
+import { UsersService } from '../../core/users.service';
+import { FriendsService } from '../../core/friends.service';
 import {
   LibraryEntryDto,
   LibraryFiltersDto,
   LibraryQuery,
   LibraryPageDto,
+  LimitedProfileDto,
   PagedResult,
+  ProfileDto,
 } from '../../core/models';
 
 /**
@@ -61,6 +65,19 @@ describe('LibraryComponent', () => {
     maxYear: 2001,
   };
 
+  function limitedProfile(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
+    return {
+      username: 'ana',
+      bio: 'Likes westerns.',
+      avatarUrl: null,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      sharedPremieresAttended: 4,
+      ...overrides,
+    };
+  }
+
+  /** own library, never has a username routed, so profile()/sendRequest() are never called. */
   function make(result = page([entry('Alien')]), available: LibraryFiltersDto = filters) {
     TestBed.resetTestingModule();
     mineSpy = jasmine.createSpy('mine').and.returnValue(of(result));
@@ -70,6 +87,14 @@ describe('LibraryComponent', () => {
       providers: [
         provideRouter([]),
         { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(available) } },
+        {
+          provide: UsersService,
+          useValue: { profile: jasmine.createSpy('profile should not be called for the own library') },
+        },
+        {
+          provide: FriendsService,
+          useValue: { sendRequest: jasmine.createSpy('sendRequest should not be called for the own library') },
+        },
       ],
     });
 
@@ -184,6 +209,8 @@ describe('LibraryComponent', () => {
       providers: [
         provideRouter([]),
         { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(filters) } },
+        { provide: UsersService, useValue: { profile: jasmine.createSpy('profile') } },
+        { provide: FriendsService, useValue: { sendRequest: jasmine.createSpy('sendRequest') } },
       ],
     });
 
@@ -214,7 +241,7 @@ describe('LibraryComponent', () => {
 
     expect(c['platinumCount']()).toBe(2);
     expect(c['premieresAttended']()).toBe(18);
-    expect(c['headline']()).toBe('12 films, 12 nights');
+    expect(c['headline']()).toBe('12 films, 18 nights');
   });
 
   it('reads the header stats singular for exactly one film', () => {
@@ -260,6 +287,8 @@ describe('LibraryComponent', () => {
             filters: () => ({ subscribe: ({ error }: { error: (e: unknown) => void }) => error(new Error('nope')) }),
           },
         },
+        { provide: UsersService, useValue: { profile: jasmine.createSpy('profile') } },
+        { provide: FriendsService, useValue: { sendRequest: jasmine.createSpy('sendRequest') } },
       ],
     });
 
@@ -274,15 +303,20 @@ describe('LibraryComponent', () => {
 
   describe('viewing someone else\'s library (issue #38)', () => {
     let forUserSpy: jasmine.Spy;
+    let profileSpy: jasmine.Spy;
+    let sendRequestSpy: jasmine.Spy;
 
     function makeForUser(
       username: string,
       result: LibraryPageDto | (() => ReturnType<typeof throwError>) = myPage([entry('Alien')]),
+      profile: ProfileDto = limitedProfile(),
     ) {
       TestBed.resetTestingModule();
       forUserSpy = jasmine.createSpy('forUser').and.returnValue(
         typeof result === 'function' ? result() : of(result),
       );
+      profileSpy = jasmine.createSpy('profile').and.returnValue(of(profile));
+      sendRequestSpy = jasmine.createSpy('sendRequest').and.returnValue(of({}));
 
       TestBed.configureTestingModule({
         imports: [LibraryComponent],
@@ -297,6 +331,8 @@ describe('LibraryComponent', () => {
               filtersFor: () => of(filters),
             },
           },
+          { provide: UsersService, useValue: { profile: profileSpy } },
+          { provide: FriendsService, useValue: { sendRequest: sendRequestSpy } },
         ],
       });
 
@@ -361,6 +397,74 @@ describe('LibraryComponent', () => {
 
       expect(forUserSpy).toHaveBeenCalledTimes(1);
       expect(forUserSpy.calls.mostRecent().args[0]).toBe('bob');
+    });
+
+    it('builds the headline from the film count and premieresAttended, not the same number twice', () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 12, 0, 18));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['headline']()).toBe('12 films, 18 nights');
+    });
+
+    it("swaps the second stat to \"Nights you shared\" instead of \"Premieres attended\"", () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 0, 7), limitedProfile({ sharedPremieresAttended: 4 }));
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('Nights you shared');
+      expect(text).not.toContain('Premieres attended');
+      expect(text).toContain('4');
+    });
+
+    it("shows the target's name, bio and a Friends pill when accepted", () => {
+      const fixture = makeForUser(
+        'ana',
+        myPage([entry('Alien')]),
+        limitedProfile({ bio: 'Only here for the 70s thrillers.', friendshipStatus: 'Accepted' }),
+      );
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('ana');
+      expect(text).toContain('Only here for the 70s thrillers.');
+      expect(text).toContain('Friends');
+    });
+
+    it('offers to send a friend request only when there is no relationship yet', () => {
+      const noRelationship = makeForUser('ana', myPage([entry('Alien')]), limitedProfile({ friendshipStatus: null }));
+      const c1 = noRelationship.componentInstance as unknown as Record<string, any>;
+      expect(c1['canAddFriend']()).toBe(true);
+
+      const alreadyFriends = makeForUser(
+        'bob',
+        myPage([entry('Alien')]),
+        limitedProfile({ username: 'bob', friendshipStatus: 'Accepted' }),
+      );
+      const c2 = alreadyFriends.componentInstance as unknown as Record<string, any>;
+      expect(c2['canAddFriend']()).toBe(false);
+    });
+
+    it('sends the request and reloads the profile', () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')]), limitedProfile({ friendshipStatus: null }));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+      profileSpy.calls.reset();
+
+      c['addFriend']();
+
+      expect(sendRequestSpy).toHaveBeenCalledWith('ana');
+      expect(profileSpy).toHaveBeenCalledTimes(1);
+      expect(c['sendingRequest']()).toBe(false);
+    });
+
+    it('shows the shared-Premieres teaser and a private pill on a forbidden library, not the entries', () => {
+      const fixture = makeForUser(
+        'ana',
+        () => throwError(() => new HttpErrorResponse({ status: 403 })),
+        limitedProfile({ sharedPremieresAttended: 4 }),
+      );
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('This library is private');
+      expect(text).toContain('4 of the same Premieres');
+      expect(text).toContain('Private');
     });
   });
 });
