@@ -7,7 +7,7 @@
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.75rem;
-  color: var(--gold);
+  color: var(--accent-amber);
   margin: 0 0 6px;
 }
 
@@ -40,8 +40,8 @@ h1 {
   transition: background 0.3s ease;
 }
 .live.on {
-  background: var(--ok);
-  box-shadow: 0 0 6px var(--ok);
+  background: var(--accent-teal);
+  box-shadow: 0 0 6px var(--accent-teal);
 }
 
 /* ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ h1 {
   max-width: 460px;
   margin: 0 auto 28px;
   padding: 12px;
-  border: 2px solid var(--gold-dim);
+  border: 2px solid var(--muted-3);
   border-radius: 14px;
   background: var(--panel-2);
 }
@@ -76,7 +76,7 @@ h1 {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--gold-dim);
+  background: var(--muted-3);
   opacity: 0.45;
   transition:
     background 0.35s ease,
@@ -84,9 +84,9 @@ h1 {
     box-shadow 0.35s ease;
 }
 .bulb.lit {
-  background: var(--gold);
+  background: var(--accent-amber);
   opacity: 1;
-  box-shadow: 0 0 8px var(--gold);
+  box-shadow: 0 0 8px var(--accent-amber);
 }
 
 .stage {
@@ -115,7 +115,7 @@ h1 {
 .mystery {
   font-size: 3rem;
   font-weight: 800;
-  color: var(--gold-dim);
+  color: var(--muted-3);
 }
 
 /* Two panels meeting in the middle; each slides off its own side as progress grows. */
@@ -157,7 +157,7 @@ h1 {
 }
 
 .clap {
-  background: var(--gold);
+  background: var(--accent-amber);
   color: #241a00;
   border: none;
   border-radius: 999px;
@@ -180,7 +180,7 @@ h1 {
   font-size: 0.9rem;
 }
 .capped {
-  color: var(--accent);
+  color: var(--accent-red);
 }
 .expiry {
   margin: 14px 0 0;
@@ -189,7 +189,7 @@ h1 {
 }
 
 .primary {
-  background: var(--gold);
+  background: var(--accent-amber);
   color: #241a00;
   border: none;
   border-radius: 8px;
@@ -203,7 +203,7 @@ h1 {
 }
 
 .err {
-  color: var(--accent);
+  color: var(--accent-red);
 }
 
 /* Reveal */
@@ -219,7 +219,7 @@ h1 {
   margin: 0 0 10px;
 }
 .rating {
-  color: var(--gold);
+  color: var(--accent-amber);
   margin: 0 0 14px;
 }
 .overview {
@@ -227,7 +227,7 @@ h1 {
   color: var(--ink);
 }
 .added {
-  color: var(--ok);
+  color: var(--accent-teal);
   margin: 16px 0 0;
 }
 

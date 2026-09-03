@@ -124,8 +124,8 @@ button.action {
 
 button.action:hover:not(:disabled) { border-color: var(--muted); }
 button.action:disabled { opacity: 0.45; cursor: not-allowed; }
-button.action--primary:not(:disabled) { color: var(--gold); }
-button.action--danger:not(:disabled) { color: var(--accent); }
+button.action--primary:not(:disabled) { color: var(--accent-amber); }
+button.action--danger:not(:disabled) { color: var(--accent-red); }
 
 .empty { color: var(--muted); padding: 12px 0; margin: 0; }
-.error { color: var(--accent); margin-bottom: 12px; }
+.error { color: var(--accent-red); margin-bottom: 12px; }

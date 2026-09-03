@@ -1,6 +1,6 @@
 h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .muted { color: var(--muted); }
-.err { color: var(--accent); margin-bottom: 12px; }
+.err { color: var(--accent-red); margin-bottom: 12px; }
 
 .back { margin: 0 0 4px; }
 .back a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
@@ -45,7 +45,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 12px;
 }
 
-.direction:hover { border-color: var(--gold); color: var(--gold); }
+.direction:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
 
 .clear {
   background: none;
@@ -57,7 +57,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 12px;
 }
 
-.clear:hover { border-color: var(--accent); color: var(--accent); }
+.clear:hover { border-color: var(--accent-red); color: var(--accent-red); }
 
 .count { color: var(--muted); font-size: 0.85rem; margin: 0 0 14px; }
 
@@ -101,8 +101,8 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   font-size: 0.72rem;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--gold-dim);
-  color: var(--gold);
+  background: var(--muted-3);
+  color: var(--accent-amber);
   font-weight: 700;
 }
 .emblem.none { background: var(--panel-2); color: var(--muted); }
@@ -125,6 +125,6 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 14px;
 }
 
-.pager__button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.pager__button:hover:not(:disabled) { border-color: var(--accent-amber); color: var(--accent-amber); }
 .pager__button:disabled { opacity: 0.4; cursor: default; }
 .pager__position { color: var(--muted); font-size: 0.85rem; }

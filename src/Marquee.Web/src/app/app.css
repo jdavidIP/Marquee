@@ -11,7 +11,7 @@
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--accent-amber);
 }
 
 .nav {
@@ -28,7 +28,7 @@
 
 .nav a.active {
   color: var(--ink);
-  border-bottom-color: var(--gold);
+  border-bottom-color: var(--accent-amber);
 }
 
 .account {
@@ -45,7 +45,7 @@
 .link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-red);
   padding: 0;
 }
 

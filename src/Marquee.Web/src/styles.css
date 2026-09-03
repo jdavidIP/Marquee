@@ -1,14 +1,57 @@
+/*
+ * Neon & chrome, 1958 (issue #32) — a downtown picture-palace marquee at night. Supersedes the
+ * prior "Editorial Gold on Black" direction outright (see design_handoff_marquee/README.md).
+ * Dark-only.
+ */
 :root {
-  --bg: #0f0d14;
-  --panel: #1b1723;
-  --panel-2: #241f2f;
-  --ink: #f4f0ff;
-  --muted: #a79fbd;
-  --gold: #f5c451;
-  --gold-dim: #7a6329;
-  --accent: #e0567b;
-  --ok: #57c98a;
-  --border: #322b40;
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-canvas: #08090c;
+  --bg-page: #0a0d16;
+  --panel: #141a2a;
+  --panel-2: #161c2e;
+  --border: #23283a;
+
+  /* Text */
+  --ink-cream: #f4ead6;
+  --ink: #f2eef9;
+  --muted: #93899f;
+  --muted-2: #7b849b;
+  --muted-3: #5f6a84;
+  --muted-4: #49536b;
+
+  /* Accents */
+  --accent-red: #ff4d5e;
+  --accent-red-deep: #e0304a;
+  --accent-teal: #4fd6d1;
+  --accent-amber: #ffc75a;
+
+  /* Marquee sign metal — 6-stop linear-gradient(180deg, …) top to bottom */
+  --chrome-1: #dfe5ee;
+  --chrome-2: #8d97a8;
+  --chrome-3: #c8d0dc;
+  --chrome-4: #7d8698;
+  --chrome-5: #6f7889;
+  --chrome-6: #b9c2d0;
+
+  /* Sign face (cream card the title sits on) */
+  --sign-face: #f4ead6;
+  --sign-face-border: #b7b0a0;
+  --sign-face-dim: #e2d8c2;
+  --sign-face-dim-border: #c6bda9;
+
+  /* Curtain fabric — unchanged from the prior system */
+  --curtain-a: #7c1230;
+  --curtain-b: #5d0c24;
+  --curtain-c: #8d1637;
+  --curtain-d: #4b0a1d;
+
+  /* Yellowtail for the wordmark/script; Bebas Neue for every large number and title letter tile;
+     Jost for everything else — labels, body copy, controls. Loaded in index.html. */
+  --font-display: 'Yellowtail', cursive;
+  --font-numeral: 'Bebas Neue', sans-serif;
+  --font-body: 'Jost', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -16,11 +59,18 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
+  background: var(--bg-canvas);
   color: var(--ink);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
 }
 
 button { font: inherit; cursor: pointer; }
 a { color: inherit; }
 input { font: inherit; }
+
+/* Windows Chromium does not reliably theme the native <select> popup from color-scheme alone —
+   style the options directly so the dropdown list isn't white-on-white. */
+select option {
+  background: var(--panel);
+  color: var(--ink);
+}

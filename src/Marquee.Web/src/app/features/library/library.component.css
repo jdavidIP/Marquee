@@ -1,6 +1,6 @@
 h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .muted { color: var(--muted); }
-.err { color: var(--accent); }
+.err { color: var(--accent-red); }
 
 .back { margin: 0 0 16px; }
 .back a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
@@ -36,7 +36,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   width: 100%;
 }
 
-.control__input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.control__input:focus-visible { outline: 2px solid var(--accent-amber); outline-offset: 1px; }
 
 .direction {
   background: var(--panel);
@@ -48,7 +48,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 12px;
 }
 
-.direction:hover { border-color: var(--gold); color: var(--gold); }
+.direction:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
 
 .clear {
   background: none;
@@ -60,7 +60,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 12px;
 }
 
-.clear:hover { border-color: var(--accent); color: var(--accent); }
+.clear:hover { border-color: var(--accent-red); color: var(--accent-red); }
 
 .count { color: var(--muted); font-size: 0.85rem; margin: 0 0 14px; }
 
@@ -82,7 +82,7 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
   padding: 8px 14px;
 }
 
-.pager__button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.pager__button:hover:not(:disabled) { border-color: var(--accent-amber); color: var(--accent-amber); }
 .pager__button:disabled { opacity: 0.4; cursor: default; }
 .pager__position { color: var(--muted); font-size: 0.85rem; }
 
@@ -121,15 +121,15 @@ h1 { font-size: 1.6rem; margin: 0 0 20px; }
 .body { padding: 14px; }
 h2 { font-size: 1rem; margin: 0 0 4px; }
 .year { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
-.rating { color: var(--gold); font-size: 0.85rem; margin: 0 0 10px; }
+.rating { color: var(--accent-amber); font-size: 0.85rem; margin: 0 0 10px; }
 
 .emblem {
   display: inline-block;
   font-size: 0.72rem;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--gold-dim);
-  color: var(--gold);
+  background: var(--muted-3);
+  color: var(--accent-amber);
   font-weight: 700;
 }
 .emblem.none { background: var(--panel-2); color: var(--muted); }

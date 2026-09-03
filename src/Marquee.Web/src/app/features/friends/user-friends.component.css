@@ -72,4 +72,4 @@ button.action:hover { border-color: var(--muted); }
 }
 
 .empty { color: var(--muted); padding: 12px 0; margin: 0; }
-.error { color: var(--accent); margin-bottom: 12px; }
+.error { color: var(--accent-red); margin-bottom: 12px; }

@@ -142,7 +142,7 @@
 }
 
 .saved {
-  color: var(--ok);
+  color: var(--accent-teal);
   font-size: 0.85rem;
   margin: 12px 0 0;
 }
@@ -161,7 +161,7 @@ a.action {
 
 .action:hover:not(:disabled) { border-color: var(--muted); }
 .action:disabled { opacity: 0.45; cursor: not-allowed; }
-.action--primary:not(:disabled) { color: var(--gold); }
+.action--primary:not(:disabled) { color: var(--accent-amber); }
 
 .empty { color: var(--muted); padding: 12px 0; margin: 0; }
-.error { color: var(--accent); margin-bottom: 12px; }
+.error { color: var(--accent-red); margin-bottom: 12px; }
