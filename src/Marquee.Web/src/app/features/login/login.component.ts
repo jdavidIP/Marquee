@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { apiError, passwordProblems } from '../../core/http-error';
 import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
@@ -14,6 +14,7 @@ import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
 export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly mode = signal<'login' | 'register' | 'forgot'>('login');
   protected readonly busy = signal(false);
@@ -61,6 +62,13 @@ export class LoginComponent {
   });
 
   constructor() {
+    // ?mode=register opens on the register form, so the shell's "Create account" lands on the form
+    // it names rather than on sign-in with a toggle still to find. Read once from the snapshot: the
+    // route is never navigated to with a different mode while this component is alive.
+    if (this.route.snapshot.queryParamMap.get('mode') === 'register') {
+      this.mode.set('register');
+    }
+
     // Fetched once for the session rather than on entering register mode: it is a few bytes, it
     // never changes while the page is open, and asking for it up front means the hint is already
     // there the moment the form switches.

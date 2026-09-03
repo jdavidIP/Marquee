@@ -1,56 +1,163 @@
+/* The picture-palace glow: a soft navy wash falling from the top of the page. Fixed so it stays
+   with the marquee rather than scrolling away with the content beneath it. */
+:host {
+  display: block;
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  background-image: radial-gradient(120% 80% at 50% 0%, var(--bg-glow) 0%, var(--bg-page) 60%);
+  background-attachment: fixed;
+}
+
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 24px;
-  padding: 14px 28px;
-  background: var(--panel);
+  height: 60px;
+  padding: 0 26px;
   border-bottom: 1px solid var(--border);
 }
 
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  min-width: 0;
+}
+
+/* The one piece of neon in the shell — nothing else here glows. */
 .brand {
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent-amber);
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--accent-red);
+  text-shadow: 0 0 14px rgba(255, 77, 94, 0.55);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .nav {
   display: flex;
-  gap: 18px;
+  gap: 24px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
-.nav a {
+.nav a,
+.nav__locked {
+  color: var(--muted-2);
   text-decoration: none;
-  color: var(--muted);
-  padding: 4px 2px;
-  border-bottom: 2px solid transparent;
+  padding-bottom: 3px;
+  border-bottom: 1px solid transparent;
+  white-space: nowrap;
 }
+
+.nav a:hover { color: var(--ink-steel); }
 
 .nav a.active {
-  color: var(--ink);
-  border-bottom-color: var(--accent-amber);
+  color: var(--accent-teal);
+  border-bottom-color: var(--accent-teal);
 }
 
+/* Dimmer than an inactive link, because for a visitor these are not links at all. */
+.nav__locked { color: var(--muted-4); }
+
 .account {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
-/* An anchor since it leads to your own profile, but styled as the quiet label it has always been. */
-.who { color: var(--muted); text-decoration: none; }
-.who:hover, .who.active { color: var(--ink); }
+.who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+}
 
-.link {
+.who__monogram {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid var(--ink-cream);
+  background: var(--monogram-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-cream);
+}
+
+.who__name {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-steel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Not in the design's topbar, but signing out has to stay reachable — kept quiet so it does not
+   compete with the name beside it. */
+.signout {
   background: none;
   border: none;
-  color: var(--accent-red);
   padding: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+  white-space: nowrap;
 }
 
+.signout:hover { color: var(--accent-red); }
+
+.signin {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.signin:hover { color: var(--ink-steel); }
+
+.join {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bg-page);
+  background: var(--ink-cream);
+  padding: 7px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Wide enough for the Library's four-poster grid; the Premiere narrows its own column further. */
 .content {
-  max-width: 900px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 40px 40px 48px;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .topbar__left { gap: 20px; }
+  .nav { gap: 16px; }
+  .who__name { display: none; }
+  .content { padding: 28px 18px 36px; }
 }

@@ -1,20 +1,42 @@
 <header class="topbar">
-  <div class="brand">Marquee</div>
+  <div class="topbar__left">
+    <a class="brand" routerLink="/premiere">Marquee</a>
+
+    @if (auth.isLoggedIn()) {
+      <nav class="nav">
+        <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
+        <a routerLink="/library" routerLinkActive="active">Library</a>
+        <a routerLink="/friends" routerLinkActive="active">Friends</a>
+        @if (auth.canSeeOperations()) {
+          <a routerLink="/admin" routerLinkActive="active">Operations</a>
+        }
+      </nav>
+    } @else {
+      <!-- A visitor still sees the shape of the app, but Library and Friends need an account, so
+           they are shown as the dead ends they are rather than as links that bounce off the guard. -->
+      <nav class="nav">
+        <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
+        <span class="nav__locked">Library</span>
+        <span class="nav__locked">Friends</span>
+      </nav>
+    }
+  </div>
+
   @if (auth.isLoggedIn()) {
-    <nav class="nav">
-      <a routerLink="/premiere" routerLinkActive="active">Premiere</a>
-      <a routerLink="/library" routerLinkActive="active">Library</a>
-      <a routerLink="/friends" routerLinkActive="active">Friends</a>
-      @if (auth.canSeeOperations()) {
-        <a routerLink="/admin" routerLinkActive="active">Operations</a>
-      }
-    </nav>
     <div class="account">
       <!-- Your own name is the way to your profile: it is where you already look for it. -->
       @if (auth.user()?.username; as me) {
-        <a class="who" [routerLink]="['/u', me]" routerLinkActive="active">{{ me }}</a>
+        <a class="who" [routerLink]="['/u', me]" routerLinkActive="active">
+          <span class="who__monogram">{{ initials(me) }}</span>
+          <span class="who__name">{{ me }}</span>
+        </a>
       }
-      <button class="link" (click)="logout()">Sign out</button>
+      <button class="signout" (click)="logout()">Sign out</button>
+    </div>
+  } @else {
+    <div class="account">
+      <a class="signin" routerLink="/login">Sign in</a>
+      <a class="join" routerLink="/login" [queryParams]="{ mode: 'register' }">Create account</a>
     </div>
   }
 </header>
