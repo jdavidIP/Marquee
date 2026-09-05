@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
 using Marquee.Api.Security;
 using Marquee.Api.Services;
+using Marquee.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -43,6 +44,22 @@ public class PremieresController(IPremiereService premieres, IParticipantResolve
     {
         var dto = await premieres.GetActiveAsync(participants.Resolve(HttpContext), ct);
         return dto is null ? NotFound() : Ok(dto);
+    }
+
+    /// <summary>
+    /// Today's full programme for the idle-state marquee page (issue #58). Open to anonymous callers
+    /// like <see cref="Active"/> — a logged-out visitor sees the same day, just with no per-slot
+    /// claps of their own. <paramref name="scopeId"/> defaults to the global scope so today's
+    /// frontend need not pass it, but the endpoint does not hardcode it — CLAUDE.md §5 asks for that
+    /// generality even though v1 only ever populates one scope.
+    /// </summary>
+    [HttpGet("today")]
+    public async Task<ActionResult<TodayScheduleDto>> Today(
+        [FromQuery] string? scopeId, CancellationToken ct)
+    {
+        var dto = await premieres.GetTodayScheduleAsync(
+            string.IsNullOrWhiteSpace(scopeId) ? Scopes.Global : scopeId, participants.Resolve(HttpContext), ct);
+        return Ok(dto);
     }
 
     /// <summary>The next Premiere the scheduler has lined up, so the page can say when to come back.</summary>

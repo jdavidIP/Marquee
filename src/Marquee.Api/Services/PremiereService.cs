@@ -20,6 +20,9 @@ public interface IPremiereService
     Task<PremiereDto?> GetAsync(Guid premiereId, Participant? viewer, CancellationToken ct);
     Task<PremiereDto?> GetActiveAsync(Participant? viewer, CancellationToken ct);
     Task<PremiereDto?> GetNextScheduledAsync(CancellationToken ct);
+
+    /// <summary>Today's full programme for the idle-state marquee page (issue #58).</summary>
+    Task<TodayScheduleDto> GetTodayScheduleAsync(string scopeId, Participant? viewer, CancellationToken ct);
     Task<ClapResult> ClapAsync(Guid premiereId, Participant participant, string? idempotencyKey, CancellationToken ct);
 
     /// <summary>
@@ -129,6 +132,48 @@ public sealed class PremiereService(
             .FirstOrDefaultAsync(ct);
 
         return premiere?.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdb);
+    }
+
+    /// <summary>
+    /// Today's slots, earliest first, keyed on each Premiere's effective time (OpensAt ??
+    /// ScheduledFor) the same way <see cref="Marquee.Api.Services.AdminService"/> resolves "today" —
+    /// so a Premiere started early sits in the slot it actually ran in. A Missed one still gets a
+    /// slot; the caller renders it as a dead row rather than shrinking the list (§4.5).
+    /// </summary>
+    public async Task<TodayScheduleDto> GetTodayScheduleAsync(
+        string scopeId, Participant? viewer, CancellationToken ct)
+    {
+        var localDate = DateOnly.FromDateTime(DateTime.Now);
+        var (dayStartUtc, dayEndUtc) = LocalDay.BoundsUtc(localDate);
+
+        var premieres = await db.Premieres
+            .Include(p => p.Movie)
+            .AsNoTracking()
+            .Where(p => p.ScopeId == scopeId
+                        && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
+                        && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
+            .OrderBy(p => p.OpensAt ?? p.ScheduledFor)
+            .ToListAsync(ct);
+
+        var slots = new List<TodayScheduleSlotDto>(premieres.Count);
+        foreach (var premiere in premieres)
+        {
+            var opened = premiere.Status is PremiereStatus.Opened or PremiereStatus.AutoOpened;
+            var (myClaps, myEmblemTier) = opened
+                ? await MyContributionAsync(premiere.Id, viewer, ct)
+                : (0, null);
+
+            slots.Add(new TodayScheduleSlotDto(
+                premiere.Id,
+                premiere.ScheduledFor,
+                premiere.Status.ToString(),
+                opened ? MovieDtoFactory.Create(premiere.Movie, _tmdb) : null,
+                opened ? premiere.TotalClaps : null,
+                myClaps,
+                myEmblemTier));
+        }
+
+        return new TodayScheduleDto(scopeId, slots);
     }
 
     /// <summary>

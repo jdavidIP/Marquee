@@ -76,3 +76,31 @@ public sealed record ClapResponse(
     bool CapReached,
     bool Opened,
     MovieDto? Movie);
+
+/// <summary>
+/// One of today's (up to <see cref="MarqueeScheduleOptions.PremieresPerDay"/>) Premieres, for the
+/// idle-state marquee page (issue #58). This is the one place a Scheduled Premiere's time is shown
+/// alongside its neighbours rather than in isolation like <see cref="PremiereDto"/> from
+/// <c>GET /premieres/next</c> — the whole day's programme, not just the next slot.
+///
+/// Movie and TotalClaps are null until the slot has actually opened (Opened/AutoOpened) — a
+/// Scheduled slot's film is not public, and an Active one belongs on the live page, not this one.
+/// MyClaps/MyEmblemTier read the same durable Contribution row <see cref="PremiereService"/>'s own
+/// terminal-Premiere path reads from; zero/null means "did not participate", indistinguishable from
+/// "not revealed yet" until Status says which.
+/// </summary>
+public sealed record TodayScheduleSlotDto(
+    Guid Id,
+    DateTime ScheduledFor,
+    string Status,
+    MovieDto? Movie,
+    int? TotalClaps,
+    int MyClaps,
+    int? MyEmblemTier);
+
+/// <summary>
+/// Ordered earliest-first by each slot's effective time. Always up to
+/// <see cref="MarqueeScheduleOptions.PremieresPerDay"/> long on a normal day; a Missed slot (§4.5)
+/// still appears rather than shrinking the list, so "today's programme" always reads as a full day.
+/// </summary>
+public sealed record TodayScheduleDto(string ScopeId, IReadOnlyList<TodayScheduleSlotDto> Slots);
