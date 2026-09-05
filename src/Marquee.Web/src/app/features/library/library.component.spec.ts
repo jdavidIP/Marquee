@@ -7,6 +7,7 @@ import { LibraryService } from '../../core/library.service';
 import { UsersService } from '../../core/users.service';
 import { FriendsService } from '../../core/friends.service';
 import {
+  FullProfileDto,
   LibraryEntryDto,
   LibraryFiltersDto,
   LibraryQuery,
@@ -68,11 +69,29 @@ describe('LibraryComponent', () => {
   function limitedProfile(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
     return {
       username: 'ana',
-      bio: 'Likes westerns.',
       avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
       sharedPremieresAttended: 4,
+      ...overrides,
+    };
+  }
+
+  /** An accepted friend (or a public account) always gets the full payload, never the limited one. */
+  function fullProfile(overrides: Partial<FullProfileDto> = {}): FullProfileDto {
+    return {
+      id: 'u1',
+      username: 'ana',
+      bio: null,
+      avatarUrl: null,
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      moviesCollected: 1,
+      premieresAttended: 1,
+      friendCount: 0,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
       ...overrides,
     };
   }
@@ -416,10 +435,12 @@ describe('LibraryComponent', () => {
     });
 
     it("shows the target's name, bio and a Friends pill when accepted", () => {
+      // An accepted friend is entitled to the full profile (never the limited shape) even on a
+      // private account — see UserProfileService.ResolveEntitlementAsync.
       const fixture = makeForUser(
         'ana',
         myPage([entry('Alien')]),
-        limitedProfile({ bio: 'Only here for the 70s thrillers.', friendshipStatus: 'Accepted' }),
+        fullProfile({ bio: 'Only here for the 70s thrillers.', friendshipStatus: 'Accepted' }),
       );
       const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
 

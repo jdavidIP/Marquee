@@ -5,7 +5,7 @@ import { LibraryService } from '../../core/library.service';
 import { UsersService } from '../../core/users.service';
 import { FriendsService } from '../../core/friends.service';
 import { apiError, isForbidden } from '../../core/http-error';
-import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort, ProfileDto } from '../../core/models';
+import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort, ProfileDto, isFullProfile } from '../../core/models';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 import { initialsOf } from '../../core/avatar';
 
@@ -115,7 +115,13 @@ export class LibraryComponent implements OnDestroy {
   });
 
   protected readonly avatarUrl = computed(() => this.profile()?.avatarUrl ?? null);
-  protected readonly bio = computed(() => this.profile()?.bio ?? null);
+
+  /** Bio is only ever on the full payload now — a private stranger's view never had it to show. */
+  protected readonly bio = computed(() => {
+    const p = this.profile();
+    return p && isFullProfile(p) ? p.bio : null;
+  });
+
   protected readonly sharedNights = computed(() => this.profile()?.sharedPremieresAttended ?? null);
 
   protected readonly initials = computed(() => {

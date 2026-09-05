@@ -12,7 +12,7 @@ import { FullProfileDto, LimitedProfileDto, ProfileDto, isFullProfile } from '..
  * The two payload shapes.
  *
  * GET /api/users/{username} returns either a full profile or, for a stranger viewing a private
- * account, one carrying only username and bio — the remaining fields absent rather than null. The
+ * account, one carrying only the username — the remaining fields absent rather than null. The
  * screen has to render whichever it was handed without deciding for itself what the viewer is
  * entitled to: the server already made that call, and a friend sees everything even when the
  * account is private. These cover that split.
@@ -41,7 +41,6 @@ describe('ProfileComponent payload shapes', () => {
   function limited(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
     return {
       username: 'ana',
-      bio: 'Likes westerns.',
       avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
@@ -182,7 +181,6 @@ describe('isFullProfile', () => {
 
     const limitedProfile: LimitedProfileDto = {
       username: 'ana',
-      bio: null,
       avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
