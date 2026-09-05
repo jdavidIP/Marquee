@@ -1,131 +1,309 @@
-/* Colours come from the app's custom properties, never new values. Kept lean: component styles are
-   charged per component against the 4 kB anyComponentStyle budget. */
+/* Colours come from the app's custom properties, never new values. */
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 20px;
+.page {
+  padding: 40px;
 }
 
-.panel__title {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  font-weight: 600;
-  margin: 0 0 12px;
+.profile-row {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+}
+
+.profile-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .head {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
 }
 
-.head__who {
+.head__who,
+.head__actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  min-width: 0;
 }
 
-.head__name {
-  font-size: 1.4rem;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.head__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-/* Status is never carried by colour alone — the pill states its meaning in words. */
+/* Status is never carried by colour alone — the pill states its meaning in words. Round; every
+   button stays square (see .action below). */
 .pill {
   display: inline-block;
-  padding: 2px 9px;
+  padding: 5px 11px;
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid currentColor;
-  color: var(--muted);
-  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  border: 1px solid var(--border);
+  color: var(--ink-cream);
+}
+.pill--teal {
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
+}
+.pill--neutral {
+  border-color: var(--muted-3);
+  color: var(--muted-2);
+}
+
+.range-caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted-3);
 }
 
 .bio {
-  margin: 0 0 12px;
+  margin: 0;
   overflow-wrap: anywhere;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: #93a0b8;
+  max-width: 520px;
 }
-
-.bio--empty { color: var(--muted); }
+.bio--empty {
+  color: var(--muted-3);
+}
 
 .editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px;
+  background: #0f1524;
+  border: 1px solid var(--border);
 }
 
 .editor__label {
-  font-size: 0.75rem;
+  font-family: var(--font-body);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
 }
 
 .editor__input {
-  background: var(--panel-2);
+  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
   color: var(--ink);
   padding: 8px 12px;
   font: inherit;
   resize: vertical;
 }
 
-.editor__actions { display: flex; gap: 8px; }
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin: 0;
+.editor__actions {
+  display: flex;
+  gap: 8px;
 }
 
-.stat { margin: 0; }
+/* Every button on this screen is square — pills, avatars and status dots are the only round
+   shapes (design handoff, section 8: "if any border-radius on a button survives, it is a bug"). */
+.action,
+a.action {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-cream);
+  padding: 11px 16px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
+.action:hover:not(:disabled) {
+  border-color: var(--muted-2);
+}
+.action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.action--primary:not(:disabled) {
+  background: var(--ink-cream);
+  border-color: var(--ink-cream);
+  color: #c2213a;
+  box-shadow: 0 0 20px rgba(244, 234, 214, 0.3);
+}
+
+.next-category {
+  padding: 16px 18px;
+  background: #0f1524;
+  border: 1px solid var(--border);
+}
+
+.next-category__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.next-category__text {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-steel);
+}
+.next-category__text strong {
+  color: var(--ink-cream);
+  font-weight: 500;
+}
+
+.next-category__range {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted-3);
+  white-space: nowrap;
+}
+
+.next-category__bar {
+  height: 4px;
+  background: var(--panel-2);
+}
+.next-category__fill {
+  height: 100%;
+  transition: width 0.5s ease;
+}
+
+.activity-strip {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+.activity-strip__label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-steel);
+}
+.activity-strip__label .muted {
+  color: var(--muted-3);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.activity-card__poster {
+  width: 100%;
+  flex: none;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  box-sizing: border-box;
+}
+.activity-card__poster--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  text-align: center;
+  background-image: repeating-linear-gradient(135deg, #1b2136 0 10px, #161c2e 10px 20px);
+  color: var(--muted-3);
+  font-family: var(--font-body);
+  font-size: 10px;
+}
+
+.activity-card__title {
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--ink-steel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-card__date {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--muted-3);
+}
+
+.full-width-block {
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+}
+
+.panel__title {
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+  margin: 0 0 14px;
+}
+
+.stats {
+  display: flex;
+  gap: 52px;
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.stat {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--muted-4);
+}
 
 .stat__label {
-  font-size: 0.75rem;
+  font-family: var(--font-body);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
 }
 
 .stat__value {
   margin: 4px 0 0;
-  font-size: 1.2rem;
+  font-family: var(--font-numeral);
+  font-size: 52px;
+  color: var(--ink-cream);
   font-variant-numeric: tabular-nums;
 }
-
 .stat__value a {
   color: inherit;
   text-decoration: none;
 }
-
-.stat__value a:hover { text-decoration: underline; }
+.stat__value a:hover {
+  text-decoration: underline;
+}
 
 .privacy {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 16px 18px;
+  background: #0f1524;
+  border: 1px solid var(--border);
 }
 
 .privacy__text {
@@ -134,34 +312,35 @@
   gap: 2px;
   min-width: 0;
   flex: 1;
+  font-family: var(--font-body);
 }
 
 .privacy__hint {
-  color: var(--muted);
-  font-size: 0.85rem;
+  color: var(--muted-2);
+  font-size: 13px;
 }
 
 .saved {
   color: var(--accent-teal);
-  font-size: 0.85rem;
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin: 12px 0 0;
 }
 
-.action,
-a.action {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--ink);
-  padding: 5px 12px;
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-block;
+.empty {
+  color: var(--muted-2);
+  font-family: var(--font-body);
+  padding: 16px 40px;
+  margin: 0;
 }
-
-.action:hover:not(:disabled) { border-color: var(--muted); }
-.action:disabled { opacity: 0.45; cursor: not-allowed; }
-.action--primary:not(:disabled) { color: var(--accent-amber); }
-
-.empty { color: var(--muted); padding: 12px 0; margin: 0; }
-.error { color: var(--accent-red); margin-bottom: 12px; }
+/* Already inside .page's own padded content box — no need to indent again. */
+.full-width-block .empty {
+  padding: 0;
+}
+.error {
+  color: var(--accent-red);
+  margin: 0;
+  padding: 16px 40px 0;
+}

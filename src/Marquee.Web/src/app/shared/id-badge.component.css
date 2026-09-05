@@ -1,6 +1,7 @@
 :host {
   display: block;
   width: 298px;
+  flex: none;
 }
 
 .badge-col {

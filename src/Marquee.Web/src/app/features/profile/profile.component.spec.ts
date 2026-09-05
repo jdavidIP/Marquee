@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { ProfileComponent } from './profile.component';
 import { UsersService } from '../../core/users.service';
 import { FriendsService } from '../../core/friends.service';
+import { PremiereHistoryService } from '../../core/premiere-history.service';
 import { AuthService } from '../../core/auth.service';
 import { FullProfileDto, LimitedProfileDto, ProfileDto, isFullProfile } from '../../core/models';
 
@@ -50,12 +51,16 @@ describe('ProfileComponent payload shapes', () => {
   }
 
   let sendRequestSpy: jasmine.Spy;
+  let forUserSpy: jasmine.Spy;
 
   function make(profile: ProfileDto, viewerId: string | null = me) {
     // Reset first so a test can build more than one profile — the outgoing/incoming pair below
     // needs two, and TestBed refuses to be reconfigured once instantiated.
     TestBed.resetTestingModule();
     sendRequestSpy = jasmine.createSpy('sendRequest').and.returnValue(of({}));
+    forUserSpy = jasmine
+      .createSpy('forUser')
+      .and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 4 }));
 
     TestBed.configureTestingModule({
       imports: [ProfileComponent],
@@ -63,6 +68,7 @@ describe('ProfileComponent payload shapes', () => {
         provideRouter([]),
         { provide: UsersService, useValue: { profile: () => of(profile), updateMe: () => of({}) } },
         { provide: FriendsService, useValue: { sendRequest: sendRequestSpy } },
+        { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } },
         {
           provide: AuthService,
           useValue: {
@@ -157,6 +163,32 @@ describe('ProfileComponent payload shapes', () => {
     // Accepting needs the request's id, which this payload does not carry — so the screen points
     // at the one that owns requests rather than guessing.
     expect(received['linkToRequests']()).toBe(true);
+  });
+
+  it('loads recent activity only for a full payload, never a limited one', () => {
+    make(full());
+    expect(forUserSpy).toHaveBeenCalledWith('ana', { sort: 'Opened', pageSize: 4 });
+
+    forUserSpy.calls.reset();
+    make(limited());
+    expect(forUserSpy).not.toHaveBeenCalled();
+  });
+
+  it('derives the access category and next-category progress from premieresAttended', () => {
+    const c = make(full({ premieresAttended: 18 }));
+
+    expect(c['category']().name).toBe('Industry');
+    expect(c['nextCategory']().name).toBe('Press');
+    expect(c['nextCategoryRemaining']()).toBe(40 - 18);
+    // 18 is 3/25 of the way from Industry's floor (15) to Press's (40).
+    expect(c['nextCategoryProgressPct']()).toBeCloseTo(((18 - 15) / (40 - 15)) * 100, 5);
+  });
+
+  it('has no next category at Jury, the top of the ladder', () => {
+    const c = make(full({ premieresAttended: 250 }));
+
+    expect(c['category']().name).toBe('Jury');
+    expect(c['nextCategory']()).toBeNull();
   });
 });
 
