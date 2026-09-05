@@ -157,8 +157,10 @@ export interface FullProfileDto {
  */
 export interface LimitedProfileDto {
   username: string;
-  bio: string | null;
-  /** Kept even on a restricted profile: a picture is part of the public identity, like the name. */
+  /**
+   * Kept even on a restricted profile: a picture is part of the public identity, like the name.
+   * Bio itself is withheld — the badge's "unissued" state prints name only.
+   */
   avatarUrl: string | null;
   friendshipStatus: string | null;
   friendRequestOutgoing: boolean | null;

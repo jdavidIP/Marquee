@@ -21,7 +21,7 @@ namespace Marquee.IntegrationTests;
 [Collection(IntegrationCollection.Name)]
 public class ProfileVisibilityTests(MarqueeAppFactory factory)
 {
-    private sealed record LimitedBody(string Username, string? Bio, string? FriendshipStatus, bool? FriendRequestOutgoing, int? SharedPremieresAttended);
+    private sealed record LimitedBody(string Username, string? FriendshipStatus, bool? FriendRequestOutgoing, int? SharedPremieresAttended);
     private sealed record FullBody(
         Guid Id, string Username, string? Bio, bool IsPrivate, DateTime CreatedAt,
         int MoviesCollected, int PremieresAttended, int FriendCount,
@@ -100,7 +100,7 @@ public class ProfileVisibilityTests(MarqueeAppFactory factory)
     }
 
     [Fact]
-    public async Task A_stranger_sees_only_username_and_bio_on_a_private_profile()
+    public async Task A_stranger_sees_only_the_name_on_a_private_profile()
     {
         var (owner, ownerName, _) = await NewUserAsync("owner");
         await owner.PatchAsJsonAsync("/api/users/me", new { bio = "hello", isPrivate = true });
@@ -113,12 +113,13 @@ public class ProfileVisibilityTests(MarqueeAppFactory factory)
         var raw = await response.Content.ReadAsStringAsync();
         // The plan requires the account's own fields to be absent, not merely null — asserting on
         // the raw JSON is the only way to prove that, since a strongly-typed deserialise would
-        // silently accept a field that should not be there at all.
-        raw.Should().NotContain("moviesCollected").And.NotContain("isPrivate").And.NotContain("createdAt");
+        // silently accept a field that should not be there at all. Bio joins that list now: the
+        // profile badge's "unissued" state (private stranger) prints name only.
+        raw.Should().NotContain("moviesCollected").And.NotContain("isPrivate").And.NotContain("createdAt")
+            .And.NotContain("bio");
 
         var body = await response.Content.ReadFromJsonAsync<LimitedBody>();
         body!.Username.Should().Be(ownerName);
-        body.Bio.Should().Be("hello");
     }
 
     [Fact]

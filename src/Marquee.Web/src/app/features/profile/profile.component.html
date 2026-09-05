@@ -33,38 +33,40 @@
       </div>
     </header>
 
-    <!-- Bio: editable only on your own profile, and only when the full payload came back. -->
-    @if (isSelf() && editing()) {
-      <div class="editor">
-        <label class="editor__label" for="bio">Bio</label>
-        <textarea
-          id="bio"
-          class="editor__input"
-          rows="3"
-          maxlength="500"
-          [(ngModel)]="bioDraft"
-          placeholder="Say something about the films you like."
-        ></textarea>
-        <div class="editor__actions">
-          <button
-            class="action action--primary"
-            type="button"
-            (click)="saveBio()"
-            [disabled]="busy()"
-          >
-            {{ busy() ? 'Saving…' : 'Save' }}
-          </button>
-          <button class="action" type="button" (click)="cancelEditing()" [disabled]="busy()">
-            Cancel
-          </button>
+    <!-- Bio: only ever part of the full payload — a private stranger's badge prints name only. -->
+    @if (full(); as f) {
+      @if (isSelf() && editing()) {
+        <div class="editor">
+          <label class="editor__label" for="bio">Bio</label>
+          <textarea
+            id="bio"
+            class="editor__input"
+            rows="3"
+            maxlength="500"
+            [(ngModel)]="bioDraft"
+            placeholder="Say something about the films you like."
+          ></textarea>
+          <div class="editor__actions">
+            <button
+              class="action action--primary"
+              type="button"
+              (click)="saveBio()"
+              [disabled]="busy()"
+            >
+              {{ busy() ? 'Saving…' : 'Save' }}
+            </button>
+            <button class="action" type="button" (click)="cancelEditing()" [disabled]="busy()">
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
-    } @else {
-      <p class="bio" [class.bio--empty]="!p.bio">
-        {{ p.bio || (isSelf() ? 'No bio yet.' : 'This user has not written a bio.') }}
-      </p>
-      @if (isSelf()) {
-        <button class="action" type="button" (click)="startEditing()">Edit bio</button>
+      } @else {
+        <p class="bio" [class.bio--empty]="!f.bio">
+          {{ f.bio || (isSelf() ? 'No bio yet.' : 'This user has not written a bio.') }}
+        </p>
+        @if (isSelf()) {
+          <button class="action" type="button" (click)="startEditing()">Edit bio</button>
+        }
       }
     }
   </section>

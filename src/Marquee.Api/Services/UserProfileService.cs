@@ -86,7 +86,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
 
         if (!resolved.Entitled)
             return new LimitedProfileDto(
-                resolved.Username, resolved.Bio, resolved.AvatarUrl,
+                resolved.Username, resolved.AvatarUrl,
                 resolved.FriendshipStatus, resolved.FriendRequestOutgoing, sharedPremieres);
 
         var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == resolved.UserId, ct);

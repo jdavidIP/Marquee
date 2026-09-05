@@ -44,11 +44,11 @@ public sealed record FullProfileDto(
 /// </summary>
 public sealed record LimitedProfileDto(
     string Username,
-    string? Bio,
     /// <summary>
-    /// Kept here alongside Bio rather than withheld: a picture is part of the public identity a
-    /// private account still presents, the same as its name. Privacy restricts the account's own
-    /// detail — counts, history — not the face on the door.
+    /// Kept here: a picture is part of the public identity a private account still presents, the
+    /// same as its name. Privacy restricts the account's own detail — counts, history, bio — not
+    /// the face on the door. Bio itself is withheld now (the profile badge's "unissued" state
+    /// prints name only), unlike AvatarUrl.
     /// </summary>
     string? AvatarUrl,
     /// <summary>
