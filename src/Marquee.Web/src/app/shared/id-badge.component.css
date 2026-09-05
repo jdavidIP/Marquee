@@ -1,0 +1,207 @@
+:host {
+  display: block;
+  width: 298px;
+}
+
+.badge-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* Lanyard strap */
+.lanyard {
+  width: 80px;
+  height: 46px;
+  flex: none;
+  background-image: repeating-linear-gradient(90deg, #8d1628 0 7px, #701221 7px 14px);
+  border-left: 1px solid #4b0b15;
+  border-right: 1px solid #4b0b15;
+}
+.lanyard--unissued {
+  background-image: repeating-linear-gradient(90deg, #4a4f5c 0 7px, #3a3f4a 7px 14px);
+  border-color: #2a2e37;
+}
+
+/* Badge body — printed stock, not a UI panel: square corners, no radius anywhere. */
+.badge {
+  width: 100%;
+  background: #f4ead6;
+  border: 1px solid #b7b0a0;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+}
+.badge--unissued {
+  background: #ddd5c1;
+  border-color: #a8a191;
+}
+
+/* Punch slot — decorative lanyard hole, unchanged between issued/unissued. */
+.badge__punch-row {
+  display: flex;
+  justify-content: center;
+  padding: 11px 0 9px;
+}
+.badge__punch {
+  width: 66px;
+  height: 10px;
+  background: var(--bg-page);
+  border: 1px solid #8d8778;
+}
+
+.badge__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 14px 9px;
+  border-bottom: 1px solid #cfc5ad;
+}
+.badge--unissued .badge__header {
+  border-bottom-color: #c0b8a5;
+}
+
+.badge__wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: #c2213a;
+}
+.badge--unissued .badge__wordmark {
+  color: #8d6b6f;
+}
+
+.badge__pass {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6f6a5c;
+}
+
+.badge__portrait-frame {
+  padding: 14px;
+}
+.badge__portrait {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #b7b0a0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.badge--unissued .badge__portrait {
+  border-color: #a8a191;
+}
+.badge__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.badge__monogram {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-numeral);
+  font-size: 76px;
+  color: var(--chrome-2);
+  background: var(--monogram-bg);
+}
+
+.badge__name-block {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.badge__name {
+  font-family: var(--font-numeral);
+  font-size: 38px;
+  line-height: 0.9;
+  letter-spacing: 0.03em;
+  color: #1b1a17;
+}
+.badge--unissued .badge__name {
+  color: #33302a;
+}
+.badge__handle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #6f6a5c;
+}
+
+/* The only coloured field on the badge. */
+.badge__category {
+  padding: 11px 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.badge__category-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.badge__category-side--right {
+  align-items: flex-end;
+  text-align: right;
+}
+.badge__category-label {
+  font-family: var(--font-body);
+  font-size: 8px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+.badge__category-name {
+  font-family: var(--font-numeral);
+  font-size: 27px;
+  color: var(--ink-cream);
+}
+.badge__category-count {
+  font-family: var(--font-numeral);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-cream);
+}
+.badge__category-suffix {
+  font-family: var(--font-body);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.badge__footer {
+  padding: 11px 14px 13px;
+}
+.badge__footer-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #6f6a5c;
+  margin-bottom: 8px;
+}
+.badge__barcode {
+  height: 24px;
+  width: 100%;
+}
+
+/* 5D — the "unissued" state: two blank hatched fields instead of category/footer. No "hidden" or
+   "withheld" label — the blank fields are the message, and they keep the same overall height as
+   an issued badge so the layout never jumps between the two. */
+.badge__blank {
+  border-top: 1px solid #c0b8a5;
+  background-image: repeating-linear-gradient(135deg, rgba(120, 112, 96, 0.16) 0 6px, transparent 6px 12px);
+}
+.badge__blank--category {
+  height: 74px;
+}
+.badge__blank--footer {
+  height: 48px;
+}

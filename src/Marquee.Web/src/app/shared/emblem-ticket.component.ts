@@ -57,10 +57,11 @@ const TIER_MATERIALS: Record<number, EmblemMaterial> = {
  * design handoff's "the material ladder the user chose over an access-based one."
  *
  * Presentational only, like ConfirmDialogComponent: it holds no state of its own, just a tier.
- * Only the compact band form (46px, used in the library grid) is built — the handoff's larger
- * "3A" reference-sheet stub (with a condition subtitle, "Admit one" and a serial) is explicitly
- * an optional dev-only sanity sheet with no real screen consuming it, so there's nothing to build
- * it against yet; add that form if/when something actually needs it.
+ * Two sizes are built: 'library' (46px, punch notches, the library grid) and 'compact' (30px, no
+ * notches, the profile badge's recent-activity strip — issue #59). The handoff's larger "3A"
+ * reference-sheet stub (with a condition subtitle, "Admit one" and a serial) is explicitly an
+ * optional dev-only sanity sheet with no real screen consuming it, so there's nothing to build it
+ * against yet; add that form if/when something actually needs it.
  */
 @Component({
   selector: 'app-emblem-ticket',
@@ -71,6 +72,8 @@ const TIER_MATERIALS: Record<number, EmblemMaterial> = {
 export class EmblemTicketComponent {
   /** 1–5, per CLAUDE.md §4.3. Falls back to Paper for anything else so a bad value never renders blank. */
   readonly tier = input.required<number>();
+
+  readonly size = input<'library' | 'compact'>('library');
 
   protected readonly material = computed<EmblemMaterial>(
     () => TIER_MATERIALS[this.tier()] ?? TIER_MATERIALS[1],

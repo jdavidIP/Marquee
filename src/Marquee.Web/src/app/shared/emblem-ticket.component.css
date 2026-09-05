@@ -68,3 +68,23 @@
 .ticket__notch--bottom {
   bottom: -7px;
 }
+
+/* Profile badge's recent-activity strip (issue #59): smaller, no punch notches — there is no room
+   for the die-cut illusion at this size, and the design drops it there entirely. */
+.ticket--compact {
+  height: 30px;
+  box-sizing: border-box;
+}
+.ticket--compact .ticket__counterfoil {
+  width: 22px;
+}
+.ticket--compact .ticket__tier {
+  font-size: 15px;
+}
+.ticket--compact .ticket__body {
+  padding: 0 8px;
+}
+.ticket--compact .ticket__name {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}

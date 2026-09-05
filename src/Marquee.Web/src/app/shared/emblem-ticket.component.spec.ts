@@ -32,4 +32,14 @@ describe('EmblemTicketComponent', () => {
     expect(text).toContain('4');
     expect(text).toContain('Gold');
   });
+
+  it('drops the punch notches at compact size, used by the profile badge (issue #59)', () => {
+    const fixture = TestBed.createComponent(EmblemTicketComponent);
+    fixture.componentRef.setInput('tier', 3);
+    fixture.componentRef.setInput('size', 'compact');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.ticket__notch')).toBeNull();
+    expect(el.querySelector('.ticket--compact')).not.toBeNull();
+  });
 });

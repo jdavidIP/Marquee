@@ -59,6 +59,9 @@
   --font-display: 'Yellowtail', cursive;
   --font-numeral: 'Bebas Neue', sans-serif;
   --font-body: 'Jost', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Stamped/printed labels — the profile badge's serial, member-since and category caption
+     (issue #59) are the only place this is used; it reads as ink on a printed card, not UI chrome. */
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
 * { box-sizing: border-box; }
