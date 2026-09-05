@@ -2,7 +2,13 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { ClapResponse, FriendContributorsResponse, LobbyDto, PremiereDto } from './models';
+import {
+  ClapResponse,
+  FriendContributorsResponse,
+  LobbyDto,
+  PremiereDto,
+  TodayScheduleDto,
+} from './models';
 
 @Injectable({ providedIn: 'root' })
 export class PremiereService {
@@ -16,9 +22,12 @@ export class PremiereService {
     return this.http.get<PremiereDto>(`${environment.apiBase}/premieres/${id}`);
   }
 
-  /** The next Premiere the scheduler has lined up, for the "come back at…" state. */
-  getNext(): Observable<PremiereDto> {
-    return this.http.get<PremiereDto>(`${environment.apiBase}/premieres/next`);
+  /**
+   * Today's full programme for the idle-state marquee page (issue #58) — the sign's countdown
+   * target is the earliest Scheduled slot in the result, so there is no separate "next" call.
+   */
+  getToday(): Observable<TodayScheduleDto> {
+    return this.http.get<TodayScheduleDto>(`${environment.apiBase}/premieres/today`);
   }
 
   /**

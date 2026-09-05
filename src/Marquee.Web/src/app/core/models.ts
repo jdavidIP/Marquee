@@ -72,6 +72,28 @@ export interface PremiereDto {
   myEmblemTier: number | null;
 }
 
+/**
+ * One of today's (usually four) Premieres, for the idle-state marquee page (issue #58). Movie and
+ * totalClaps are null until the slot has actually opened — a Scheduled one's film is not public.
+ * myClaps/myEmblemTier read the caller's own Contribution; zero/null means "did not participate",
+ * indistinguishable from "not revealed yet" until status says which.
+ */
+export interface TodayScheduleSlotDto {
+  id: string;
+  scheduledFor: string;
+  status: PremiereStatus;
+  movie: MovieDto | null;
+  totalClaps: number | null;
+  myClaps: number;
+  myEmblemTier: number | null;
+}
+
+/** Ordered earliest-first. A Missed slot still appears, rather than shrinking the list (§4.5). */
+export interface TodayScheduleDto {
+  scopeId: string;
+  slots: TodayScheduleSlotDto[];
+}
+
 export interface ClapResponse {
   premiereId: string;
   status: string;

@@ -33,6 +33,19 @@ describe('EmblemTicketComponent', () => {
     expect(text).toContain('Gold');
   });
 
+  it('prints a serial only when one is given, used by the Premiere last-showing stub (issue #58)', () => {
+    const withoutSerial = TestBed.createComponent(EmblemTicketComponent);
+    withoutSerial.componentRef.setInput('tier', 4);
+    withoutSerial.detectChanges();
+    expect((withoutSerial.nativeElement as HTMLElement).textContent).not.toContain('no.');
+
+    const withSerial = TestBed.createComponent(EmblemTicketComponent);
+    withSerial.componentRef.setInput('tier', 4);
+    withSerial.componentRef.setInput('serial', '000043');
+    withSerial.detectChanges();
+    expect((withSerial.nativeElement as HTMLElement).textContent).toContain('no. 000043');
+  });
+
   it('drops the punch notches at compact size, used by the profile badge (issue #59)', () => {
     const fixture = TestBed.createComponent(EmblemTicketComponent);
     fixture.componentRef.setInput('tier', 3);

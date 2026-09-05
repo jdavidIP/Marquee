@@ -3,17 +3,7 @@ import { DatePipe } from '@angular/common';
 import { initialsOf } from '../core/avatar';
 import { FullProfileDto, ProfileDto, isFullProfile } from '../core/models';
 import { AccessCategory, accessCategoryFor } from '../core/access-category';
-
-/**
- * Cosmetic badge serial ("No. {serial}") derived from the account id — not a real registration
- * sequence (there is no such column; deriving it avoids one for a value nobody reads meaning
- * into). Deterministic and stable per account, six digits, purely decorative.
- */
-function serialFor(id: string): string {
-  const hex = id.replace(/-/g, '').slice(0, 8);
-  const n = parseInt(hex, 16) % 1_000_000;
-  return n.toString().padStart(6, '0');
-}
+import { serialFor } from '../core/serial';
 
 /**
  * A per-user barcode pattern that encodes nothing — its only job is to not be identical from one

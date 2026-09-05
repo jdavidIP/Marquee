@@ -75,6 +75,10 @@ export class EmblemTicketComponent {
 
   readonly size = input<'library' | 'compact'>('library');
 
+  /** "no. 000123" alongside the material name — the Premiere idle page's last-showing stub (issue
+   *  #58) is the one place this is used; the library grid's card has no room for both. */
+  readonly serial = input<string | null>(null);
+
   protected readonly material = computed<EmblemMaterial>(
     () => TIER_MATERIALS[this.tier()] ?? TIER_MATERIALS[1],
   );

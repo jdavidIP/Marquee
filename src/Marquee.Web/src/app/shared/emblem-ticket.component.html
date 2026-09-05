@@ -9,6 +9,9 @@
   </div>
   <div class="ticket__body">
     <span class="ticket__name" [style.color]="material().ink">{{ material().name }}</span>
+    @if (serial(); as s) {
+      <span class="ticket__serial" [style.color]="material().ink">no. {{ s }}</span>
+    }
   </div>
   @if (size() === 'library') {
     <span class="ticket__notch ticket__notch--top"></span>

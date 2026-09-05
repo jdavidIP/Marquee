@@ -1,19 +1,165 @@
 @if (loading()) {
   <p class="status">Loading the Premiere…</p>
 } @else if (!premiere()) {
-  <section class="empty">
-    <h1>No Premiere is running</h1>
-    @if (nextPremiere(); as next) {
-      <p class="sub">
-        The next one opens at
-        <strong>{{ next.scheduledFor | date: 'shortTime' }}</strong>
-        on {{ next.scheduledFor | date: 'mediumDate' }}.
-      </p>
-    } @else {
-      <p class="sub">Premieres appear four times a day. Check back soon.</p>
-    }
+  <section class="stage-wrap idle-wrap">
     @if (error()) {
       <p class="err">{{ error() }}</p>
+    }
+
+    @if (todaySchedule(); as schedule) {
+      @if (schedule.slots.length > 0) {
+        <!-- The marquee sign, unlit — same component as the live screen, houselights down. The
+             countdown replaces the title tiles; nothing here is its own piece of state, same as
+             the live sign. -->
+        <div class="sign sign--idle">
+          <div class="bulb-row top">
+            @for (i of idleBulbs; track i) {
+              <span class="bulb"></span>
+            }
+          </div>
+          <div class="bulb-row bottom">
+            @for (i of idleBulbs; track i) {
+              <span class="bulb"></span>
+            }
+          </div>
+
+          <div class="sign-face sign-face--idle">
+            <span class="kicker-script kicker-script--idle">{{ idleKicker() }}</span>
+            @if (!dayWrapped() && nextSlot(); as next) {
+              <span class="countdown-digits">{{ idleCountdownLabel() }}</span>
+              <span class="doors-line">
+                Doors open {{ next.scheduledFor | date: 'HH:mm' }}
+                @if (!auth.isLoggedIn()) {
+                  · anyone can clap
+                }
+              </span>
+            } @else {
+              <span class="countdown-digits countdown-digits--dash">—</span>
+            }
+            <span class="sign-caption">{{ idleCaption() }}</span>
+          </div>
+        </div>
+
+        <div class="programme-block">
+          <div class="programme-head">
+            <span class="programme-label">Today's programme</span>
+            <span class="programme-sub">{{ programmeSubtext() }}</span>
+          </div>
+          <div class="ledger">
+            @for (row of ledgerRows(); track row.id) {
+              <div class="ledger-row" [class.ledger-row--next]="row.isNext">
+                <span class="ledger-dot" [class.ledger-dot--lit]="row.isNext"></span>
+                <span class="ledger-time">{{ row.scheduledFor | date: 'HH:mm' }}</span>
+                @if (row.isDead) {
+                  <span class="ledger-title ledger-title--dead">—</span>
+                  <span class="ledger-outcome ledger-outcome--dead">
+                    {{ row.isMissed ? 'Missed' : 'Later today' }}
+                  </span>
+                } @else if (row.isNext) {
+                  <span class="ledger-title ledger-title--upcoming">
+                    Title goes up when the doors do
+                  </span>
+                  <span class="ledger-outcome ledger-outcome--next">In {{ idleCountdownShort() }}</span>
+                } @else {
+                  <span class="ledger-title">{{ row.title }}</span>
+                  <span class="ledger-claps">{{ row.claps | number }} claps</span>
+                  @if (row.myClaps > 0) {
+                    <app-emblem-ticket
+                      class="ledger-ticket"
+                      [tier]="row.myEmblemTier ?? 1"
+                      size="compact"
+                    />
+                  } @else if (auth.isLoggedIn()) {
+                    <span class="ledger-outcome ledger-outcome--not-yours">Not yours</span>
+                  }
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        @if (lastShowingSlot(); as last) {
+          @if (!auth.isLoggedIn()) {
+            <div class="reveal reveal--visitor">
+              <div class="reveal-info">
+                <span class="reveal-title">{{ last.movie!.title }} already closed tonight</span>
+                <span class="reveal-stat">
+                  {{ last.totalClaps | number }} people opened it and everyone with an account kept
+                  it. Visitors get two claps and keep nothing — an account gets you six and the film.
+                </span>
+              </div>
+              <a routerLink="/login" [queryParams]="{ mode: 'register' }" class="createAccount"
+                >Create account</a
+              >
+            </div>
+          } @else {
+            <div class="last-showing">
+              <div class="programme-head">
+                <span class="programme-label">Last night's showing</span>
+                <span class="programme-sub">
+                  Closed {{ last.scheduledFor | date: 'HH:mm' }} ·
+                  {{ attendedLastShowing() ? 'you were there' : 'you missed it' }}
+                </span>
+              </div>
+              <div class="last-showing-card">
+                @if (last.movie!.posterUrl) {
+                  <img
+                    class="last-showing-poster"
+                    [class.last-showing-poster--dim]="!attendedLastShowing()"
+                    [src]="last.movie!.posterUrl"
+                    [alt]="last.movie!.title"
+                  />
+                } @else {
+                  <div
+                    class="last-showing-poster last-showing-poster--placeholder"
+                    [class.last-showing-poster--dim]="!attendedLastShowing()"
+                  >
+                    poster
+                  </div>
+                }
+                <div class="last-showing-body">
+                  <span
+                    class="last-showing-title"
+                    [class.last-showing-title--dim]="!attendedLastShowing()"
+                    >{{ last.movie!.title }}</span
+                  >
+                  <span class="last-showing-meta">
+                    {{ last.movie!.releaseYear }} · {{ last.movie!.voteAverage | number: '1.1-1' }} ·
+                    {{ last.totalClaps | number }} clapped it open
+                  </span>
+                  <p class="last-showing-note">
+                    {{
+                      attendedLastShowing()
+                        ? tierCaption(last.myEmblemTier)
+                        : 'It opened without you, so the film is not in your library.'
+                    }}
+                  </p>
+                </div>
+                <div class="last-showing-side">
+                  @if (attendedLastShowing()) {
+                    <app-emblem-ticket [tier]="last.myEmblemTier ?? 1" [serial]="lastShowingSerial()" />
+                    <a routerLink="/library" class="last-showing-action">Open in library</a>
+                  } @else {
+                    <div class="no-ticket">
+                      <span class="no-ticket__digit">—</span>
+                      <span class="no-ticket__label">No ticket issued</span>
+                    </div>
+                    <span class="last-showing-next">
+                      @if (nextSlot(); as next) {
+                        Next doors {{ next.scheduledFor | date: 'HH:mm' }}
+                      } @else {
+                        Next doors tomorrow
+                      }
+                    </span>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        }
+      } @else {
+        <p class="sub">Premieres appear four times a day. Check back soon.</p>
+      }
     }
   </section>
 } @else {

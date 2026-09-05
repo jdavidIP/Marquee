@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { of, Subject } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { PremiereComponent } from './premiere.component';
 import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
 import { AuthService } from '../../core/auth.service';
 import { AnonymousSessionService } from '../../core/anonymous-session.service';
-import { LobbyDto, PremiereDto } from '../../core/models';
+import { LobbyDto, PremiereDto, TodayScheduleDto, TodayScheduleSlotDto } from '../../core/models';
 
 /**
  * The redesigned Premiere screen's derived state (issue #32, "Neon & chrome, 1958"). No DOM
@@ -43,7 +43,36 @@ describe('PremiereComponent', () => {
     return { premiereId: 'p1', faces: [], registeredCount: 0, anonymousCount: 0, ...overrides };
   }
 
-  function make(loggedIn = true, anonSessionToken: string | null = null) {
+  let slotAutoId = 0;
+
+  /**
+   * Defaults a movie even for a Scheduled slot: the backend withholding it until reveal is
+   * StalePremiereTests/TodayScheduleTests territory (already covered there), not this file's job.
+   * Skipping it here would make every "opened" test slot invalid — Opened/AutoOpened always
+   * carries a movie for real — and crash the last-showing card's template on a null deref.
+   */
+  function slot(overrides: Partial<TodayScheduleSlotDto> = {}): TodayScheduleSlotDto {
+    return {
+      id: `s${++slotAutoId}`,
+      scheduledFor: '2026-01-01T12:00:00Z',
+      status: 'Scheduled',
+      movie: { tmdbId: 1, title: 'Some Film', posterUrl: null, releaseYear: 2000, overview: null, voteAverage: 7, voteCount: 100 },
+      totalClaps: null,
+      myClaps: 0,
+      myEmblemTier: null,
+      ...overrides,
+    };
+  }
+
+  function schedule(slots: TodayScheduleSlotDto[]): TodayScheduleDto {
+    return { scopeId: 'global', slots };
+  }
+
+  function make(
+    loggedIn = true,
+    anonSessionToken: string | null = null,
+    todaySchedule: TodayScheduleDto | null = null,
+  ) {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [PremiereComponent],
@@ -52,8 +81,11 @@ describe('PremiereComponent', () => {
         {
           provide: PremiereService,
           useValue: {
-            getActive: () => of(premiere()),
-            getNext: () => of(premiere({ status: 'Scheduled' })),
+            // A schedule to seed means these tests want the idle branch, reached the same way the
+            // real app reaches it: getActive() 404s, which is what triggers loadTodaySchedule().
+            getActive: () =>
+              todaySchedule ? throwError(() => ({ status: 404 })) : of(premiere()),
+            getToday: () => of(todaySchedule ?? schedule([])),
             lobby: () => of(lobby()),
             clap: () => of(premiere()),
             get: () => of(premiere()),
@@ -296,5 +328,129 @@ describe('PremiereComponent', () => {
     c['premiere'].set(premiere({ status: 'Opened', contributors: 5 }));
     c['lobby'].set(lobby({ registeredCount: 3 }));
     expect(c['crowdNote']()).toBe('5 people opened this Premiere together. 3 of them keep the film.');
+  });
+
+  // --- Idle state: the sign as a clock, today's programme, last night's showing (issue #58) ---
+
+  it('loads today\'s schedule when getActive() 404s, the same trigger the real 404 path uses', () => {
+    const s = schedule([slot({ id: 'a' }), slot({ id: 'b' })]);
+    const c = make(true, null, s);
+    expect(c['todaySchedule']()).toEqual(s);
+  });
+
+  it('targets the countdown at the earliest Scheduled slot, ignoring later ones', () => {
+    // Slots arrive earliest-first — GET /premieres/today's own documented ordering — so finding
+    // "next" is just the first Scheduled one; nothing here re-sorts by time defensively.
+    const c = make(
+      true,
+      null,
+      schedule([
+        slot({ id: 'next', status: 'Scheduled', scheduledFor: '2026-01-01T09:00:00Z' }),
+        slot({ id: 'later', status: 'Scheduled', scheduledFor: '2026-01-01T20:00:00Z' }),
+      ]),
+    );
+    expect(c['nextSlot']().id).toBe('next');
+  });
+
+  it('is day-wrapped only once nothing is left to count down to', () => {
+    const withNext = make(
+      true,
+      null,
+      schedule([slot({ status: 'AutoOpened', totalClaps: 1 }), slot({ status: 'Scheduled' })]),
+    );
+    expect(withNext['dayWrapped']()).toBe(false);
+
+    const allDone = make(true, null, schedule([slot({ status: 'AutoOpened', totalClaps: 1 })]));
+    expect(allDone['dayWrapped']()).toBe(true);
+    expect(allDone['idleKicker']()).toBe('Closed for tonight');
+  });
+
+  it('flags "nothing opened yet" and picks the right kicker for a fresh day', () => {
+    const c = make(
+      true,
+      null,
+      schedule([slot({ status: 'Scheduled' }), slot({ status: 'Scheduled' })]),
+    );
+    expect(c['noneOpenedYet']()).toBe(true);
+    expect(c['idleKicker']()).toBe('Not open yet');
+    expect(c['idleCaption']()).toBe('two Premieres scheduled today');
+  });
+
+  it('captions the upcoming slot by its ordinal position, "and last" only for the final one', () => {
+    const midDay = make(
+      true,
+      null,
+      schedule([
+        slot({ id: '1', status: 'AutoOpened', totalClaps: 1 }),
+        slot({ id: '2', status: 'Scheduled' }),
+        slot({ id: '3', status: 'Scheduled' }),
+      ]),
+    );
+    expect(midDay['idleCaption']()).toBe('The second Premiere today');
+
+    const lastOfDay = make(
+      true,
+      null,
+      schedule([
+        slot({ id: '1', status: 'AutoOpened', totalClaps: 1 }),
+        slot({ id: '2', status: 'AutoOpened', totalClaps: 1 }),
+        slot({ id: '3', status: 'Scheduled' }),
+      ]),
+    );
+    expect(lastOfDay['idleCaption']()).toBe('The third and last Premiere today');
+  });
+
+  it('picks the chronologically last opened slot as last night\'s showing', () => {
+    const c = make(
+      true,
+      null,
+      schedule([
+        slot({ id: 'earlier', status: 'AutoOpened', totalClaps: 1, scheduledFor: '2026-01-01T09:00:00Z' }),
+        slot({ id: 'latest', status: 'Opened', totalClaps: 1, scheduledFor: '2026-01-01T13:00:00Z' }),
+        slot({ id: 'future', status: 'Scheduled' }),
+      ]),
+    );
+    expect(c['lastShowingSlot']().id).toBe('latest');
+  });
+
+  it('tells "attended" apart from "missed" by the slot\'s own myClaps', () => {
+    const attended = make(true, null, schedule([slot({ status: 'AutoOpened', myClaps: 6 })]));
+    expect(attended['attendedLastShowing']()).toBe(true);
+
+    const missed = make(true, null, schedule([slot({ status: 'AutoOpened', myClaps: 0 })]));
+    expect(missed['attendedLastShowing']()).toBe(false);
+  });
+
+  it('builds ledger rows that mark the next slot, and Scheduled/Missed slots elsewhere as dead', () => {
+    const c = make(
+      true,
+      null,
+      schedule([
+        slot({ id: 'ran', status: 'AutoOpened', totalClaps: 1 }),
+        slot({ id: 'missed', status: 'Missed' }),
+        slot({ id: 'next', status: 'Scheduled' }),
+        slot({ id: 'later', status: 'Scheduled' }),
+      ]),
+    );
+    const rows = c['ledgerRows']() as { id: string; isNext: boolean; isDead: boolean; isMissed: boolean }[];
+
+    expect(rows.find((r) => r.id === 'ran')).toEqual(jasmine.objectContaining({ isNext: false, isDead: false }));
+    expect(rows.find((r) => r.id === 'missed')).toEqual(jasmine.objectContaining({ isDead: true, isMissed: true }));
+    expect(rows.find((r) => r.id === 'next')).toEqual(jasmine.objectContaining({ isNext: true, isDead: false }));
+    expect(rows.find((r) => r.id === 'later')).toEqual(
+      jasmine.objectContaining({ isNext: false, isDead: true, isMissed: false }),
+    );
+  });
+
+  it('reports how many of today\'s Premieres have run, "None" spelled out rather than "Zero"', () => {
+    const none = make(true, null, schedule([slot({ status: 'Scheduled' }), slot({ status: 'Scheduled' })]));
+    expect(none['programmeSubtext']()).toBe('None have run');
+
+    const some = make(
+      true,
+      null,
+      schedule([slot({ status: 'AutoOpened', totalClaps: 1 }), slot({ status: 'Scheduled' })]),
+    );
+    expect(some['programmeSubtext']()).toBe('One of two have run');
   });
 });

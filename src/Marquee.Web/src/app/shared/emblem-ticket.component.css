@@ -50,6 +50,14 @@
   white-space: nowrap;
 }
 
+.ticket__serial {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  opacity: 0.75;
+}
+
 /* Die-cut punch notches — filled with the library card's own background so they read as cut
    through the ticket rather than a badge stuck on it. #0f1524 is the card panel tone the design
    handoff uses (library.dc.html); whatever builds the card around this ticket needs the same

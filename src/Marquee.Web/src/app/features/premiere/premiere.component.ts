@@ -6,9 +6,11 @@ import { AuthService } from '../../core/auth.service';
 import { AnonymousSessionService } from '../../core/anonymous-session.service';
 import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
-import { ClapResponse, LobbyDto, PremiereDto } from '../../core/models';
+import { ClapResponse, LobbyDto, PremiereDto, TodayScheduleDto } from '../../core/models';
 import { initialsOf, monogramColor } from '../../core/avatar';
+import { serialFor } from '../../core/serial';
 import { environment } from '../../../environments/environment';
+import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 
 /** Bulbs around the marquee frame, one row top and bottom. */
 const BULB_COUNT = 22;
@@ -29,6 +31,21 @@ interface Face {
   bg: string;
 }
 
+/** One row of the idle-state "Today's programme" ledger (issue #58). */
+interface LedgerRow {
+  id: string;
+  scheduledFor: string;
+  /** The one Scheduled row the countdown targets — highlighted, unlike other future rows. */
+  isNext: boolean;
+  /** Scheduled, but not the next one, or Missed — both render as a dead "—" row. */
+  isDead: boolean;
+  isMissed: boolean;
+  title: string | null;
+  claps: number | null;
+  myClaps: number;
+  myEmblemTier: number | null;
+}
+
 /** "Ada, Miles and Rosa" — no Oxford comma, capped to the first three named. */
 function joinNames(names: string[]): string {
   const shown = names.slice(0, 3);
@@ -42,9 +59,35 @@ function formatClock(totalSeconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** "1:54:22" — the idle sign's countdown, which can run past an hour unlike the live 60-min timer. */
+function formatCountdownClock(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/** "1h 54m" once over an hour out, else "12m 30s" — the ledger's compact "In {…}" column. */
+function formatCountdownShort(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'];
+const numberWord = (n: number): string => NUMBER_WORDS[n] ?? String(n);
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+const ORDINAL_WORDS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+const ordinal = (n: number): string => ORDINAL_WORDS[n - 1] ?? `${n}th`;
+
+const isOpenOrMissed = (status: string): boolean =>
+  status === 'Opened' || status === 'AutoOpened' || status === 'Missed';
+
 @Component({
   selector: 'app-premiere',
-  imports: [RouterLink, DecimalPipe, DatePipe],
+  imports: [RouterLink, DecimalPipe, DatePipe, EmblemTicketComponent],
   templateUrl: './premiere.component.html',
   styleUrl: './premiere.component.css',
 })
@@ -56,7 +99,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly premiere = signal<PremiereDto | null>(null);
-  protected readonly nextPremiere = signal<PremiereDto | null>(null);
+  protected readonly todaySchedule = signal<TodayScheduleDto | null>(null);
   protected readonly loading = signal(true);
   protected readonly clapping = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -83,6 +126,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly curtainTravelPct = computed(() =>
     this.isOpen() ? 100 : Math.min(56, this.progressPct() * 0.56),
   );
+
+  /** All unlit, no chase — the idle sign's bulbs (issue #58) need only a track to sit in. */
+  protected readonly idleBulbs = Array.from({ length: BULB_COUNT }, (_, i) => i);
 
   protected readonly bulbs = computed(() => {
     const ratio = this.isOpen() ? 1 : Math.max(0.06, this.progress());
@@ -247,6 +293,122 @@ export class PremiereComponent implements OnInit, OnDestroy {
       : `Cap of ${p.myCap} claps per person, so no one opens a Premiere alone`;
   });
 
+  // --- Idle state: the marquee sign as a clock, today's programme, last night's showing (#58) ---
+
+  /** The earliest Scheduled slot — the countdown target. Null once every slot for today is done. */
+  protected readonly nextSlot = computed(
+    () => this.todaySchedule()?.slots.find((s) => s.status === 'Scheduled') ?? null,
+  );
+
+  /** All four (or however many) of today's slots have run, and tomorrow's are not drawn yet. */
+  protected readonly dayWrapped = computed(
+    () => (this.todaySchedule()?.slots.length ?? 0) > 0 && this.nextSlot() === null,
+  );
+
+  protected readonly noneOpenedYet = computed(() => {
+    const slots = this.todaySchedule()?.slots ?? [];
+    return slots.length > 0 && !slots.some((s) => s.status === 'Opened' || s.status === 'AutoOpened');
+  });
+
+  /** The most recently opened slot today, chronologically last among the opened ones. */
+  protected readonly lastShowingSlot = computed(() => {
+    const opened = (this.todaySchedule()?.slots ?? []).filter(
+      (s) => s.status === 'Opened' || s.status === 'AutoOpened',
+    );
+    return opened.length > 0 ? opened[opened.length - 1] : null;
+  });
+
+  protected readonly attendedLastShowing = computed(() => (this.lastShowingSlot()?.myClaps ?? 0) > 0);
+
+  protected readonly lastShowingSerial = computed(() => {
+    const slot = this.lastShowingSlot();
+    return slot ? serialFor(slot.id) : '';
+  });
+
+  protected readonly idleCountdownSeconds = computed(() => {
+    const slot = this.nextSlot();
+    if (!slot) return 0;
+    return Math.max(0, Math.round((new Date(slot.scheduledFor).getTime() - this.nowMs()) / 1000));
+  });
+
+  protected readonly idleCountdownLabel = computed(() =>
+    formatCountdownClock(this.idleCountdownSeconds()),
+  );
+
+  protected readonly idleCountdownShort = computed(() =>
+    formatCountdownShort(this.idleCountdownSeconds()),
+  );
+
+  protected readonly idleKicker = computed(() => {
+    if (this.dayWrapped()) return 'Closed for tonight';
+    return this.noneOpenedYet() ? 'Not open yet' : 'Closed for now';
+  });
+
+  /** Below the countdown: which slot in the day this is, or the day-wrap/first-of-day copy. */
+  protected readonly idleCaption = computed(() => {
+    if (this.dayWrapped()) return "Tomorrow's programme goes up overnight";
+
+    const schedule = this.todaySchedule();
+    if (!schedule) return '';
+    if (this.noneOpenedYet()) return `${numberWord(schedule.slots.length)} Premieres scheduled today`;
+
+    const idx = schedule.slots.findIndex((s) => s.id === this.nextSlot()?.id);
+    if (idx < 0) return '';
+    const word = ordinal(idx + 1);
+    return idx === schedule.slots.length - 1
+      ? `The ${word} and last Premiere today`
+      : `The ${word} Premiere today`;
+  });
+
+  /** "Three of four have run" / "None have run" above the ledger. */
+  protected readonly programmeSubtext = computed(() => {
+    const schedule = this.todaySchedule();
+    if (!schedule) return '';
+    const total = schedule.slots.length;
+    const ran = schedule.slots.filter((s) => isOpenOrMissed(s.status)).length;
+    return ran === 0 ? 'None have run' : `${capitalize(numberWord(ran))} of ${numberWord(total)} have run`;
+  });
+
+  protected readonly ledgerRows = computed<LedgerRow[]>(() => {
+    const schedule = this.todaySchedule();
+    if (!schedule) return [];
+    const nextId = this.nextSlot()?.id ?? null;
+
+    return schedule.slots.map((s) => ({
+      id: s.id,
+      scheduledFor: s.scheduledFor,
+      isNext: s.id === nextId,
+      isDead: s.status === 'Missed' || (s.status === 'Scheduled' && s.id !== nextId),
+      isMissed: s.status === 'Missed',
+      title: s.movie?.title ?? null,
+      claps: s.totalClaps,
+      myClaps: s.myClaps,
+      myEmblemTier: s.myEmblemTier,
+    }));
+  });
+
+  /**
+   * A fixed line per tier rather than one built from the exact clap count — the mockup's example
+   * ("All six of your claps went in") is flavour text, not something worth a small copy-generation
+   * engine for one card.
+   */
+  protected tierCaption(tier: number | null): string {
+    switch (tier) {
+      case 5:
+        return 'You spent every clap you had — full house.';
+      case 4:
+        return 'Only a little more would have maxed you out.';
+      case 3:
+        return 'A solid share of your cap went into this one.';
+      case 2:
+        return 'A modest share of your cap went into this one.';
+      case 1:
+        return 'Just a few of your claps went into this one.';
+      default:
+        return 'You clapped for this Premiere.';
+    }
+  }
+
   private pollHandle: ReturnType<typeof setInterval> | null = null;
   private clockHandle: ReturnType<typeof setInterval> | null = null;
   private lobbyPollHandle: ReturnType<typeof setInterval> | null = null;
@@ -324,13 +486,13 @@ export class PremiereComponent implements OnInit, OnDestroy {
       );
       this.stopLobbyPolling();
       this.scheduleEmblemSettle();
-      // The Premiere the viewer just watched is over; find out what is next.
-      this.loadNext();
+      // The Premiere the viewer just watched is over; refresh today's programme.
+      this.loadTodaySchedule();
     });
 
     this.realtime.premiereActivated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((p) => {
       // A new Premiere went live while this page was open — switch to it.
-      this.nextPremiere.set(null);
+      this.todaySchedule.set(null);
       this.premiere.set(p);
       this.error.set(null);
       this.lobby.set(null);
@@ -343,7 +505,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
     this.premieres.getActive().subscribe({
       next: (p) => {
         this.premiere.set(p);
-        this.nextPremiere.set(null);
+        this.todaySchedule.set(null);
         this.loading.set(false);
         void this.realtime.watchPremiere(p.id);
         if (isOpenStatus(p.status)) {
@@ -359,7 +521,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
           // No active Premiere right now. Keep any already-revealed one on screen.
           if (initial) {
             this.premiere.set(null);
-            this.loadNext();
+            this.loadTodaySchedule();
           }
         } else {
           this.error.set('Could not load the Premiere.');
@@ -368,10 +530,10 @@ export class PremiereComponent implements OnInit, OnDestroy {
     });
   }
 
-  private loadNext(): void {
-    this.premieres.getNext().subscribe({
-      next: (p) => this.nextPremiere.set(p),
-      error: () => this.nextPremiere.set(null),
+  private loadTodaySchedule(): void {
+    this.premieres.getToday().subscribe({
+      next: (s) => this.todaySchedule.set(s),
+      error: () => this.todaySchedule.set(null),
     });
   }
 
