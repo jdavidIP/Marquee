@@ -1,182 +1,178 @@
-<h1 class="title">Friends</h1>
-
-@if (error(); as e) {
-  <p class="error">{{ e }}</p>
-}
-
-<section class="panel">
-  <h2 class="panel__title">Find someone</h2>
-
-  <div class="toolbar">
-    <input
-      class="search"
-      type="search"
-      placeholder="Search by username"
-      [value]="query()"
-      (input)="onSearchInput($any($event.target).value)"
-      aria-label="Search for users by username"
-    />
-    @if (query()) {
-      <button class="action" type="button" (click)="clearSearch()">Clear</button>
+<div class="page">
+  <div class="head">
+    <div class="head__title-block">
+      <span class="overline">Will call</span>
+      <h1 class="title">Friends</h1>
+    </div>
+    @if (incoming().length > 0) {
+      <span class="pill pill--amber">
+        <span class="pill__dot"></span>
+        {{ incoming().length }}
+        {{ incoming().length === 1 ? 'request waiting' : 'requests waiting' }}
+      </span>
     }
   </div>
 
-  @if (searching()) {
-    <p class="empty">Searching…</p>
-  } @else if (searched() && searchRows().length === 0) {
-    <p class="empty">Nobody matches that name.</p>
-  } @else if (searchRows().length > 0) {
-    <ul class="list">
-      @for (row of searchRows(); track row.user.id) {
-        <li class="row">
-          <div class="row__who">
-            <a class="row__name" [routerLink]="['/u', row.user.username]">{{ row.user.username }}</a>
-            @if (row.user.bio) {
-              <span class="row__bio">{{ row.user.bio }}</span>
-            }
-          </div>
-
-          <div class="row__actions">
-            @switch (row.relation) {
-              @case ('none') {
-                <button
-                  class="action action--primary"
-                  type="button"
-                  (click)="send(row.user.username, row.user.id)"
-                  [disabled]="busyId() === row.user.id"
-                >
-                  {{ busyId() === row.user.id ? 'Sending…' : 'Add friend' }}
-                </button>
-              }
-              @case ('incoming') {
-                <!-- They already asked. Accepting here is the same action as in the requests list. -->
-                <span class="note">Wants to be friends</span>
-                <button
-                  class="action action--primary"
-                  type="button"
-                  (click)="accept(row.requestId!, row.user.username)"
-                  [disabled]="busyId() === row.requestId"
-                >
-                  {{ busyId() === row.requestId ? 'Accepting…' : 'Accept' }}
-                </button>
-              }
-              @default {
-                <span class="note">{{ relationLabel(row.relation) }}</span>
-              }
-            }
-          </div>
-        </li>
-      }
-    </ul>
-  }
-</section>
-
-@if (loading()) {
-  <p class="empty">Loading your friends…</p>
-} @else {
-  @if (incoming().length > 0) {
-    <section class="panel">
-      <h2 class="panel__title">Requests for you</h2>
-      <ul class="list">
-        @for (request of incoming(); track request.id) {
-          <li class="row">
-            <div class="row__who">
-              <a class="row__name" [routerLink]="['/u', request.username]">{{ request.username }}</a>
-              <span class="row__bio">Asked {{ request.createdAt | date: 'mediumDate' }}</span>
-            </div>
-            <div class="row__actions">
-              <button
-                class="action action--primary"
-                type="button"
-                (click)="accept(request.id, request.username)"
-                [disabled]="busyId() === request.id"
-              >
-                {{ busyId() === request.id ? 'Accepting…' : 'Accept' }}
-              </button>
-              <button
-                class="action"
-                type="button"
-                (click)="reject(request.id, request.username)"
-                [disabled]="busyId() === request.id"
-              >
-                Reject
-              </button>
-            </div>
-          </li>
-        }
-      </ul>
-    </section>
-  }
-
-  @if (outgoing().length > 0) {
-    <section class="panel">
-      <h2 class="panel__title">Requests you sent</h2>
-      <ul class="list">
-        @for (request of outgoing(); track request.id) {
-          <li class="row">
-            <div class="row__who">
-              <a class="row__name" [routerLink]="['/u', request.username]">{{ request.username }}</a>
-              <span class="row__bio">Sent {{ request.createdAt | date: 'mediumDate' }}</span>
-            </div>
-            <div class="row__actions">
-              <span class="note">Waiting for them</span>
-            </div>
-          </li>
-        }
-      </ul>
-    </section>
+  @if (error(); as e) {
+    <p class="error">{{ e }}</p>
   }
 
   <section class="panel">
-    <h2 class="panel__title">
-      Your friends
-      @if (friends().length > 0) {
-        <span class="panel__count">{{ friends().length }}</span>
-      }
-    </h2>
+    <div class="panel__row">
+      <h2 class="panel__title">Find someone</h2>
+      <span class="panel__note">
+        @if (!query()) {
+          Usernames only
+        } @else if (searching()) {
+          Looking…
+        } @else if (searched() && searchRows().length === 0) {
+          No matches
+        } @else if (searchRows().length > 0) {
+          {{ searchRows().length }} {{ searchRows().length === 1 ? 'match' : 'matches' }}
+        }
+      </span>
+    </div>
 
-    @if (friends().length === 0) {
-      <p class="empty">
-        No friends yet. Search for someone above — once you are friends, you will see which of them
-        clapped for a Premiere.
-      </p>
-    } @else {
+    <div class="toolbar">
+      <div class="search-field">
+        <span class="search-field__label">Username</span>
+        <input
+          class="search"
+          type="search"
+          placeholder="Search by username"
+          [value]="query()"
+          (input)="onSearchInput($any($event.target).value)"
+          aria-label="Search for users by username"
+        />
+      </div>
+    </div>
+
+    @if (searching()) {
+      <p class="empty">Searching…</p>
+    } @else if (!query()) {
+      <div class="rest">
+        <p class="rest__text">
+          Type a username above. Private accounts show up in search like anyone else — you just
+          cannot see what they have collected until you are friends.
+        </p>
+      </div>
+    } @else if (searched() && searchRows().length === 0) {
+      <div class="no-match">
+        <p class="no-match__title">Nobody matches that name</p>
+        <p class="no-match__hint">
+          Usernames only — try the exact spelling, or ask them for theirs.
+        </p>
+      </div>
+    } @else if (searchRows().length > 0) {
       <ul class="list">
-        @for (friend of friends(); track friend.userId) {
+        @for (row of searchRows(); track row.user.id) {
           <li class="row">
+            <span class="avatar" [style.background]="monogramColor(row.user.id)">
+              {{ initialsOf(row.user.username) }}
+            </span>
             <div class="row__who">
-              <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
-              @if (friend.bio) {
-                <span class="row__bio">{{ friend.bio }}</span>
-              } @else {
-                <span class="row__bio">Friends since {{ friend.friendsSince | date: 'mediumDate' }}</span>
+              <a class="row__name" [routerLink]="['/u', row.user.username]">{{
+                row.user.username
+              }}</a>
+              @if (row.user.bio) {
+                <span class="row__bio">{{ row.user.bio }}</span>
               }
             </div>
+
             <div class="row__actions">
-              <button
-                class="action action--danger"
-                type="button"
-                (click)="askToRemove(friend)"
-                [disabled]="busyId() === friend.userId"
-              >
-                {{ busyId() === friend.userId ? 'Removing…' : 'Remove' }}
-              </button>
+              @switch (row.relation) {
+                @case ('none') {
+                  <button
+                    class="action action--primary"
+                    type="button"
+                    (click)="send(row.user.username, row.user.id)"
+                    [disabled]="busyId() === row.user.id"
+                  >
+                    {{ busyId() === row.user.id ? 'Sending…' : 'Add friend' }}
+                  </button>
+                }
+                @case ('incoming') {
+                  <!-- They already asked. Accepting here is the same action as in the requests list. -->
+                  <span class="pill pill--request">Request</span>
+                  <button
+                    class="action action--primary"
+                    type="button"
+                    (click)="accept(row.requestId!, row.user.username)"
+                    [disabled]="busyId() === row.requestId"
+                  >
+                    {{ busyId() === row.requestId ? 'Accepting…' : 'Accept' }}
+                  </button>
+                }
+                @default {
+                  <span class="note">{{ relationLabel(row.relation) }}</span>
+                }
+              }
             </div>
           </li>
         }
       </ul>
     }
   </section>
-}
 
-@if (pendingRemoval(); as friend) {
-  <app-confirm-dialog
-    [title]="'Remove ' + friend.username + '?'"
-    body="You will stop seeing which Premieres they clapped for, and they will stop seeing yours. Either of you can send a new request later."
-    confirmLabel="Remove friend"
-    tone="danger"
-    [busy]="busyId() === friend.userId"
-    (confirmed)="confirmRemoval()"
-    (cancelled)="pendingRemoval.set(null)"
-  />
-}
+  @if (loading()) {
+    <p class="empty">Loading your friends…</p>
+  } @else {
+    <section class="panel panel--requests">
+      <div class="panel__row">
+        <h2 class="panel__title">Requests for you</h2>
+        <span class="panel__note">{{
+          incoming().length === 0 ? 'None' : incoming().length + ' to answer'
+        }}</span>
+      </div>
+
+      @if (incoming().length > 0) {
+        <ul class="list list--incoming">
+          @for (request of incoming(); track request.id) {
+            <li class="row">
+              <span class="row__dot"></span>
+              <span class="avatar" [style.background]="monogramColor(request.userId)">
+                {{ initialsOf(request.username) }}
+              </span>
+              <div class="row__who">
+                <a class="row__name" [routerLink]="['/u', request.username]">{{
+                  request.username
+                }}</a>
+                <span class="row__bio row__bio--mono"
+                  >Asked {{ request.createdAt | date: 'mediumDate' }}</span
+                >
+              </div>
+              <div class="row__actions">
+                <button
+                  class="action action--primary"
+                  type="button"
+                  (click)="accept(request.id, request.username)"
+                  [disabled]="busyId() === request.id"
+                >
+                  {{ busyId() === request.id ? 'Accepting…' : 'Accept' }}
+                </button>
+                <button
+                  class="action"
+                  type="button"
+                  (click)="reject(request.id, request.username)"
+                  [disabled]="busyId() === request.id"
+                >
+                  Reject
+                </button>
+              </div>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="empty">Nothing waiting. Requests land here the moment someone sends one.</p>
+      }
+    </section>
+
+    <div class="closing">
+      <p class="closing__text">
+        Your {{ friends().length }} friends live on their own page, with what each of them has been
+        clapping for.
+      </p>
+      <a class="action" [routerLink]="['/u', myUsername(), 'friends']">Your friends</a>
+    </div>
+  }
+</div>

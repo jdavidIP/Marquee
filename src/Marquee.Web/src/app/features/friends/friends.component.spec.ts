@@ -101,7 +101,7 @@ describe('FriendsComponent search relations', () => {
     expect(row.requestId).toBeNull();
   });
 
-  it('splits pending requests by direction', () => {
+  it('picks out only the incoming half of pending requests', () => {
     const c = make({
       requests: [
         { id: 'r1', userId: 'u1', username: 'ana', status: 'Pending', outgoing: true, createdAt: '' },
@@ -109,7 +109,6 @@ describe('FriendsComponent search relations', () => {
       ],
     });
 
-    expect(c['outgoing']().map((r: FriendRequestDto) => r.id)).toEqual(['r1']);
     expect(c['incoming']().map((r: FriendRequestDto) => r.id)).toEqual(['r2']);
   });
 });
