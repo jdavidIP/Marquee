@@ -1,47 +1,407 @@
-.auth {
-  max-width: 380px;
-  margin: 40px auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+/* Two palettes on this page: the dark app tokens on the left, and a self-contained "printed pass"
+   palette on the right (cream stock, ink-on-cream red) — the same split the profile ID badge uses,
+   and for the same reason: printed-card colours are not part of the UI chrome's own ramp. */
+
+.auth-page {
+  /* .content (app.css) already adds its own padding: 40px 40px 48px — cancel it here so this page
+     can claim the full viewport height itself. Without this, that padding and this min-height
+     stack on top of each other and the page ends up taller than the viewport, forcing a scrollbar
+     for space nothing actually needs. */
+  margin: -40px -40px -48px;
+  min-height: calc(100vh - 61px); /* topbar: 60px height + 1px border (app.css .topbar) */
+  display: flex;
+  /* Centers the left/right pair as one block — on both axes — instead of stretching each column
+     to the viewport's full height, which is what was leaving so much dead space inside them. */
+  align-items: center;
+  justify-content: center;
 }
 
-h1 { margin: 0 0 6px; font-size: 1.4rem; }
-.sub { margin: 0 0 22px; color: var(--muted); font-size: 0.9rem; }
-.sub.ok { color: var(--accent-teal); }
-
-form { display: flex; flex-direction: column; gap: 14px; }
-
-label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--muted); }
-
-input {
-  background: var(--panel-2);
+/* One shared surface for both halves — a single component, not a dark box next to a cream one.
+   The glow that used to sit only behind the left text now washes across the whole shell, right
+   through to where the ticket sits. */
+.auth-shell {
+  display: flex;
+  align-items: center;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: var(--ink);
+  background: radial-gradient(
+    130% 100% at 30% 0%,
+    rgba(255, 199, 90, 0.09) 0%,
+    rgba(8, 9, 12, 0) 60%
+  );
 }
 
-input:focus { outline: none; border-color: var(--accent-amber); }
+/* Left — static marketing panel. No live schedule data here (see issue #64): a specific-looking
+   time that isn't real would be worse than showing none. */
+.auth-left {
+  width: 420px;
+  flex: none;
+  box-sizing: border-box;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  align-self: center;
+}
 
-.primary {
-  margin-top: 6px;
-  background: var(--accent-amber);
-  color: #241a00;
+.auth-left__top {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.auth-left__brand {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1;
+  color: var(--accent-red);
+  text-shadow: 0 0 22px rgba(255, 77, 94, 0.6);
+}
+
+.how {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.how__label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.how__row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.how__num {
+  width: 26px;
+  flex: none;
+  font-family: var(--font-numeral);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--muted-4);
+}
+.how__text {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-steel);
+}
+
+.auth-left__est {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+}
+
+/* Right — the pass card. Shrink-wrapped to the card's own size (not flex:1) so the whole
+   left/right pair is one compact block for .auth-page to centre — a wide flexed column here was
+   the other half of the dead-space problem. */
+.auth-right {
+  flex: none;
+  box-sizing: border-box;
+  padding: 40px;
+  align-self: center;
+}
+
+.pass {
+  width: 100%;
+  max-width: 452px;
+  background: var(--sign-face);
+  border: 1px solid var(--sign-face-border);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6);
+}
+
+.pass__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 22px;
+  border-bottom: 1px solid #cfc5ad;
+}
+.pass__kicker {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6f6a5c;
+}
+.pass__serial {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8d8778;
+}
+
+.pass__body {
+  padding: 26px 30px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pass__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pass__title {
+  font-family: var(--font-numeral);
+  font-size: 40px;
+  line-height: 0.92;
+  letter-spacing: 0.02em;
+  color: #1b1a17;
+}
+.pass__sub {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: #6f6a5c;
+}
+.pass__sub--ok {
+  color: #4a463c;
+}
+
+.pass__form {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.field__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6f6a5c;
+}
+.field__input {
+  font-family: var(--font-body);
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  color: #1b1a17;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--sign-face-border);
+  padding: 0 0 7px;
+  outline: none;
+}
+.field__input:disabled {
+  color: #8d8778;
+  border-bottom-color: #cfc5ad;
+}
+.field__input--error {
+  border-bottom-color: #a3202f;
+}
+.field__error {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: #a3202f;
+}
+
+.reveal {
+  background: none;
   border: none;
-  border-radius: 8px;
-  padding: 11px;
-  font-weight: 700;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8d6b3a;
+  cursor: pointer;
 }
 
-.primary:disabled { opacity: 0.5; cursor: default; }
+.link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #d6c8a8;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: #8d6b3a;
+  cursor: pointer;
+}
 
-.err { color: var(--accent-red); font-size: 0.85rem; margin: 0; }
+.strength {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.strength__ticks {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.strength__tick {
+  flex: 1;
+  height: 3px;
+  background: #d9cdb4;
+}
+.strength__tick--partial {
+  background: #c99327;
+}
+.strength__tick--full {
+  background: #3f7a4a;
+}
+.strength__hint {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8d6b3a;
+}
 
-/* Each refused rule on its own line, indented like the list it is. */
-.err--list { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.problems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-left: 3px solid #a3202f;
+  background: #efe0d4;
+}
+.problems__title {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a1b28;
+}
+.problems__row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.problems__bullet {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: #a3202f;
+}
+.problems__text {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: #4a463c;
+}
 
-.hint { margin: -6px 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+.error-box {
+  padding: 12px 14px;
+  border-left: 3px solid #a3202f;
+  background: #efe0d4;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a1b28;
+}
 
-.switch { margin-top: 18px; display: block; text-align: center; width: 100%; }
+.pass__submit {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sign-face);
+  background: #c2213a;
+  border: 1px solid #a3202f;
+  padding: 15px 20px;
+  cursor: pointer;
+}
+.pass__submit:disabled {
+  color: #8d8778;
+  background: transparent;
+  border-color: #cfc5ad;
+  cursor: default;
+}
+
+.done {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px dashed var(--sign-face-border);
+}
+.done__mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  box-sizing: border-box;
+  border: 1px solid var(--sign-face-border);
+  background: #e6dbc3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-numeral);
+  font-size: 18px;
+  line-height: 1;
+  color: #8d8778;
+}
+.done__text {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4a463c;
+}
+
+.pass__switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 20px;
+  border-top: 1px solid #cfc5ad;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.pass__switch--alone {
+  border-top: 1px solid #cfc5ad;
+}
+.pass__switch span {
+  color: #6f6a5c;
+}
+.pass__switch button {
+  background: none;
+  border: none;
+  border-bottom: 1px solid #e0a8a8;
+  padding: 0;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: #c2213a;
+  cursor: pointer;
+}
+
+/* Decorative ticket perforation — a fixed pattern, not per-user like the profile badge's barcode. */
+.pass__perforation {
+  height: 22px;
+  margin: 0 22px 20px;
+  background: repeating-linear-gradient(
+    90deg,
+    #1b1a17 0 1px,
+    transparent 1px 3px,
+    #1b1a17 3px 6px,
+    transparent 6px 7px,
+    #1b1a17 7px 8px,
+    transparent 8px 11px
+  );
+}

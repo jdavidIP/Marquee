@@ -86,6 +86,21 @@ describe('LoginComponent', () => {
     expect(c['passwordHint']()).not.toContain('a number');
   });
 
+  it('checks the password against the real rules, not a fixed set', () => {
+    // requireDigit is false here, so a tick for it would tell the person to do work the server
+    // never asked for.
+    const c = make({
+      rules: { minLength: 12, maxLength: 128, requireLetter: true, requireDigit: false },
+    });
+    c['mode'].set('register');
+    c['password'] = 'short1';
+
+    expect(c['passwordChecks']()).toEqual([false, true]);
+
+    c['password'] = 'long enough now';
+    expect(c['passwordChecks']()).toEqual([true, true]);
+  });
+
   it('still offers the form when the rules cannot be fetched', () => {
     // The server enforces them regardless, so a failed hint must not block registration.
     const c = make({ rules: () => throwError(() => new HttpErrorResponse({ status: 500 })) });

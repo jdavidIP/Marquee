@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { apiError, passwordProblems } from '../../core/http-error';
 import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
+import { initialsOf } from '../../core/avatar';
 
 @Component({
   selector: 'app-login',
@@ -19,6 +20,9 @@ export class LoginComponent {
   protected readonly mode = signal<'login' | 'register' | 'forgot'>('login');
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+
+  /** "Show"/"Hide" is a word here, not an eye icon (design handoff). */
+  protected readonly reveal = signal(false);
 
   /** Whether the forgot-password request has been sent — shows the server's own response text instead of the form. */
   protected readonly resetRequested = signal(false);
@@ -59,6 +63,36 @@ export class LoginComponent {
     if (r.requireDigit) parts.push('a number');
 
     return `Use ${parts.join(', ')}. Avoid your username and anything widely used.`;
+  });
+
+  /** The pass card's header row — same object the profile badge becomes once it is issued. */
+  protected readonly cardKicker = computed(() => {
+    if (this.justRegistered()) return 'Pass issued · unconfirmed';
+    if (this.mode() === 'forgot') return 'Lost pass · replacement';
+    return this.mode() === 'login' ? 'Admit one · returning' : 'New pass · application';
+  });
+
+  /**
+   * "No. 04291" for login is flavour, not a real serial — there is no account to derive one from
+   * before signing in succeeds. Every other mode has genuinely no serial yet.
+   */
+  protected readonly cardSerial = computed(() =>
+    this.justRegistered() ? 'No. 04292' : this.mode() === 'login' ? 'No. 04291' : 'No. — —',
+  );
+
+  protected readonly modeTitle = computed(() => {
+    if (this.mode() === 'forgot') return 'Reset your password';
+    return this.mode() === 'login' ? 'Sign in to Marquee' : 'Create your account';
+  });
+
+  protected readonly modeSub = computed(() => {
+    if (this.mode() === 'forgot') return "Enter the email on your account and we'll send a link to reset it.";
+    return 'Four times a day a Premiere appears. Clap together to open it.';
+  });
+
+  protected readonly submitLabel = computed(() => {
+    if (this.mode() === 'forgot') return 'Send reset link';
+    return this.mode() === 'login' ? 'Sign in' : 'Register';
   });
 
   constructor() {
@@ -119,6 +153,30 @@ export class LoginComponent {
         this.error.set(apiError(err, 'Something went wrong. Please try again.'));
       },
     });
+  }
+
+  protected toggleReveal(): void {
+    this.reveal.update((v) => !v);
+  }
+
+  /** Stands in for the badge portrait on the "check your email" panel — same monogram source. */
+  protected doneMark(): string {
+    return initialsOf(this.username || 'YO');
+  }
+
+  /**
+   * One tick per rule the server actually enforces — never the fixed four of the design handoff,
+   * which invented case-mixing and symbol requirements that PasswordRulesDto doesn't have. A tick
+   * for a rule nobody requires would tell the person to do work the server never asks for.
+   */
+  protected passwordChecks(): boolean[] {
+    const r = this.rules();
+    if (!r) return [];
+
+    const checks = [this.password.length >= r.minLength];
+    if (r.requireLetter) checks.push(/[A-Za-z]/.test(this.password));
+    if (r.requireDigit) checks.push(/[0-9]/.test(this.password));
+    return checks;
   }
 
   /** Both typed and different — worth saying now rather than spending a round trip on it. */
