@@ -1,56 +1,148 @@
-@if (isSelf()) {
-  <h1 class="title">Your friends</h1>
-} @else {
-  <h1 class="title">{{ username() }}'s friends</h1>
-}
-
-<p class="back"><a routerLink="/u/{{ username() }}">Back to profile</a></p>
-
-@if (error(); as e) {
-  <p class="error">{{ e }}</p>
-}
-
-@if (loading()) {
-  <p class="empty">Loading…</p>
-} @else if (forbidden()) {
-  <p class="empty">This account is private. Become friends to see their friend list.</p>
-} @else {
-  <section class="panel">
-    <div class="toolbar">
-      <input
-        class="search"
-        type="search"
-        placeholder="Search by username"
-        [value]="query()"
-        (input)="onSearchInput($any($event.target).value)"
-        aria-label="Search this friend list by username"
-      />
-      @if (query()) {
-        <button class="action" type="button" (click)="clearSearch()">Clear</button>
+<div class="page">
+  <div class="head">
+    <div class="head__title-block">
+      <span class="overline">
+        Will call
+        @if (isSelf() && !loading()) {
+          · {{ totalCount() === 0 ? 'nobody yet' : totalCount() + (totalCount() === 1 ? ' friend' : ' friends') }}
+        } @else if (!loading() && !forbidden()) {
+          · {{ totalCount() }} {{ totalCount() === 1 ? 'friend' : 'friends' }}
+        }
+      </span>
+      <h1 class="title">{{ isSelf() ? 'Your friends' : username() + "'s friends" }}</h1>
+    </div>
+    <div class="head__actions">
+      <a class="action" [routerLink]="['/u', username()]">Back to profile</a>
+      @if (isSelf()) {
+        <a class="action" routerLink="/friends">Find someone</a>
       }
     </div>
+  </div>
 
-    @if (friends().length === 0) {
-      <p class="empty">
-        @if (query()) {
-          Nobody matches that name.
-        } @else {
-          No friends yet.
-        }
-      </p>
-    } @else {
-      <ul class="list">
-        @for (friend of friends(); track friend.userId) {
-          <li class="row">
+  @if (error(); as e) {
+    <p class="error">{{ e }}</p>
+  }
+
+  @if (removedNotice(); as notice) {
+    <div class="notice">{{ notice }}</div>
+  }
+
+  @if (loading()) {
+    <div class="panel">
+      <ul class="list list--ghost">
+        @for (i of [1, 2, 3]; track i) {
+          <li class="row row--ghost">
+            <span class="avatar avatar--ghost"></span>
             <div class="row__who">
-              <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
-              @if (friend.bio) {
-                <span class="row__bio">{{ friend.bio }}</span>
-              }
+              <span class="ghost-line ghost-line--name"></span>
+              <span class="ghost-line ghost-line--bio"></span>
             </div>
           </li>
         }
       </ul>
-    }
-  </section>
-}
+      <span class="empty">Loading…</span>
+    </div>
+  } @else if (forbidden()) {
+    <div class="panel">
+      <div class="refusal">
+        <span class="refusal__title">This account is private</span>
+        <span class="refusal__hint">Become friends to see who they know.</span>
+        @if (relationship(); as r) {
+          <span class="pill" [class.pill--teal]="r === 'Friends'">{{ r }}</span>
+        }
+        @if (canAdd()) {
+          <button class="action action--primary" type="button" (click)="addFriend()" [disabled]="addBusy()">
+            {{ addBusy() ? 'Sending…' : 'Add friend' }}
+          </button>
+        }
+        @if (linkToRequests()) {
+          <a class="action" routerLink="/friends">Respond in Friends</a>
+        }
+      </div>
+    </div>
+  } @else {
+    <section class="panel">
+      <div class="toolbar">
+        <div class="search-field">
+          <span class="search-field__label">Search this list</span>
+          <input
+            class="search"
+            type="search"
+            placeholder="Search by username"
+            [value]="query()"
+            (input)="onSearchInput($any($event.target).value)"
+            aria-label="Search this friend list by username"
+          />
+        </div>
+        <span class="panel__note">
+          {{
+            query()
+              ? friends().length === 0
+                ? 'No matches'
+                : friends().length + ' of ' + totalCount()
+              : totalCount() + ' in list'
+          }}
+        </span>
+        @if (query()) {
+          <button class="action" type="button" (click)="clearSearch()">Clear</button>
+        }
+      </div>
+
+      @if (friends().length === 0 && query()) {
+        <div class="no-match">
+          <p class="no-match__title">Nobody in your list matches that</p>
+          <p class="no-match__hint">
+            This only searches the {{ totalCount() }}
+            {{ totalCount() === 1 ? 'person' : 'people' }} you are already friends with
+            @if (isSelf()) {
+              — to find someone new, use the friends page.
+            }
+          </p>
+        </div>
+      } @else if (friends().length === 0) {
+        <div class="rest">
+          <p class="rest__title">Nobody on the list yet</p>
+          @if (isSelf()) {
+            <p class="rest__text">
+              Friends show up here once a request is accepted either way. Their claps count toward
+              the same Premieres as yours.
+            </p>
+            <a class="action action--primary" routerLink="/friends">Find someone</a>
+          }
+        </div>
+      } @else {
+        <ul class="list">
+          @for (friend of friends(); track friend.userId) {
+            <li class="row" [class.row--asking]="askingId() === friend.userId">
+              <span class="avatar" [style.background]="monogramColor(friend.userId)">
+                {{ initialsOf(friend.username) }}
+              </span>
+              <div class="row__who">
+                <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
+                @if (friend.bio) {
+                  <span class="row__bio">{{ friend.bio }}</span>
+                }
+              </div>
+
+              @if (isSelf()) {
+                <div class="row__actions">
+                  @if (busyId() === friend.userId) {
+                    <span class="note">Removing…</span>
+                  } @else if (askingId() === friend.userId) {
+                    <span class="note note--amber">Remove?</span>
+                    <button class="action action--danger" type="button" (click)="confirmRemove(friend)">
+                      Yes, remove
+                    </button>
+                    <button class="action" type="button" (click)="cancelAsk()">Keep</button>
+                  } @else {
+                    <button class="action" type="button" (click)="ask(friend.userId)">Remove friend</button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+</div>
