@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -135,5 +136,58 @@ public class ClapCountingTests(MarqueeAppFactory factory)
         {
             return null;
         }
+    }
+
+    private sealed record PremiereDetailBody(Guid Id, string Status, int? MyEmblemTier);
+
+    /// <summary>
+    /// MyEmblemTier (added for the Premiere screen's reveal banner) is null while a Premiere is
+    /// Active — nothing has been assigned yet, §4.3 — and reads back once the Worker assigns it.
+    /// Integration tests point MassTransit at a closed broker port on purpose (see
+    /// MarqueeAppFactory's class comment), so the Worker's PremiereOpenedConsumer never actually
+    /// runs here; seeding the assignment directly is how every other emblem-tier test in this suite
+    /// (LibraryQueryTests) verifies the read side without depending on that consumer.
+    /// </summary>
+    [Fact]
+    public async Task My_emblem_tier_is_null_while_active_and_reads_back_once_assigned()
+    {
+        factory.Tmdb.IsDown = false;
+        var client = await AuthedClientAsync();
+        var premiere = await CreatePremiereAsync(client);
+
+        var clapResponse = await client.PostAsync($"/api/premieres/{premiere.Id}/clap", null);
+        clapResponse.EnsureSuccessStatusCode();
+
+        var whileActive = await client.GetFromJsonAsync<PremiereDetailBody>($"/api/premieres/{premiere.Id}");
+        whileActive!.MyEmblemTier.Should().BeNull("nothing is assigned until the Premiere opens");
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var admin = await db.Users.AsNoTracking().FirstAsync(u => u.Username == MarqueeAppFactory.AdminUsername);
+
+        var stored = await db.Premieres.FirstAsync(p => p.Id == premiere.Id);
+        stored.Status = PremiereStatus.Opened;
+        stored.OpenedAt = DateTime.UtcNow;
+
+        // The Worker's PremiereOpenedConsumer is what would normally write this row (it never runs
+        // in these tests — see the class comment above), so seed the outcome it would have produced.
+        db.Contributions.Add(new Contribution
+        {
+            PremiereId = premiere.Id, UserId = admin.Id, ClapCount = 1, EmblemTier = 3
+        });
+        await db.SaveChangesAsync();
+
+        var afterOpen = await client.GetFromJsonAsync<PremiereDetailBody>($"/api/premieres/{premiere.Id}");
+        afterOpen!.MyEmblemTier.Should().Be(3);
+
+        // An anonymous caller never earns a tier at all (§4.3) — not merely "not yet assigned".
+        var anonymous = factory.CreateClient();
+        var anonSession = await anonymous.PostAsJsonAsync("/api/sessions/anonymous", new { });
+        anonSession.EnsureSuccessStatusCode();
+        var session = await anonSession.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        anonymous.DefaultRequestHeaders.Add("X-Anon-Session", session!["token"]);
+
+        var anonView = await anonymous.GetFromJsonAsync<PremiereDetailBody>($"/api/premieres/{premiere.Id}");
+        anonView!.MyEmblemTier.Should().BeNull();
     }
 }

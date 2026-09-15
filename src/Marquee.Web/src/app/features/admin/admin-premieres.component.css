@@ -50,7 +50,7 @@
 .card__late {
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-red);
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 2px 8px;
@@ -85,7 +85,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.card__note { color: var(--gold-dim); }
+.card__note { color: var(--muted-3); }
 
 .bar {
   height: 6px;
@@ -96,7 +96,7 @@
 
 .bar__fill {
   height: 100%;
-  background: var(--gold);
+  background: var(--accent-amber);
 }
 
 .card__meta {
@@ -133,7 +133,7 @@
 
 .card__error {
   margin: 10px 0 0;
-  color: var(--accent);
+  color: var(--accent-red);
   font-size: 0.85rem;
 }
 
@@ -153,7 +153,7 @@
   color: var(--muted);
 }
 
-.editor__hint--warn { color: var(--gold); }
+.editor__hint--warn { color: var(--accent-amber); }
 
 .editor__row {
   display: flex;

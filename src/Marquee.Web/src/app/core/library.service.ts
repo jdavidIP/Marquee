@@ -2,14 +2,14 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { LibraryEntryDto, LibraryFiltersDto, LibraryQuery, PagedResult } from './models';
+import { LibraryFiltersDto, LibraryQuery, LibraryPageDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class LibraryService {
   constructor(private http: HttpClient) {}
 
-  mine(query: LibraryQuery = {}): Observable<PagedResult<LibraryEntryDto>> {
-    return this.http.get<PagedResult<LibraryEntryDto>>(`${environment.apiBase}/library`, {
+  mine(query: LibraryQuery = {}): Observable<LibraryPageDto> {
+    return this.http.get<LibraryPageDto>(`${environment.apiBase}/library`, {
       params: toParams(query),
     });
   }
@@ -19,12 +19,13 @@ export class LibraryService {
   }
 
   /**
-   * Someone else's library, same query shape as `mine()` (issue #38 reuses #26's querying rather
-   * than duplicating it). Visible to the same audience as their friend list and premiere history —
-   * a 403 means the account is private, not that something failed.
+   * Someone else's library, same query shape and response shape as `mine()` (issue #38 reuses
+   * #26's querying rather than duplicating it) — the header stats describe the account being
+   * viewed, not the viewer, so anyone entitled to see the entries sees these too. A 403 means the
+   * account is private, not that something failed.
    */
-  forUser(username: string, query: LibraryQuery = {}): Observable<PagedResult<LibraryEntryDto>> {
-    return this.http.get<PagedResult<LibraryEntryDto>>(
+  forUser(username: string, query: LibraryQuery = {}): Observable<LibraryPageDto> {
+    return this.http.get<LibraryPageDto>(
       `${environment.apiBase}/users/${encodeURIComponent(username)}/library`,
       { params: toParams(query) },
     );

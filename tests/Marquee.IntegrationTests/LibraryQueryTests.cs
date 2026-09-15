@@ -23,8 +23,12 @@ namespace Marquee.IntegrationTests;
 public class LibraryQueryTests(MarqueeAppFactory factory)
 {
     private sealed record MovieBody(int TmdbId, string Title, string? PosterUrl, int? ReleaseYear);
-    private sealed record EntryBody(Guid MovieId, MovieBody Movie, Guid PremiereId, DateTime AcquiredAt, int? EmblemTier);
-    private sealed record PageBody(List<EntryBody> Items, int Total, int Page, int PageSize);
+    private sealed record EmblemBody(int? Tier, string ScopeId);
+    private sealed record EntryBody(
+        Guid MovieId, MovieBody Movie, Guid PremiereId, DateTime AcquiredAt, int? EmblemTier,
+        List<EmblemBody> Emblems);
+    private sealed record PageBody(
+        List<EntryBody> Items, int Total, int Page, int PageSize, int PlatinumCount, int PremieresAttended);
     private sealed record GenreBody(int TmdbId, string Name);
     private sealed record FiltersBody(List<GenreBody> Genres, int? MinYear, int? MaxYear);
     private sealed record AuthBody(string Token, UserBody User);
@@ -155,6 +159,35 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
     }
 
     private static string[] Titles(PageBody page) => page.Items.Select(i => i.Movie.Title).ToArray();
+
+    [Fact]
+    public async Task Header_stats_count_platinum_movies_and_every_contribution()
+    {
+        var (client, userId) = await NewUserAsync();
+        await SeedAsync(userId,
+            new Film("Full House One", 2001, 7.0, "Drama", 4, EmblemTier: 5),
+            new Film("Full House Two", 2002, 7.0, "Drama", 3, EmblemTier: 5),
+            new Film("Almost There", 2003, 7.0, "Drama", 2, EmblemTier: 4),
+            new Film("Just Showed Up", 2004, 7.0, "Drama", 1, EmblemTier: 1));
+
+        var page = await PageAsync(client);
+
+        page.PlatinumCount.Should().Be(2, "only the two full-house tiers count");
+        page.PremieresAttended.Should().Be(4, "one Contribution per film here, none repeated");
+    }
+
+    [Fact]
+    public async Task Each_entry_carries_its_emblem_with_the_scope_it_was_earned_in()
+    {
+        var (client, userId) = await NewUserAsync();
+        await SeedAsync(userId, new Film("Scoped Emblem", 2001, 7.0, "Drama", 1, EmblemTier: 4));
+
+        var page = await PageAsync(client);
+
+        var emblem = page.Items.Single().Emblems.Single();
+        emblem.Tier.Should().Be(4);
+        emblem.ScopeId.Should().Be("global", "v1 only ever premieres into the global scope");
+    }
 
     [Fact]
     public async Task An_unfiltered_library_comes_back_most_recently_acquired_first()

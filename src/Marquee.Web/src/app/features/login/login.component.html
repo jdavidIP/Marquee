@@ -1,104 +1,230 @@
-<section class="auth">
-  @if (justRegistered()) {
-    <h1>Check your email</h1>
-    <p class="sub ok">
-      We sent a confirmation link to {{ email }}. You can start exploring Marquee right away —
-      confirming just unlocks full participation in a Premiere.
-    </p>
-    <button class="primary" type="button" (click)="continue()">Continue to Marquee</button>
-  } @else if (mode() === 'forgot') {
-    @if (resetRequested()) {
-      <h1>Check your email</h1>
-      <p class="sub ok">{{ resetMessage() }}</p>
-      <button class="switch link" (click)="backToSignIn()">Back to sign in</button>
-    } @else {
-      <h1>Reset your password</h1>
-      <p class="sub">Enter the email on your account and we'll send a link to reset it.</p>
+<div class="auth-page">
+  <div class="auth-shell">
+  <aside class="auth-left">
+    <div class="auth-left__top">
+      <span class="auth-left__brand">Marquee</span>
 
-      <form (ngSubmit)="requestReset()" #rf="ngForm">
-        <label>
-          <span>Email</span>
-          <input name="forgotEmail" type="email" [(ngModel)]="forgotEmail" required autocomplete="email" />
-        </label>
+      <div class="how">
+        <span class="how__label">How it works</span>
+        <div class="how__row">
+          <span class="how__num">1</span>
+          <span class="how__text">Four times a day a Premiere appears. Nobody knows the film until it opens.</span>
+        </div>
+        <div class="how__row">
+          <span class="how__num">2</span>
+          <span class="how__text">
+            Spend your claps while the room fills. Enough claps together and the doors open.
+          </span>
+        </div>
+        <div class="how__row">
+          <span class="how__num">3</span>
+          <span class="how__text">
+            The film is yours to keep, on a ticket that shows how much of it you opened.
+          </span>
+        </div>
+      </div>
+    </div>
 
-        @if (error()) {
-          <p class="err">{{ error() }}</p>
+    <span class="auth-left__est">Est. 2026 · four showings daily</span>
+  </aside>
+
+  <div class="auth-right">
+    <div class="pass">
+      <div class="pass__header">
+        <span class="pass__kicker">{{ cardKicker() }}</span>
+        <span class="pass__serial">{{ cardSerial() }}</span>
+      </div>
+
+      <div class="pass__body">
+        @if (justRegistered()) {
+          <div class="pass__title-block">
+            <span class="pass__title">Check your email</span>
+            <span class="pass__sub pass__sub--ok">
+              We sent a confirmation link to {{ email }}. You can start exploring right away —
+              confirming unlocks full participation in a Premiere.
+            </span>
+          </div>
+
+          <div class="done">
+            <span class="done__mark">{{ doneMark() }}</span>
+            <span class="done__text">
+              Your pass is made out but not stamped. Two claps until you confirm, six after.
+            </span>
+          </div>
+
+          <button class="pass__submit" type="button" (click)="continue()">Continue to Marquee</button>
+        } @else if (mode() === 'forgot' && resetRequested()) {
+          <div class="pass__title-block">
+            <span class="pass__title">Check your email</span>
+            <span class="pass__sub pass__sub--ok">{{ resetMessage() }}</span>
+          </div>
+
+          <div class="pass__switch pass__switch--alone">
+            <span>Remembered it?</span>
+            <button type="button" (click)="backToSignIn()">Back to sign in</button>
+          </div>
+        } @else {
+          <div class="pass__title-block">
+            <span class="pass__title">{{ modeTitle() }}</span>
+            <span class="pass__sub">{{ modeSub() }}</span>
+          </div>
+
+          <form
+            class="pass__form"
+            (ngSubmit)="mode() === 'forgot' ? requestReset() : submit()"
+            #f="ngForm"
+          >
+            @if (mode() === 'forgot') {
+              <label class="field">
+                <span class="field__label">Email</span>
+                <input
+                  class="field__input"
+                  name="forgotEmail"
+                  type="email"
+                  [(ngModel)]="forgotEmail"
+                  required
+                  autocomplete="email"
+                  [disabled]="busy()"
+                />
+              </label>
+            } @else {
+              <label class="field">
+                <span class="field__label">{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
+                <input
+                  class="field__input"
+                  name="username"
+                  [(ngModel)]="username"
+                  required
+                  autocomplete="username"
+                  [disabled]="busy()"
+                />
+              </label>
+
+              @if (mode() === 'register') {
+                <label class="field">
+                  <span class="field__label">Email</span>
+                  <input
+                    class="field__input"
+                    name="email"
+                    type="email"
+                    [(ngModel)]="email"
+                    required
+                    autocomplete="email"
+                    [disabled]="busy()"
+                  />
+                </label>
+              }
+
+              <label class="field">
+                <div class="field__row">
+                  <span class="field__label">Password</span>
+                  <button class="reveal" type="button" (click)="toggleReveal()">
+                    {{ reveal() ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+                <input
+                  class="field__input"
+                  name="password"
+                  [type]="reveal() ? 'text' : 'password'"
+                  [(ngModel)]="password"
+                  required
+                  [attr.minlength]="mode() === 'register' ? rules()?.minLength : null"
+                  autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}"
+                  [disabled]="busy()"
+                />
+              </label>
+
+              @if (mode() === 'login') {
+                <button class="link" type="button" (click)="openForgotPassword()">
+                  Forgot your password?
+                </button>
+              }
+
+              @if (mode() === 'register') {
+                @if (rules()) {
+                  <div class="strength">
+                    <div class="strength__ticks">
+                      @for (met of passwordChecks(); track $index) {
+                        <span
+                          class="strength__tick"
+                          [class.strength__tick--partial]="password && met"
+                          [class.strength__tick--full]="password && met && !passwordChecks().includes(false)"
+                        ></span>
+                      }
+                    </div>
+                    @if (passwordHint(); as hint) {
+                      <span class="strength__hint">{{ hint }}</span>
+                    }
+                  </div>
+                }
+
+                <label class="field">
+                  <span class="field__label">Confirm password</span>
+                  <input
+                    class="field__input"
+                    [class.field__input--error]="mismatched()"
+                    name="confirmPassword"
+                    [type]="reveal() ? 'text' : 'password'"
+                    [(ngModel)]="confirmPassword"
+                    required
+                    autocomplete="new-password"
+                    [disabled]="busy()"
+                  />
+                </label>
+
+                @if (mismatched()) {
+                  <span class="field__error">The two passwords do not match.</span>
+                }
+              }
+            }
+
+            @if (problems().length) {
+              <div class="problems">
+                <span class="problems__title">
+                  {{
+                    problems().length === 1
+                      ? 'One thing to fix'
+                      : problems().length + ' things to fix'
+                  }}
+                </span>
+                @for (problem of problems(); track problem.rule) {
+                  <div class="problems__row">
+                    <span class="problems__bullet">·</span>
+                    <span class="problems__text">{{ problem.message }}</span>
+                  </div>
+                }
+              </div>
+            } @else if (error()) {
+              <div class="error-box"><span>{{ error() }}</span></div>
+            }
+
+            <button
+              class="pass__submit"
+              type="submit"
+              [disabled]="busy() || f.invalid || mismatched()"
+            >
+              {{ busy() ? 'Please wait…' : submitLabel() }}
+            </button>
+          </form>
+
+          @if (mode() === 'forgot') {
+            <div class="pass__switch">
+              <span>Remembered it?</span>
+              <button type="button" (click)="backToSignIn()">Back to sign in</button>
+            </div>
+          } @else {
+            <div class="pass__switch">
+              <span>{{ mode() === 'login' ? 'Need an account?' : 'Already have an account?' }}</span>
+              <button type="button" (click)="toggle()">
+                {{ mode() === 'login' ? 'Register' : 'Sign in' }}
+              </button>
+            </div>
+          }
         }
+      </div>
 
-        <button class="primary" type="submit" [disabled]="busy() || rf.invalid">
-          {{ busy() ? 'Please wait…' : 'Send reset link' }}
-        </button>
-      </form>
-
-      <button class="switch link" (click)="backToSignIn()">Back to sign in</button>
-    }
-  } @else {
-  <h1>{{ mode() === 'login' ? 'Sign in to Marquee' : 'Create your account' }}</h1>
-  <p class="sub">Four times a day a Premiere appears. Clap together to open it.</p>
-
-  <form (ngSubmit)="submit()" #f="ngForm">
-    <label>
-      <span>{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
-      <input name="username" [(ngModel)]="username" required autocomplete="username" />
-    </label>
-
-    @if (mode() === 'register') {
-      <label>
-        <span>Email</span>
-        <input name="email" type="email" [(ngModel)]="email" required autocomplete="email" />
-      </label>
-    }
-
-    <label>
-      <span>Password</span>
-      <!-- minlength comes from the server's own policy when it is known, so the browser's check and
-           the API's agree. Signing in has no floor at all: the rules govern choosing a password,
-           never presenting one, and an older account must not be locked out by a later rule. -->
-      <input name="password" type="password" [(ngModel)]="password" required
-             [attr.minlength]="mode() === 'register' ? rules()?.minLength : null"
-             autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}" />
-    </label>
-
-    @if (mode() === 'login') {
-      <button class="switch link" type="button" (click)="openForgotPassword()">Forgot your password?</button>
-    }
-
-    @if (mode() === 'register') {
-      @if (passwordHint(); as hint) {
-        <p class="hint">{{ hint }}</p>
-      }
-
-      <label>
-        <span>Confirm password</span>
-        <input name="confirmPassword" type="password" [(ngModel)]="confirmPassword" required
-               autocomplete="new-password" />
-      </label>
-
-      @if (mismatched()) {
-        <p class="err">The two passwords do not match.</p>
-      }
-    }
-
-    <!-- When the server itemised the rules, list them: three reasons run together into one sentence
-         is a paragraph to parse rather than a checklist to work through. Otherwise the single line
-         is all there is. -->
-    @if (problems().length) {
-      <ul class="err err--list">
-        @for (problem of problems(); track problem.rule) {
-          <li>{{ problem.message }}</li>
-        }
-      </ul>
-    } @else if (error()) {
-      <p class="err">{{ error() }}</p>
-    }
-
-    <button class="primary" type="submit" [disabled]="busy() || f.invalid || mismatched()">
-      {{ busy() ? 'Please wait…' : (mode() === 'login' ? 'Sign in' : 'Register') }}
-    </button>
-  </form>
-
-  <button class="switch link" (click)="toggle()">
-    {{ mode() === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in' }}
-  </button>
-  }
-</section>
+      <div class="pass__perforation"></div>
+    </div>
+  </div>
+  </div>
+</div>

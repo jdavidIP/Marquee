@@ -1,6 +1,7 @@
 using Marquee.Api.Dtos;
 using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
+using Marquee.Domain;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
@@ -333,7 +334,7 @@ public sealed class AdminService(
     private async Task<IReadOnlyList<TimeOnly>> OtherTimesThatDayAsync(
         Premiere premiere, DateOnly localDate, CancellationToken ct)
     {
-        var (dayStartUtc, dayEndUtc) = LocalDayBoundsUtc(localDate);
+        var (dayStartUtc, dayEndUtc) = LocalDay.BoundsUtc(localDate);
 
         var times = await db.Premieres
             .AsNoTracking()
@@ -431,11 +432,6 @@ public sealed class AdminService(
 
     private static AdminResult<AdminPremiereDto> Invalid(string error) =>
         new(AdminOutcome.Invalid, Error: error);
-
-    // §4.4 speaks in local time; storage is UTC. Mirrors PremiereScheduleService's conversion.
-    private static (DateTime StartUtc, DateTime EndUtc) LocalDayBoundsUtc(DateOnly localDate) =>
-        (DateTime.SpecifyKind(localDate.ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime(),
-         DateTime.SpecifyKind(localDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Local).ToUniversalTime());
 
     /// <summary>
     /// Swap a Premiere's hidden movie for a different one, using the same §4.6 filters and the same

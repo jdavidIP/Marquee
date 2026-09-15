@@ -21,7 +21,8 @@ public class UserLibraryAndHistoryVisibilityTests(MarqueeAppFactory factory)
 {
     private sealed record MovieBody(int TmdbId, string Title, string? PosterUrl, int? ReleaseYear);
     private sealed record LibraryEntryBody(Guid MovieId, MovieBody Movie, Guid PremiereId, DateTime AcquiredAt, int? EmblemTier);
-    private sealed record LibraryPageBody(List<LibraryEntryBody> Items, int Total, int Page, int PageSize);
+    private sealed record LibraryPageBody(
+        List<LibraryEntryBody> Items, int Total, int Page, int PageSize, int PlatinumCount, int PremieresAttended);
     private sealed record HistoryEntryBody(Guid PremiereId, MovieBody Movie, DateTime? OpenedAt, string Status, int ClapCount, int? EmblemTier);
     private sealed record HistoryPageBody(List<HistoryEntryBody> Items, int Total, int Page, int PageSize);
     private sealed record AuthBody(string Token, UserBody User);
@@ -156,6 +157,21 @@ public class UserLibraryAndHistoryVisibilityTests(MarqueeAppFactory factory)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         _ = friendName;
+    }
+
+    [Fact]
+    public async Task A_stranger_sees_the_owners_header_stats_on_a_public_library()
+    {
+        var (owner, ownerName, ownerId) = await NewUserAsync("owner");
+        await SeedAsync(ownerId, "Owner's Full House", emblemTier: 5);
+        await SeedAsync(ownerId, "Owner's Almost There", emblemTier: 4);
+
+        var (stranger, _, _) = await NewUserAsync("stranger");
+        var response = await stranger.GetAsync($"/api/users/{ownerName}/library");
+
+        var page = await response.Content.ReadFromJsonAsync<LibraryPageBody>();
+        page!.PlatinumCount.Should().Be(1, "these stats describe the account being viewed, not the viewer");
+        page.PremieresAttended.Should().Be(2);
     }
 
     [Fact]

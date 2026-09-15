@@ -4,7 +4,18 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LibraryComponent } from './library.component';
 import { LibraryService } from '../../core/library.service';
-import { LibraryEntryDto, LibraryFiltersDto, LibraryQuery, PagedResult } from '../../core/models';
+import { UsersService } from '../../core/users.service';
+import { FriendsService } from '../../core/friends.service';
+import {
+  FullProfileDto,
+  LibraryEntryDto,
+  LibraryFiltersDto,
+  LibraryQuery,
+  LibraryPageDto,
+  LimitedProfileDto,
+  PagedResult,
+  ProfileDto,
+} from '../../core/models';
 
 /**
  * The screen's job is to turn the controls into one query and send it, and to tell an empty library
@@ -29,11 +40,21 @@ describe('LibraryComponent', () => {
       premiereId: 'p1',
       acquiredAt: '2026-01-01T00:00:00Z',
       emblemTier: 3,
+      emblems: [{ tier: 3, scopeId: 'global' }],
     };
   }
 
   function page(items: LibraryEntryDto[], total = items.length): PagedResult<LibraryEntryDto> {
     return { items, total, page: 1, pageSize: 24 };
+  }
+
+  function myPage(
+    items: LibraryEntryDto[],
+    total = items.length,
+    platinumCount = 0,
+    premieresAttended = total,
+  ): LibraryPageDto {
+    return { ...page(items, total), platinumCount, premieresAttended };
   }
 
   const filters: LibraryFiltersDto = {
@@ -45,6 +66,37 @@ describe('LibraryComponent', () => {
     maxYear: 2001,
   };
 
+  function limitedProfile(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
+    return {
+      username: 'ana',
+      avatarUrl: null,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      sharedPremieresAttended: 4,
+      ...overrides,
+    };
+  }
+
+  /** An accepted friend (or a public account) always gets the full payload, never the limited one. */
+  function fullProfile(overrides: Partial<FullProfileDto> = {}): FullProfileDto {
+    return {
+      id: 'u1',
+      username: 'ana',
+      bio: null,
+      avatarUrl: null,
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      moviesCollected: 1,
+      premieresAttended: 1,
+      friendCount: 0,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
+      ...overrides,
+    };
+  }
+
+  /** own library, never has a username routed, so profile()/sendRequest() are never called. */
   function make(result = page([entry('Alien')]), available: LibraryFiltersDto = filters) {
     TestBed.resetTestingModule();
     mineSpy = jasmine.createSpy('mine').and.returnValue(of(result));
@@ -52,7 +104,16 @@ describe('LibraryComponent', () => {
     TestBed.configureTestingModule({
       imports: [LibraryComponent],
       providers: [
+        provideRouter([]),
         { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(available) } },
+        {
+          provide: UsersService,
+          useValue: { profile: jasmine.createSpy('profile should not be called for the own library') },
+        },
+        {
+          provide: FriendsService,
+          useValue: { sendRequest: jasmine.createSpy('sendRequest should not be called for the own library') },
+        },
       ],
     });
 
@@ -158,6 +219,28 @@ describe('LibraryComponent', () => {
     expect(c['filtered']()).toBe(true);
   });
 
+  it('shows the marquee-sign empty state, not the no-results copy, for a genuinely empty library', () => {
+    TestBed.resetTestingModule();
+    mineSpy = jasmine.createSpy('mine').and.returnValue(of(myPage([], 0)));
+
+    TestBed.configureTestingModule({
+      imports: [LibraryComponent],
+      providers: [
+        provideRouter([]),
+        { provide: LibraryService, useValue: { mine: mineSpy, filters: () => of(filters) } },
+        { provide: UsersService, useValue: { profile: jasmine.createSpy('profile') } },
+        { provide: FriendsService, useValue: { sendRequest: jasmine.createSpy('sendRequest') } },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(LibraryComponent);
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Watch the marquee');
+    expect(text).not.toContain('Nothing in your library matches that');
+  });
+
   it('clears every filter at once and reloads', fakeAsync(() => {
     const c = make();
 
@@ -171,6 +254,20 @@ describe('LibraryComponent', () => {
     expect(lastQuery().search).toBe('');
     expect(lastQuery().genreId).toBeNull();
   }));
+
+  it('reads the header stats from the response for your own library', () => {
+    const c = make(myPage([entry('Alien')], 12, 2, 18));
+
+    expect(c['platinumCount']()).toBe(2);
+    expect(c['premieresAttended']()).toBe(18);
+    expect(c['headline']()).toBe('12 films, 18 nights');
+  });
+
+  it('reads the header stats singular for exactly one film', () => {
+    const c = make(myPage([entry('Alien')], 1, 0, 1));
+
+    expect(c['headline']()).toBe('1 film, 1 night');
+  });
 
   it('does not offer a next page when everything already fits on one', () => {
     const c = make(page([entry('Alien')], 1));
@@ -201,6 +298,7 @@ describe('LibraryComponent', () => {
     TestBed.configureTestingModule({
       imports: [LibraryComponent],
       providers: [
+        provideRouter([]),
         {
           provide: LibraryService,
           useValue: {
@@ -208,6 +306,8 @@ describe('LibraryComponent', () => {
             filters: () => ({ subscribe: ({ error }: { error: (e: unknown) => void }) => error(new Error('nope')) }),
           },
         },
+        { provide: UsersService, useValue: { profile: jasmine.createSpy('profile') } },
+        { provide: FriendsService, useValue: { sendRequest: jasmine.createSpy('sendRequest') } },
       ],
     });
 
@@ -222,15 +322,20 @@ describe('LibraryComponent', () => {
 
   describe('viewing someone else\'s library (issue #38)', () => {
     let forUserSpy: jasmine.Spy;
+    let profileSpy: jasmine.Spy;
+    let sendRequestSpy: jasmine.Spy;
 
     function makeForUser(
       username: string,
-      result: PagedResult<LibraryEntryDto> | (() => ReturnType<typeof throwError>) = page([entry('Alien')]),
+      result: LibraryPageDto | (() => ReturnType<typeof throwError>) = myPage([entry('Alien')]),
+      profile: ProfileDto = limitedProfile(),
     ) {
       TestBed.resetTestingModule();
       forUserSpy = jasmine.createSpy('forUser').and.returnValue(
         typeof result === 'function' ? result() : of(result),
       );
+      profileSpy = jasmine.createSpy('profile').and.returnValue(of(profile));
+      sendRequestSpy = jasmine.createSpy('sendRequest').and.returnValue(of({}));
 
       TestBed.configureTestingModule({
         imports: [LibraryComponent],
@@ -245,6 +350,8 @@ describe('LibraryComponent', () => {
               filtersFor: () => of(filters),
             },
           },
+          { provide: UsersService, useValue: { profile: profileSpy } },
+          { provide: FriendsService, useValue: { sendRequest: sendRequestSpy } },
         ],
       });
 
@@ -253,6 +360,29 @@ describe('LibraryComponent', () => {
       fixture.detectChanges();
       return fixture;
     }
+
+    it("reads someone else's header stats too — they describe the account, not the viewer", () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 3, 7));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['platinumCount']()).toBe(3);
+      expect(c['premieresAttended']()).toBe(7);
+    });
+
+    it('hides the header stats once a newly-routed username turns out to be forbidden', () => {
+      // Regression guard: navigating from a visible profile to a forbidden one must not leave the
+      // previous profile's stats on screen just because the signals were never reset to zero.
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 3, 7));
+      let text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('Platinum');
+
+      forUserSpy.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+      fixture.componentRef.setInput('username', 'bob');
+      fixture.detectChanges();
+
+      text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).not.toContain('Platinum');
+    });
 
     it('calls forUser rather than mine when a username is routed', () => {
       makeForUser('ana');
@@ -286,6 +416,76 @@ describe('LibraryComponent', () => {
 
       expect(forUserSpy).toHaveBeenCalledTimes(1);
       expect(forUserSpy.calls.mostRecent().args[0]).toBe('bob');
+    });
+
+    it('builds the headline from the film count and premieresAttended, not the same number twice', () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 12, 0, 18));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+
+      expect(c['headline']()).toBe('12 films, 18 nights');
+    });
+
+    it("swaps the second stat to \"Nights you shared\" instead of \"Premieres attended\"", () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')], 1, 0, 7), limitedProfile({ sharedPremieresAttended: 4 }));
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('Nights you shared');
+      expect(text).not.toContain('Premieres attended');
+      expect(text).toContain('4');
+    });
+
+    it("shows the target's name, bio and a Friends pill when accepted", () => {
+      // An accepted friend is entitled to the full profile (never the limited shape) even on a
+      // private account — see UserProfileService.ResolveEntitlementAsync.
+      const fixture = makeForUser(
+        'ana',
+        myPage([entry('Alien')]),
+        fullProfile({ bio: 'Only here for the 70s thrillers.', friendshipStatus: 'Accepted' }),
+      );
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('ana');
+      expect(text).toContain('Only here for the 70s thrillers.');
+      expect(text).toContain('Friends');
+    });
+
+    it('offers to send a friend request only when there is no relationship yet', () => {
+      const noRelationship = makeForUser('ana', myPage([entry('Alien')]), limitedProfile({ friendshipStatus: null }));
+      const c1 = noRelationship.componentInstance as unknown as Record<string, any>;
+      expect(c1['canAddFriend']()).toBe(true);
+
+      const alreadyFriends = makeForUser(
+        'bob',
+        myPage([entry('Alien')]),
+        limitedProfile({ username: 'bob', friendshipStatus: 'Accepted' }),
+      );
+      const c2 = alreadyFriends.componentInstance as unknown as Record<string, any>;
+      expect(c2['canAddFriend']()).toBe(false);
+    });
+
+    it('sends the request and reloads the profile', () => {
+      const fixture = makeForUser('ana', myPage([entry('Alien')]), limitedProfile({ friendshipStatus: null }));
+      const c = fixture.componentInstance as unknown as Record<string, any>;
+      profileSpy.calls.reset();
+
+      c['addFriend']();
+
+      expect(sendRequestSpy).toHaveBeenCalledWith('ana');
+      expect(profileSpy).toHaveBeenCalledTimes(1);
+      expect(c['sendingRequest']()).toBe(false);
+    });
+
+    it('shows the shared-Premieres teaser and a private pill on a forbidden library, not the entries', () => {
+      const fixture = makeForUser(
+        'ana',
+        () => throwError(() => new HttpErrorResponse({ status: 403 })),
+        limitedProfile({ sharedPremieresAttended: 4 }),
+      );
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+      expect(text).toContain('This library is private');
+      expect(text).toContain('4 of the same Premieres');
+      expect(text).toContain('Private');
     });
   });
 });

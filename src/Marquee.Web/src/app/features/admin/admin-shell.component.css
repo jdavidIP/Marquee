@@ -28,5 +28,5 @@
 
 .ops__tabs a.active {
   color: var(--ink);
-  border-bottom-color: var(--gold);
+  border-bottom-color: var(--accent-amber);
 }

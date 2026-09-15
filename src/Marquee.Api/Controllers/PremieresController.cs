@@ -2,6 +2,7 @@ using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
 using Marquee.Api.Security;
 using Marquee.Api.Services;
+using Marquee.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -45,11 +46,43 @@ public class PremieresController(IPremiereService premieres, IParticipantResolve
         return dto is null ? NotFound() : Ok(dto);
     }
 
+    /// <summary>
+    /// Today's full programme for the idle-state marquee page (issue #58). Open to anonymous callers
+    /// like <see cref="Active"/> — a logged-out visitor sees the same day, just with no per-slot
+    /// claps of their own. <paramref name="scopeId"/> defaults to the global scope so today's
+    /// frontend need not pass it, but the endpoint does not hardcode it — CLAUDE.md §5 asks for that
+    /// generality even though v1 only ever populates one scope.
+    /// </summary>
+    [HttpGet("today")]
+    public async Task<ActionResult<TodayScheduleDto>> Today(
+        [FromQuery] string? scopeId, CancellationToken ct)
+    {
+        var dto = await premieres.GetTodayScheduleAsync(
+            string.IsNullOrWhiteSpace(scopeId) ? Scopes.Global : scopeId, participants.Resolve(HttpContext), ct);
+        return Ok(dto);
+    }
+
     /// <summary>The next Premiere the scheduler has lined up, so the page can say when to come back.</summary>
     [HttpGet("next")]
     public async Task<ActionResult<PremiereDto>> Next(CancellationToken ct)
     {
         var dto = await premieres.GetNextScheduledAsync(ct);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    /// <summary>
+    /// The crowd/lobby strip's data for this Premiere, from the caller's own point of view (issue
+    /// #55). Open to anonymous callers like <see cref="Clap"/> and <see cref="Active"/> — an
+    /// anonymous viewer gets no identities back (see <see cref="IPremiereService.GetLobbyAsync"/>),
+    /// only the counts needed to draw faceless discs, so there is no privacy reason to require a
+    /// session. 404 covers both "no such Premiere" and "not currently Active" — the client already
+    /// tracks the Premiere's own status locally and only polls this while it already believes the
+    /// Premiere is live, so it has no need to tell the two apart from this response.
+    /// </summary>
+    [HttpGet("{id:guid}/lobby")]
+    public async Task<ActionResult<LobbyDto>> Lobby(Guid id, CancellationToken ct)
+    {
+        var dto = await premieres.GetLobbyAsync(id, participants.Resolve(HttpContext), ct);
         return dto is null ? NotFound() : Ok(dto);
     }
 

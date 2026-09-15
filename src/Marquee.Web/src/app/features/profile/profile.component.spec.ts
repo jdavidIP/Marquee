@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { ProfileComponent } from './profile.component';
 import { UsersService } from '../../core/users.service';
 import { FriendsService } from '../../core/friends.service';
+import { PremiereHistoryService } from '../../core/premiere-history.service';
 import { AuthService } from '../../core/auth.service';
 import { FullProfileDto, LimitedProfileDto, ProfileDto, isFullProfile } from '../../core/models';
 
@@ -12,7 +13,7 @@ import { FullProfileDto, LimitedProfileDto, ProfileDto, isFullProfile } from '..
  * The two payload shapes.
  *
  * GET /api/users/{username} returns either a full profile or, for a stranger viewing a private
- * account, one carrying only username and bio — the remaining fields absent rather than null. The
+ * account, one carrying only the username — the remaining fields absent rather than null. The
  * screen has to render whichever it was handed without deciding for itself what the viewer is
  * entitled to: the server already made that call, and a friend sees everything even when the
  * account is private. These cover that split.
@@ -25,6 +26,7 @@ describe('ProfileComponent payload shapes', () => {
       id: 'other-id',
       username: 'ana',
       bio: 'Likes westerns.',
+      avatarUrl: null,
       isPrivate: false,
       createdAt: '2026-01-01T00:00:00Z',
       moviesCollected: 3,
@@ -32,6 +34,7 @@ describe('ProfileComponent payload shapes', () => {
       friendCount: 2,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
       ...overrides,
     };
   }
@@ -39,20 +42,25 @@ describe('ProfileComponent payload shapes', () => {
   function limited(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
     return {
       username: 'ana',
-      bio: 'Likes westerns.',
+      avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
       ...overrides,
     };
   }
 
   let sendRequestSpy: jasmine.Spy;
+  let forUserSpy: jasmine.Spy;
 
   function make(profile: ProfileDto, viewerId: string | null = me) {
     // Reset first so a test can build more than one profile — the outgoing/incoming pair below
     // needs two, and TestBed refuses to be reconfigured once instantiated.
     TestBed.resetTestingModule();
     sendRequestSpy = jasmine.createSpy('sendRequest').and.returnValue(of({}));
+    forUserSpy = jasmine
+      .createSpy('forUser')
+      .and.returnValue(of({ items: [], total: 0, page: 1, pageSize: 4 }));
 
     TestBed.configureTestingModule({
       imports: [ProfileComponent],
@@ -60,6 +68,7 @@ describe('ProfileComponent payload shapes', () => {
         provideRouter([]),
         { provide: UsersService, useValue: { profile: () => of(profile), updateMe: () => of({}) } },
         { provide: FriendsService, useValue: { sendRequest: sendRequestSpy } },
+        { provide: PremiereHistoryService, useValue: { forUser: forUserSpy } },
         {
           provide: AuthService,
           useValue: {
@@ -155,6 +164,32 @@ describe('ProfileComponent payload shapes', () => {
     // at the one that owns requests rather than guessing.
     expect(received['linkToRequests']()).toBe(true);
   });
+
+  it('loads recent activity only for a full payload, never a limited one', () => {
+    make(full());
+    expect(forUserSpy).toHaveBeenCalledWith('ana', { sort: 'Opened', pageSize: 4 });
+
+    forUserSpy.calls.reset();
+    make(limited());
+    expect(forUserSpy).not.toHaveBeenCalled();
+  });
+
+  it('derives the access category and next-category progress from premieresAttended', () => {
+    const c = make(full({ premieresAttended: 18 }));
+
+    expect(c['category']().name).toBe('Industry');
+    expect(c['nextCategory']().name).toBe('Press');
+    expect(c['nextCategoryRemaining']()).toBe(40 - 18);
+    // 18 is 3/25 of the way from Industry's floor (15) to Press's (40).
+    expect(c['nextCategoryProgressPct']()).toBeCloseTo(((18 - 15) / (40 - 15)) * 100, 5);
+  });
+
+  it('has no next category at Jury, the top of the ladder', () => {
+    const c = make(full({ premieresAttended: 250 }));
+
+    expect(c['category']().name).toBe('Jury');
+    expect(c['nextCategory']()).toBeNull();
+  });
 });
 
 describe('isFullProfile', () => {
@@ -165,6 +200,7 @@ describe('isFullProfile', () => {
       id: 'x',
       username: 'ana',
       bio: null,
+      avatarUrl: null,
       isPrivate: true,
       createdAt: '2026-01-01T00:00:00Z',
       moviesCollected: 1,
@@ -172,13 +208,15 @@ describe('isFullProfile', () => {
       friendCount: 1,
       friendshipStatus: 'Accepted',
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
     };
 
     const limitedProfile: LimitedProfileDto = {
       username: 'ana',
-      bio: null,
+      avatarUrl: null,
       friendshipStatus: null,
       friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
     };
 
     expect(isFullProfile(privateButEntitled)).toBe(true);

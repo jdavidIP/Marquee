@@ -1,18 +1,39 @@
-<section class="auth">
-  @switch (status()) {
-    @case ('checking') {
-      <h1>Confirming your email…</h1>
-      <p class="sub">Just a moment.</p>
-    }
-    @case ('confirmed') {
-      <h1>Email confirmed</h1>
-      <p class="sub ok">Your account is confirmed. Sign in to continue.</p>
-      <a class="primary" routerLink="/login">Sign in</a>
-    }
-    @case ('failed') {
-      <h1>Confirmation failed</h1>
-      <p class="err">{{ error() }}</p>
-      <a class="switch link" routerLink="/login">Back to sign in</a>
-    }
-  }
-</section>
+<div class="auth-page">
+  <div class="pass">
+    <div class="pass__header">
+      <span class="pass__kicker">
+        {{ status() === 'confirmed' ? 'Pass issued · stamped' : 'Pass issued · unconfirmed' }}
+      </span>
+      <span class="pass__serial">No. — —</span>
+    </div>
+
+    <div class="pass__body">
+      @switch (status()) {
+        @case ('checking') {
+          <div class="pass__title-block">
+            <span class="pass__title">Confirming your email…</span>
+            <span class="pass__sub">Just a moment.</span>
+          </div>
+        }
+        @case ('confirmed') {
+          <div class="pass__title-block">
+            <span class="pass__title">Email confirmed</span>
+            <span class="pass__sub pass__sub--ok">Your account is confirmed. Sign in to continue.</span>
+          </div>
+          <a class="pass__submit" routerLink="/login">Sign in</a>
+        }
+        @case ('failed') {
+          <div class="pass__title-block">
+            <span class="pass__title">Confirmation failed</span>
+          </div>
+          <div class="error-box"><span>{{ error() }}</span></div>
+          <div class="pass__switch pass__switch--alone">
+            <a routerLink="/login">Back to sign in</a>
+          </div>
+        }
+      }
+    </div>
+
+    <div class="pass__perforation"></div>
+  </div>
+</div>

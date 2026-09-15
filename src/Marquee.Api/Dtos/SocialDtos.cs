@@ -10,6 +10,8 @@ public sealed record FullProfileDto(
     Guid Id,
     string Username,
     string? Bio,
+    /// <summary>Null for anyone who has not set a picture — the client draws a monogram instead.</summary>
+    string? AvatarUrl,
     bool IsPrivate,
     DateTime CreatedAt,
     int MoviesCollected,
@@ -18,7 +20,12 @@ public sealed record FullProfileDto(
     /// <summary>Pending / Accepted / null — the viewer's own relationship to this profile.</summary>
     string? FriendshipStatus,
     /// <summary>True when the viewer sent the pending request, false when they received it.</summary>
-    bool? FriendRequestOutgoing);
+    bool? FriendRequestOutgoing,
+    /// <summary>
+    /// Premieres both the viewer and this account contributed to. Null when there is no viewer to
+    /// share with — anonymous, or the account's own profile — same as FriendshipStatus.
+    /// </summary>
+    int? SharedPremieresAttended);
 
 /// <summary>
 /// A private profile seen by a stranger. MARQUEE_PLAN.md is explicit that the *account's own*
@@ -37,14 +44,27 @@ public sealed record FullProfileDto(
 /// </summary>
 public sealed record LimitedProfileDto(
     string Username,
-    string? Bio,
+    /// <summary>
+    /// Kept here: a picture is part of the public identity a private account still presents, the
+    /// same as its name. Privacy restricts the account's own detail — counts, history, bio — not
+    /// the face on the door. Bio itself is withheld now (the profile badge's "unissued" state
+    /// prints name only), unlike AvatarUrl.
+    /// </summary>
+    string? AvatarUrl,
     /// <summary>
     /// Pending or null. Never Accepted — an accepted friend is entitled to the full profile, so
     /// this type is never the one returned for them.
     /// </summary>
     string? FriendshipStatus,
     /// <summary>True when the viewer sent the pending request, false when they received it.</summary>
-    bool? FriendRequestOutgoing);
+    bool? FriendRequestOutgoing,
+    /// <summary>
+    /// Same viewer-relative exception as FriendshipStatus: describes the viewer's own overlap with
+    /// this account, not the account's private detail, so it survives the privacy restriction —
+    /// it's what a locked library's teaser line reads from. Null when there is no viewer to share
+    /// with (anonymous).
+    /// </summary>
+    int? SharedPremieresAttended);
 
 /// <summary>
 /// A search hit. Deliberately identical for public and private users — private profiles stay

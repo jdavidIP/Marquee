@@ -37,6 +37,9 @@ export class ResetPasswordComponent {
   protected newPassword = '';
   protected confirmPassword = '';
 
+  /** "Show"/"Hide" is a word here, not an eye icon — same convention as LoginComponent's. */
+  protected readonly reveal = signal(false);
+
   protected readonly passwordHint = computed(() => {
     const r = this.rules();
     if (!r) return null;
@@ -57,6 +60,21 @@ export class ResetPasswordComponent {
 
   protected mismatched(): boolean {
     return this.confirmPassword.length > 0 && this.newPassword !== this.confirmPassword;
+  }
+
+  protected toggleReveal(): void {
+    this.reveal.update((v) => !v);
+  }
+
+  /** Same reasoning as LoginComponent's: one tick per rule the server actually enforces. */
+  protected passwordChecks(): boolean[] {
+    const r = this.rules();
+    if (!r) return [];
+
+    const checks = [this.newPassword.length >= r.minLength];
+    if (r.requireLetter) checks.push(/[A-Za-z]/.test(this.newPassword));
+    if (r.requireDigit) checks.push(/[0-9]/.test(this.newPassword));
+    return checks;
   }
 
   submit(): void {

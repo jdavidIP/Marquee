@@ -20,6 +20,9 @@ public interface IPremiereService
     Task<PremiereDto?> GetAsync(Guid premiereId, Participant? viewer, CancellationToken ct);
     Task<PremiereDto?> GetActiveAsync(Participant? viewer, CancellationToken ct);
     Task<PremiereDto?> GetNextScheduledAsync(CancellationToken ct);
+
+    /// <summary>Today's full programme for the idle-state marquee page (issue #58).</summary>
+    Task<TodayScheduleDto> GetTodayScheduleAsync(string scopeId, Participant? viewer, CancellationToken ct);
     Task<ClapResult> ClapAsync(Guid premiereId, Participant participant, string? idempotencyKey, CancellationToken ct);
 
     /// <summary>
@@ -27,6 +30,15 @@ public interface IPremiereService
     /// </summary>
     Task<IReadOnlyList<FriendContributorDto>?> GetFriendContributorsAsync(
         Guid premiereId, Guid viewerId, CancellationToken ct);
+
+    /// <summary>
+    /// The Premiere crowd/lobby strip's data (issue #55). Null unless the Premiere is currently
+    /// Active — the strip is a live-window feature, and once a Premiere opens the frontend already
+    /// has everything it needs (the reveal payload) to show a summary line instead, so there is
+    /// nothing this endpoint needs to answer for a Premiere that has not started yet or has already
+    /// finished.
+    /// </summary>
+    Task<LobbyDto?> GetLobbyAsync(Guid premiereId, Participant? viewer, CancellationToken ct);
 }
 
 public enum ClapOutcome
@@ -86,7 +98,8 @@ public sealed class PremiereService(
             return null;
 
         var counts = await LiveCountsAsync(premiere, viewer, ct);
-        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer);
+        return premiere.ToDto(
+            premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
     }
 
     public async Task<PremiereDto?> GetActiveAsync(Participant? viewer, CancellationToken ct)
@@ -101,7 +114,8 @@ public sealed class PremiereService(
             return null;
 
         var counts = await LiveCountsAsync(premiere, viewer, ct);
-        return premiere.ToDto(premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer);
+        return premiere.ToDto(
+            premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
     }
 
     /// <summary>
@@ -118,6 +132,48 @@ public sealed class PremiereService(
             .FirstOrDefaultAsync(ct);
 
         return premiere?.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdb);
+    }
+
+    /// <summary>
+    /// Today's slots, earliest first, keyed on each Premiere's effective time (OpensAt ??
+    /// ScheduledFor) the same way <see cref="Marquee.Api.Services.AdminService"/> resolves "today" —
+    /// so a Premiere started early sits in the slot it actually ran in. A Missed one still gets a
+    /// slot; the caller renders it as a dead row rather than shrinking the list (§4.5).
+    /// </summary>
+    public async Task<TodayScheduleDto> GetTodayScheduleAsync(
+        string scopeId, Participant? viewer, CancellationToken ct)
+    {
+        var localDate = DateOnly.FromDateTime(DateTime.Now);
+        var (dayStartUtc, dayEndUtc) = LocalDay.BoundsUtc(localDate);
+
+        var premieres = await db.Premieres
+            .Include(p => p.Movie)
+            .AsNoTracking()
+            .Where(p => p.ScopeId == scopeId
+                        && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
+                        && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
+            .OrderBy(p => p.OpensAt ?? p.ScheduledFor)
+            .ToListAsync(ct);
+
+        var slots = new List<TodayScheduleSlotDto>(premieres.Count);
+        foreach (var premiere in premieres)
+        {
+            var opened = premiere.Status is PremiereStatus.Opened or PremiereStatus.AutoOpened;
+            var (myClaps, myEmblemTier) = opened
+                ? await MyContributionAsync(premiere.Id, viewer, ct)
+                : (0, null);
+
+            slots.Add(new TodayScheduleSlotDto(
+                premiere.Id,
+                premiere.ScheduledFor,
+                premiere.Status.ToString(),
+                opened ? MovieDtoFactory.Create(premiere.Movie, _tmdb) : null,
+                opened ? premiere.TotalClaps : null,
+                myClaps,
+                myEmblemTier));
+        }
+
+        return new TodayScheduleDto(scopeId, slots);
     }
 
     /// <summary>
@@ -287,22 +343,21 @@ public sealed class PremiereService(
     public async Task<IReadOnlyList<FriendContributorDto>?> GetFriendContributorsAsync(
         Guid premiereId, Guid viewerId, CancellationToken ct)
     {
-        var premiere = await db.Premieres
-            .AsNoTracking()
-            .Where(p => p.Id == premiereId)
-            .Select(p => new { p.Id, p.ScopeId, p.Status })
-            .FirstOrDefaultAsync(ct);
-
-        if (premiere is null)
+        // Cache-first like GetActiveAsync/GetAsync/GetLobbyAsync — a miss still falls back to
+        // Postgres (below, inside ResolveMetaAsync) and caches the result with the same bounded TTL
+        // as everything else, so looking up a long-closed Premiere here does not leave anything
+        // behind that outlives the rest of the hot-path data.
+        var meta = await ResolveMetaAsync(premiereId, ct);
+        if (meta is null)
             return null;
 
         IReadOnlyList<Guid> friendIds;
-        if (premiere.Status == PremiereStatus.Active)
+        if (meta.Status == PremiereStatus.Active)
         {
             // A cold cache would silently intersect against an empty set, so make sure the viewer's
             // friends are actually in Redis before trusting the result.
             await friendships.EnsureFriendGraphLoadedAsync(viewerId, ct);
-            friendIds = await counters.GetFriendContributorsAsync(premiere.ScopeId, premiereId, viewerId, ct);
+            friendIds = await counters.GetFriendContributorsAsync(meta.ScopeId, premiereId, viewerId, ct);
         }
         else
         {
@@ -338,6 +393,69 @@ public sealed class PremiereService(
             .ToListAsync(ct);
     }
 
+    /// <summary>Faces shown at once in the lobby strip — the design's own cap (issue #55).</summary>
+    private const int LobbySampleSize = 9;
+
+    public async Task<LobbyDto?> GetLobbyAsync(Guid premiereId, Participant? viewer, CancellationToken ct)
+    {
+        // Cache-first like GetActiveAsync/GetAsync — this endpoint only ever wants an Active
+        // Premiere's ScopeId/Status, and PremiereMeta already carries exactly that in Redis, so
+        // there is no reason to fall back on Postgres before checking there first.
+        var meta = await ResolveMetaAsync(premiereId, ct);
+        if (meta is null || meta.Status != PremiereStatus.Active)
+            return null;
+
+        var registeredCount = await counters.GetRegisteredContributorCountAsync(meta.ScopeId, premiereId, ct);
+        var anonymousCount = await counters.GetAnonymousContributorCountAsync(meta.ScopeId, premiereId, ct);
+
+        // An anonymous viewer sees a crowd, not a social graph: this endpoint hands out no
+        // identities to one, only the counts needed to draw faceless discs (CLAUDE.md's crowd-strip
+        // design; same posture as the hub's "only public aggregates" rule for the group broadcast).
+        if (viewer is not { Kind: ParticipantKind.Registered } registered)
+            return new LobbyDto(premiereId, [], (int)registeredCount, (int)anonymousCount);
+
+        await friendships.EnsureFriendGraphLoadedAsync(registered.UserId, ct);
+        var friendIdsTask = counters.GetFriendContributorsAsync(meta.ScopeId, premiereId, registered.UserId, ct);
+        var recentIdsTask = counters.GetRecentContributorsAsync(meta.ScopeId, premiereId, LobbySampleSize, ct);
+        await Task.WhenAll(friendIdsTask, recentIdsTask);
+
+        var friendIds = new HashSet<Guid>(friendIdsTask.Result);
+        var recentIds = recentIdsTask.Result;
+
+        // Friends first (in recency order among themselves where possible), then the most recent
+        // non-friends fill the rest. recentIds is only a capped sample of the full contributor set,
+        // so a friend who clapped outside that window still belongs at the front — the second loop
+        // catches any friend the first one missed.
+        var seen = new HashSet<Guid>();
+        var ordered = new List<Guid>(LobbySampleSize);
+        void Add(Guid id)
+        {
+            if (seen.Add(id))
+                ordered.Add(id);
+        }
+        foreach (var id in recentIds.Where(friendIds.Contains)) Add(id);
+        foreach (var id in friendIds) Add(id);
+        foreach (var id in recentIds) Add(id);
+
+        var sample = ordered.Take(LobbySampleSize).ToList();
+        if (sample.Count == 0)
+            return new LobbyDto(premiereId, [], (int)registeredCount, (int)anonymousCount);
+
+        var users = await db.Users
+            .AsNoTracking()
+            .Where(u => sample.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username, u.AvatarUrl })
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        // Preserve `sample`'s friends-first/recency order — the dictionary lookup above has none.
+        var faces = sample
+            .Where(users.ContainsKey)
+            .Select(id => new LobbyFaceDto(id, users[id].Username, users[id].AvatarUrl, friendIds.Contains(id)))
+            .ToList();
+
+        return new LobbyDto(premiereId, faces, (int)registeredCount, (int)anonymousCount);
+    }
+
     // Cache-first metadata resolution; a miss (cold cache / restart) is backfilled from Postgres.
     private async Task<PremiereMeta?> ResolveMetaAsync(Guid premiereId, CancellationToken ct)
     {
@@ -354,7 +472,7 @@ public sealed class PremiereService(
         return meta;
     }
 
-    private readonly record struct LiveCounts(int Total, int Contributors, int MyClaps);
+    private readonly record struct LiveCounts(int Total, int Contributors, int MyClaps, int? MyEmblemTier);
 
     // Live counts come from Redis while a Premiere is Active; once terminal, from the durable record.
     private async Task<LiveCounts> LiveCountsAsync(Premiere premiere, Participant? viewer, CancellationToken ct)
@@ -366,24 +484,33 @@ public sealed class PremiereService(
             var mine = viewer is Participant p
                 ? (int)await counters.GetParticipantClapsAsync(premiere.ScopeId, premiere.Id, p, ct)
                 : 0;
-            return new LiveCounts(total, contributors, mine);
+            // Emblems are assigned once the Premiere opens (§4.3) — nothing to show while Active.
+            return new LiveCounts(total, contributors, mine, null);
         }
 
         var persistedContributors = await db.Contributions.CountAsync(c => c.PremiereId == premiere.Id, ct);
-        var myClaps = await MyClapsAsync(premiere.Id, viewer, ct);
-        return new LiveCounts(premiere.TotalClaps, persistedContributors, myClaps);
+        var (myClaps, myEmblemTier) = await MyContributionAsync(premiere.Id, viewer, ct);
+        return new LiveCounts(premiere.TotalClaps, persistedContributors, myClaps, myEmblemTier);
     }
 
-    private async Task<int> MyClapsAsync(Guid premiereId, Participant? viewer, CancellationToken ct)
+    /// <summary>
+    /// The viewer's own claps and emblem tier for a terminal Premiere, from the single Contribution
+    /// row that carries both. Tier is null for an anonymous participant (never earns one, §4.3) and
+    /// can briefly be null for a registered one too, right after Opened — the Worker assigns it
+    /// asynchronously once it consumes the open event, not synchronously in the clap path.
+    /// </summary>
+    private async Task<(int ClapCount, int? EmblemTier)> MyContributionAsync(
+        Guid premiereId, Participant? viewer, CancellationToken ct)
     {
         if (viewer is not Participant p)
-            return 0;
+            return (0, null);
 
         var query = p.IsAnonymous
             ? db.Contributions.Where(c => c.PremiereId == premiereId && c.AnonymousSessionId == p.AnonymousSessionId)
             : db.Contributions.Where(c => c.PremiereId == premiereId && c.UserId == p.UserId);
 
-        return await query.Select(c => c.ClapCount).FirstOrDefaultAsync(ct);
+        var row = await query.Select(c => new { c.ClapCount, c.EmblemTier }).FirstOrDefaultAsync(ct);
+        return row is null ? (0, null) : (row.ClapCount, row.EmblemTier);
     }
 
     private async Task<ClapResponse> BuildClapResponseAsync(

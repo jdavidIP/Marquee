@@ -7,7 +7,7 @@ import { UsersService } from '../../core/users.service';
 import { AuthService } from '../../core/auth.service';
 import { apiError } from '../../core/http-error';
 import { FriendDto, FriendRequestDto, UserSearchResultDto } from '../../core/models';
-import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
+import { initialsOf, monogramColor } from '../../core/avatar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -28,7 +28,7 @@ interface SearchRow {
 @Component({
   selector: 'app-friends',
   standalone: true,
-  imports: [DatePipe, RouterLink, ConfirmDialogComponent],
+  imports: [DatePipe, RouterLink],
   templateUrl: './friends.component.html',
   styleUrl: './friends.component.css',
 })
@@ -36,6 +36,9 @@ export class FriendsComponent implements OnInit, OnDestroy {
   private readonly friendsApi = inject(FriendsService);
   private readonly users = inject(UsersService);
   private readonly auth = inject(AuthService);
+
+  protected readonly initialsOf = initialsOf;
+  protected readonly monogramColor = monogramColor;
 
   protected readonly friends = signal<FriendDto[]>([]);
   protected readonly requests = signal<FriendRequestDto[]>([]);
@@ -50,16 +53,11 @@ export class FriendsComponent implements OnInit, OnDestroy {
 
   /** Only the row being acted on is disabled; one action must not freeze the whole screen. */
   protected readonly busyId = signal<string | null>(null);
-  protected readonly pendingRemoval = signal<FriendDto | null>(null);
+
+  /** The full friends list lives on its own page (`/u/:username/friends`) — see #39/#59. */
+  protected readonly myUsername = computed(() => this.auth.user()?.username ?? '');
 
   protected readonly incoming = computed(() => this.requests().filter((r) => !r.outgoing));
-
-  /**
-   * Read-only by design: the API has no withdraw endpoint — accept and reject are addressee-only,
-   * and removing a friendship matches only accepted ones. Showing a cancel button the server cannot
-   * honour would be worse than showing none.
-   */
-  protected readonly outgoing = computed(() => this.requests().filter((r) => r.outgoing));
 
   protected readonly searchRows = computed<SearchRow[]>(() => {
     const myId = this.auth.user()?.id;
@@ -106,13 +104,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
     this.searchTimer = setTimeout(() => this.runSearch(value.trim()), SEARCH_DEBOUNCE_MS);
   }
 
-  protected clearSearch(): void {
-    if (this.searchTimer) clearTimeout(this.searchTimer);
-    this.query.set('');
-    this.results.set([]);
-    this.searched.set(false);
-  }
-
   protected send(username: string, id: string): void {
     this.act(id, this.friendsApi.sendRequest(username), `Could not send a request to ${username}.`);
   }
@@ -124,27 +115,6 @@ export class FriendsComponent implements OnInit, OnDestroy {
 
   protected reject(requestId: string, username: string): void {
     this.act(requestId, this.friendsApi.reject(requestId), `Could not reject ${username}.`);
-  }
-
-  protected askToRemove(friend: FriendDto): void {
-    this.pendingRemoval.set(friend);
-  }
-
-  protected confirmRemoval(): void {
-    const friend = this.pendingRemoval();
-    if (!friend) return;
-
-    this.busyId.set(friend.userId);
-    this.friendsApi.remove(friend.userId).subscribe({
-      next: () => {
-        this.pendingRemoval.set(null);
-        this.finish();
-      },
-      error: (err: unknown) => {
-        this.pendingRemoval.set(null);
-        this.fail(err, `Could not remove ${friend.username}.`);
-      },
-    });
   }
 
   protected relationLabel(relation: Relation): string {

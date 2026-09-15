@@ -8,6 +8,15 @@ public class User : AuditableEntity
     public string Email { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;
     public string? Bio { get; set; }
+
+    /// <summary>
+    /// Where this user's picture lives, or null for the great majority who have not set one. Every
+    /// place the UI draws a face falls back to a monogram of the username, so null is the ordinary
+    /// case rather than a missing value to be fixed up. Nothing writes this yet — there is no upload
+    /// flow — but the column exists so the face-drawing paths have one shape from the start.
+    /// </summary>
+    public string? AvatarUrl { get; set; }
+
     public bool IsPrivate { get; set; }
     public bool IsBlocked { get; set; }
     public UserRole Role { get; set; } = UserRole.User;

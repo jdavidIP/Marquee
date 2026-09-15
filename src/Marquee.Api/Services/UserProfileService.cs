@@ -21,6 +21,7 @@ public sealed record ProfileEntitlement(
     Guid UserId,
     string Username,
     string? Bio,
+    string? AvatarUrl,
     bool IsPrivate,
     DateTime CreatedAt,
     bool Entitled,
@@ -81,9 +82,12 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         // exact case the plan names: a private profile viewed by someone who is not the owner, not
         // an admin, and not an accepted friend. Note that an accepted friend sees everything even
         // though the profile is private — privacy applies to strangers, not to friends.
+        var sharedPremieres = await SharedPremieresAsync(viewer.UserId, resolved.UserId, ct);
+
         if (!resolved.Entitled)
             return new LimitedProfileDto(
-                resolved.Username, resolved.Bio, resolved.FriendshipStatus, resolved.FriendRequestOutgoing);
+                resolved.Username, resolved.AvatarUrl,
+                resolved.FriendshipStatus, resolved.FriendRequestOutgoing, sharedPremieres);
 
         var moviesCollected = await db.LibraryEntries.CountAsync(le => le.UserId == resolved.UserId, ct);
         var premieresAttended = await db.Contributions.CountAsync(c => c.UserId == resolved.UserId, ct);
@@ -95,13 +99,31 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
             resolved.UserId,
             resolved.Username,
             resolved.Bio,
+            resolved.AvatarUrl,
             resolved.IsPrivate,
             resolved.CreatedAt,
             moviesCollected,
             premieresAttended,
             friendCount,
             resolved.FriendshipStatus,
-            resolved.FriendRequestOutgoing);
+            resolved.FriendRequestOutgoing,
+            sharedPremieres);
+    }
+
+    /// <summary>
+    /// Premieres where both the viewer and <paramref name="profileId"/> have a Contribution row.
+    /// Null for no viewer or a self-view, same as <see cref="RelationshipAsync"/>. Intersects two
+    /// index-backed PremiereId sets (Contribution.UserId, added alongside this feature) rather
+    /// than joining and grouping, so it stays a single index range scan per side.
+    /// </summary>
+    private async Task<int?> SharedPremieresAsync(Guid? viewerId, Guid profileId, CancellationToken ct)
+    {
+        if (viewerId is not Guid id || id == profileId)
+            return null;
+
+        var viewerPremieres = db.Contributions.Where(c => c.UserId == id).Select(c => c.PremiereId);
+        var profilePremieres = db.Contributions.Where(c => c.UserId == profileId).Select(c => c.PremiereId);
+        return await viewerPremieres.Intersect(profilePremieres).CountAsync(ct);
     }
 
     public async Task<ProfileEntitlement?> ResolveEntitlementAsync(
@@ -112,7 +134,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         var user = await db.Users
             .AsNoTracking()
             .Where(u => u.Username == name)
-            .Select(u => new { u.Id, u.Username, u.Bio, u.IsPrivate, u.CreatedAt })
+            .Select(u => new { u.Id, u.Username, u.Bio, u.AvatarUrl, u.IsPrivate, u.CreatedAt })
             .FirstOrDefaultAsync(ct);
 
         if (user is null)
@@ -132,7 +154,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
         var entitled = isSelf || viewer.IsAdmin || isFriend || !user.IsPrivate;
 
         return new ProfileEntitlement(
-            user.Id, user.Username, user.Bio, user.IsPrivate, user.CreatedAt, entitled, status, outgoing);
+            user.Id, user.Username, user.Bio, user.AvatarUrl, user.IsPrivate, user.CreatedAt, entitled, status, outgoing);
     }
 
     /// <summary>

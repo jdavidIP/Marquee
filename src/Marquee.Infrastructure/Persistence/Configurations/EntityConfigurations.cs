@@ -14,6 +14,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(u => u.Email).HasMaxLength(256).IsRequired();
         b.Property(u => u.PasswordHash).IsRequired();
         b.Property(u => u.Bio).HasMaxLength(500);
+        b.Property(u => u.AvatarUrl).HasMaxLength(2048);
         b.HasIndex(u => u.Username).IsUnique();
         b.HasIndex(u => u.Email).IsUnique();
     }

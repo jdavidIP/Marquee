@@ -5,13 +5,20 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { FriendsService } from '../../core/friends.service';
 import { UsersService } from '../../core/users.service';
+import { PremiereHistoryService } from '../../core/premiere-history.service';
 import { apiError } from '../../core/http-error';
-import { FullProfileDto, ProfileDto, isFullProfile } from '../../core/models';
+import { FullProfileDto, PremiereHistoryEntryDto, ProfileDto, isFullProfile } from '../../core/models';
+import { AccessCategory, accessCategoryFor, nextAccessCategory } from '../../core/access-category';
+import { IdBadgeComponent } from '../../shared/id-badge.component';
+import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
+
+/** The badge's recent-activity strip shows the last four, per the design handoff (issue #59). */
+const RECENT_ACTIVITY_COUNT = 4;
 
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, IdBadgeComponent, EmblemTicketComponent],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.css',
 })
@@ -19,6 +26,7 @@ export class ProfileComponent {
   private readonly users = inject(UsersService);
   private readonly friends = inject(FriendsService);
   private readonly auth = inject(AuthService);
+  private readonly premiereHistory = inject(PremiereHistoryService);
 
   /** Bound from the route, so /u/:username is a real address someone can link to or reload. */
   readonly username = input.required<string>();
@@ -32,6 +40,9 @@ export class ProfileComponent {
   protected bioDraft = '';
   protected readonly editing = signal(false);
   protected readonly saved = signal(false);
+
+  /** The last four Premieres this account contributed to. Empty for a limited payload. */
+  protected readonly recentActivity = signal<PremiereHistoryEntryDto[]>([]);
 
   /**
    * Whichever shape the server sent, narrowed for the template. A limited payload has no id, no
@@ -52,6 +63,32 @@ export class ProfileComponent {
   protected readonly isSelf = computed(() => {
     const f = this.full();
     return f !== null && f.id === this.auth.user()?.id;
+  });
+
+  /** The profile badge's access category (issue #59) — null on a limited/unissued payload. */
+  protected readonly category = computed<AccessCategory | null>(() => {
+    const f = this.full();
+    return f ? accessCategoryFor(f.premieresAttended) : null;
+  });
+
+  /** Self only in the template; null at Jury, where there is nothing further to work toward. */
+  protected readonly nextCategory = computed<AccessCategory | null>(() => {
+    const cat = this.category();
+    return cat ? nextAccessCategory(cat) : null;
+  });
+
+  protected readonly nextCategoryRemaining = computed(() => {
+    const f = this.full();
+    const next = this.nextCategory();
+    return f && next ? Math.max(0, next.min - f.premieresAttended) : 0;
+  });
+
+  protected readonly nextCategoryProgressPct = computed(() => {
+    const f = this.full();
+    const cat = this.category();
+    const next = this.nextCategory();
+    if (!f || !cat || !next) return 0;
+    return Math.min(100, ((f.premieresAttended - cat.min) / (next.min - cat.min)) * 100);
   });
 
   constructor() {
@@ -135,6 +172,11 @@ export class ProfileComponent {
     () => this.profile()?.friendshipStatus === 'Pending' && this.profile()?.friendRequestOutgoing === false,
   );
 
+  /** "40 – 99 Premieres" or, at Jury, "100+ Premieres" — there is no upper bound to print. */
+  protected categoryRange(cat: AccessCategory): string {
+    return cat.max === null ? `${cat.min}+ Premieres` : `${cat.min} – ${cat.max} Premieres`;
+  }
+
   private patch(request: { bio?: string | null; isPrivate?: boolean | null }, done?: () => void): void {
     this.busy.set(true);
     this.users.updateMe(request).subscribe({
@@ -159,12 +201,14 @@ export class ProfileComponent {
 
   private load(username: string): void {
     this.loading.set(true);
+    this.recentActivity.set([]);
     this.users.profile(username).subscribe({
       next: (p) => {
         this.profile.set(p);
         this.loading.set(false);
         this.busy.set(false);
         this.error.set(null);
+        if (isFullProfile(p)) this.loadRecentActivity(username);
       },
       error: (err: unknown) => {
         this.profile.set(null);
@@ -173,5 +217,19 @@ export class ProfileComponent {
         this.error.set(apiError(err, `Could not load ${username}.`));
       },
     });
+  }
+
+  /**
+   * Reuses the premiere-history endpoint (issue #38) rather than a dedicated one: a Contribution
+   * only ever exists once a Premiere has opened, so there is no "never opened" state to filter out
+   * here — every entry the badge shows really happened.
+   */
+  private loadRecentActivity(username: string): void {
+    this.premiereHistory
+      .forUser(username, { sort: 'Opened', pageSize: RECENT_ACTIVITY_COUNT })
+      .subscribe({
+        next: (result) => this.recentActivity.set(result.items),
+        error: () => this.recentActivity.set([]),
+      });
   }
 }

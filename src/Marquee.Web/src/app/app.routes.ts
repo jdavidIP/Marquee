@@ -26,8 +26,10 @@ export const routes: Routes = [
       ),
   },
   {
+    // No authGuard: the backend already resolves either a JWT user or an anonymous session
+    // (§4.2), so a signed-out visitor is meant to reach this screen and clap, not be redirected
+    // away from the one place that mechanism was built for (issue #57).
     path: 'premiere',
-    canActivate: [authGuard],
     loadComponent: () => import('./features/premiere/premiere.component').then((m) => m.PremiereComponent),
   },
   {

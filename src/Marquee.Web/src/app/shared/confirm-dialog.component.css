@@ -69,15 +69,15 @@
 }
 
 .primary {
-  background: var(--gold);
-  border-color: var(--gold);
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
   color: #201a06;
   font-weight: 600;
 }
 
 .primary.danger {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-red);
+  border-color: var(--accent-red);
   color: #fff;
 }
 

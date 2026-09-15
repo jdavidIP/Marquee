@@ -81,9 +81,9 @@ tbody tr.is-muted td {
   white-space: nowrap;
 }
 
-.pill--ok { color: var(--ok); }
-.pill--warn { color: var(--gold); }
-.pill--bad { color: var(--accent); }
+.pill--ok { color: var(--accent-teal); }
+.pill--warn { color: var(--accent-amber); }
+.pill--bad { color: var(--accent-red); }
 .pill--idle { color: var(--muted); }
 
 .row-actions {
@@ -103,7 +103,7 @@ button.action {
 
 button.action:hover:not(:disabled) { border-color: var(--muted); }
 button.action:disabled { opacity: 0.45; cursor: not-allowed; }
-button.action--danger:not(:disabled) { color: var(--accent); }
+button.action--danger:not(:disabled) { color: var(--accent-red); }
 
 .pager {
   display: flex;
@@ -121,7 +121,7 @@ button.action--danger:not(:disabled) { color: var(--accent); }
 .pager__spacer { margin-left: auto; }
 
 .empty { color: var(--muted); padding: 20px 12px; }
-.error { color: var(--accent); margin-bottom: 12px; }
+.error { color: var(--accent-red); margin-bottom: 12px; }
 
 /* A refetch dims the list instead of blanking it — the numbers someone opened the screen to read
    stay on screen while the new ones arrive. */

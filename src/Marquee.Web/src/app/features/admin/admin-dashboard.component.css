@@ -15,7 +15,7 @@ h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04e
 
 .dashboard__stamp { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .dashboard__empty { color: var(--muted); }
-.dashboard__error { color: var(--accent); margin-bottom: 16px; }
+.dashboard__error { color: var(--accent-red); margin-bottom: 16px; }
 
 .tiles {
   display: grid;
@@ -44,8 +44,8 @@ h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04e
 .tile__note { margin: 6px 0 0; color: var(--muted); font-size: 0.8rem; }
 
 /* Dead-lettered messages are the one number here that always means something is wrong. */
-.tile--alarm { border-color: var(--accent); }
-.tile--alarm .tile__value { color: var(--accent); }
+.tile--alarm { border-color: var(--accent-red); }
+.tile--alarm .tile__value { color: var(--accent-red); }
 
 .premiere {
   background: var(--panel);
@@ -66,6 +66,6 @@ h2 { font-size: 0.8rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.04e
 
 .bar__fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-red);
   transition: width 0.4s ease;
 }

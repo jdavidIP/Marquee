@@ -1,0 +1,57 @@
+<div class="badge-col">
+  <div class="lanyard" [class.lanyard--unissued]="!issued()"></div>
+
+  <div class="badge" [class.badge--unissued]="!issued()">
+    <div class="badge__punch-row">
+      <span class="badge__punch"></span>
+    </div>
+
+    <div class="badge__header">
+      <span class="badge__wordmark">Marquee</span>
+      <span class="badge__pass">
+        Premiere pass{{ issued() ? ' · ' + passYear : '' }}
+      </span>
+    </div>
+
+    <div class="badge__portrait-frame">
+      <div class="badge__portrait">
+        @if (profile().avatarUrl; as url) {
+          <img [src]="url" alt="" />
+        } @else {
+          <span class="badge__monogram">{{ initials() }}</span>
+        }
+      </div>
+    </div>
+
+    <div class="badge__name-block">
+      <span class="badge__name">{{ profile().username }}</span>
+      @if (issued()) {
+        <span class="badge__handle">&#64;{{ profile().username }}</span>
+      }
+    </div>
+
+    @if (issued() && category(); as cat) {
+      <div class="badge__category" [style.background]="cat.ink">
+        <div class="badge__category-side">
+          <span class="badge__category-label" [style.color]="cat.tint">Access category</span>
+          <span class="badge__category-name">{{ cat.name }}</span>
+        </div>
+        <div class="badge__category-side badge__category-side--right">
+          <span class="badge__category-count">{{ full()!.premieresAttended }}</span>
+          <span class="badge__category-suffix" [style.color]="cat.tint">prem.</span>
+        </div>
+      </div>
+
+      <div class="badge__footer">
+        <div class="badge__footer-row">
+          <span>Member since {{ full()!.createdAt | date: 'd MMM y' }}</span>
+          <span>No. {{ serial() }}</span>
+        </div>
+        <div class="badge__barcode" [style.background-image]="barcode()"></div>
+      </div>
+    } @else {
+      <div class="badge__blank badge__blank--category"></div>
+      <div class="badge__blank badge__blank--footer"></div>
+    }
+  </div>
+</div>

@@ -45,6 +45,20 @@ public static class RedisKeys
             ? Contributors(scopeId, premiereId)
             : AnonymousContributors(scopeId, premiereId);
 
+    /// <summary>
+    /// A ZSET of registered contributors scored by the Unix-millisecond time of their most recent
+    /// clap (issue #55). Kept separate from <see cref="Contributors"/> because that SET is unordered
+    /// and answers a different question ("who", for the friend intersection) than this one ("who
+    /// most recently", for the lobby strip's "newest face rightmost" ordering). A ZSET rather than a
+    /// LIST because re-clapping must move a contributor to the front rather than adding a duplicate
+    /// entry that could crowd out someone else's single appearance — ZADD on an existing member
+    /// updates its score in place. Anonymous contributors never enter this: they never occupy a
+    /// lobby face slot (CLAUDE.md's crowd-strip design), so there is nothing for them to be ordered
+    /// among.
+    /// </summary>
+    public static string RecentContributors(string scopeId, Guid premiereId) =>
+        $"{Prefix(scopeId, premiereId)}:recent-contributors";
+
     public static string OpenLock(string scopeId, Guid premiereId) => $"{Prefix(scopeId, premiereId)}:lock";
 
     /// <summary>Set once the Premiere is closing/opening; the clap script rejects claps while it exists.</summary>

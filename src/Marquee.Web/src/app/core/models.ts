@@ -5,6 +5,8 @@ export interface UserDto {
   bio: string | null;
   isPrivate: boolean;
   role: string;
+  /** Null for anyone who has not set a picture — a monogram of the username stands in. */
+  avatarUrl: string | null;
 }
 
 export interface AuthResponse {
@@ -62,6 +64,34 @@ export interface PremiereDto {
   myClaps: number;
   myCap: number;
   movie: MovieDto | null;
+  /**
+   * Assigned once the Premiere opens (CLAUDE.md §4.3); null until then, always null for an
+   * anonymous participant, and can briefly stay null right after opening — the Worker assigns it
+   * asynchronously, a moment after the reveal itself lands.
+   */
+  myEmblemTier: number | null;
+}
+
+/**
+ * One of today's (usually four) Premieres, for the idle-state marquee page (issue #58). Movie and
+ * totalClaps are null until the slot has actually opened — a Scheduled one's film is not public.
+ * myClaps/myEmblemTier read the caller's own Contribution; zero/null means "did not participate",
+ * indistinguishable from "not revealed yet" until status says which.
+ */
+export interface TodayScheduleSlotDto {
+  id: string;
+  scheduledFor: string;
+  status: PremiereStatus;
+  movie: MovieDto | null;
+  totalClaps: number | null;
+  myClaps: number;
+  myEmblemTier: number | null;
+}
+
+/** Ordered earliest-first. A Missed slot still appears, rather than shrinking the list (§4.5). */
+export interface TodayScheduleDto {
+  scopeId: string;
+  slots: TodayScheduleSlotDto[];
 }
 
 export interface ClapResponse {
@@ -120,6 +150,8 @@ export interface FullProfileDto {
   id: string;
   username: string;
   bio: string | null;
+  /** Null for anyone who has not set a picture — a monogram of the username stands in. */
+  avatarUrl: string | null;
   isPrivate: boolean;
   createdAt: string;
   moviesCollected: number;
@@ -129,6 +161,8 @@ export interface FullProfileDto {
   friendshipStatus: string | null;
   /** True when the viewer sent the pending request, false when they received it. */
   friendRequestOutgoing: boolean | null;
+  /** Premieres both the viewer and this account contributed to. Null for anonymous or self. */
+  sharedPremieresAttended: number | null;
 }
 
 /**
@@ -145,9 +179,15 @@ export interface FullProfileDto {
  */
 export interface LimitedProfileDto {
   username: string;
-  bio: string | null;
+  /**
+   * Kept even on a restricted profile: a picture is part of the public identity, like the name.
+   * Bio itself is withheld — the badge's "unissued" state prints name only.
+   */
+  avatarUrl: string | null;
   friendshipStatus: string | null;
   friendRequestOutgoing: boolean | null;
+  /** Same viewer-relative exception as friendshipStatus — what a locked library's teaser reads. */
+  sharedPremieresAttended: number | null;
 }
 
 export type ProfileDto = FullProfileDto | LimitedProfileDto;
@@ -200,12 +240,40 @@ export interface FriendContributorsResponse {
   friends: FriendContributorDto[];
 }
 
+/** One face in the Premiere crowd/lobby strip. */
+export interface LobbyFaceDto {
+  userId: string;
+  username: string;
+  avatarUrl: string | null;
+  isFriend: boolean;
+}
+
+/**
+ * The crowd/lobby strip's data for the caller. `faces` is empty for an anonymous viewer — draw
+ * `min(9, registeredCount)` faceless discs instead of leaving the strip blank.
+ */
+export interface LobbyDto {
+  premiereId: string;
+  faces: LobbyFaceDto[];
+  registeredCount: number;
+  anonymousCount: number;
+}
+
+/** One Contribution's emblem toward a movie in the library — which Premiere scope it was earned in. */
+export interface EmblemDto {
+  tier: number | null;
+  scopeId: string;
+}
+
 export interface LibraryEntryDto {
   movieId: string;
   movie: MovieDto;
   premiereId: string;
   acquiredAt: string;
+  /** The best tier across `emblems` — the only one currently shown. */
   emblemTier: number | null;
+  /** Every emblem earned for this movie. Not consumed by the UI yet; kept for planned scope-aware views. */
+  emblems: EmblemDto[];
 }
 
 /** What a library listing can be ordered by. Mirrors the API's LibrarySort enum by name. */
@@ -245,6 +313,16 @@ export interface PagedResult<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+/**
+ * A library page plus the header stats the screen shows next to the title. Returned for any
+ * library the caller is entitled to see — self, a friend's, or a public account's — since the
+ * stats describe the account being viewed, not the viewer.
+ */
+export interface LibraryPageDto extends PagedResult<LibraryEntryDto> {
+  platinumCount: number;
+  premieresAttended: number;
 }
 
 /** What a premiere history listing can be ordered by. Mirrors the API's PremiereHistorySort enum. */

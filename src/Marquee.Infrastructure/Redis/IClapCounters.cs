@@ -75,6 +75,23 @@ public interface IClapCounters
         string scopeId, Guid premiereId, Guid viewerId, CancellationToken ct);
 
     /// <summary>
+    /// Up to <paramref name="count"/> registered contributor ids, most-recent-clap-first (issue #55's
+    /// lobby strip). Backed by the ZSET <see cref="RedisKeys.RecentContributors"/>, which
+    /// <see cref="TryClapAsync"/> maintains as a side effect of every registered clap.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetRecentContributorsAsync(
+        string scopeId, Guid premiereId, int count, CancellationToken ct);
+
+    /// <summary>Distinct registered contributors so far (SCARD) — the lobby's "N clapping" figure.</summary>
+    Task<long> GetRegisteredContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct);
+
+    /// <summary>
+    /// Distinct anonymous contributors so far (SCARD) — folded into the lobby's caption line rather
+    /// than given a face, since anonymous clappers never occupy a lobby slot.
+    /// </summary>
+    Task<long> GetAnonymousContributorCountAsync(string scopeId, Guid premiereId, CancellationToken ct);
+
+    /// <summary>
     /// Try to take the distributed open lock (SET NX PX). Returns a release token on success, or
     /// null if another caller holds it. Backs the exactly-once open together with the DB guard.
     /// </summary>

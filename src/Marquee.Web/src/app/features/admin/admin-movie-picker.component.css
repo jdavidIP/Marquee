@@ -43,7 +43,7 @@
 .picker__error {
   margin: 0 0 12px;
   font-size: 0.85rem;
-  color: var(--accent);
+  color: var(--accent-red);
 }
 
 .picker__actions {
@@ -115,7 +115,7 @@
 }
 
 .hit__flag--blocked { color: var(--muted); }
-.hit__flag--resting { color: var(--gold); }
+.hit__flag--resting { color: var(--accent-amber); }
 
 /* --- filters --- */
 

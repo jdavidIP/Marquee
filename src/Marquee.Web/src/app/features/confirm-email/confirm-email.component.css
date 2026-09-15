@@ -1,30 +1,140 @@
-/* Mirrors login.component.css's auth panel — duplicated rather than shared, since Angular scopes
-   component styles and this is the only other page that needs the same look. */
-.auth {
-  max-width: 380px;
-  margin: 40px auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+/* The same self-contained "printed pass" palette login.component.css uses, minus the two-column
+   split and the form — this page only ever shows text, duplicated rather than shared since Angular
+   scopes component styles (see login.component.css's own comment on the same choice). */
+
+.auth-page {
+  margin: -40px -40px -48px; /* cancels .content's own padding (app.css) — see login.component.css */
+  min-height: calc(100vh - 61px); /* topbar: 60px height + 1px border (app.css .topbar) */
+  box-sizing: border-box;
+  padding: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pass {
+  width: 100%;
+  max-width: 452px;
+  background: var(--sign-face);
+  border: 1px solid var(--sign-face-border);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6);
+}
+
+.pass__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 22px;
+  border-bottom: 1px solid #cfc5ad;
+}
+.pass__kicker {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6f6a5c;
+}
+.pass__serial {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8d8778;
+}
+
+.pass__body {
+  padding: 26px 30px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pass__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pass__title {
+  font-family: var(--font-numeral);
+  font-size: 40px;
+  line-height: 0.92;
+  letter-spacing: 0.02em;
+  color: #1b1a17;
+}
+.pass__sub {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: #6f6a5c;
+}
+.pass__sub--ok {
+  color: #4a463c;
+}
+
+.error-box {
+  padding: 12px 14px;
+  border-left: 3px solid #a3202f;
+  background: #efe0d4;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a1b28;
+}
+
+.pass__submit {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   text-align: center;
-}
-
-h1 { margin: 0 0 6px; font-size: 1.4rem; }
-.sub { margin: 0 0 22px; color: var(--muted); font-size: 0.9rem; }
-.sub.ok { color: var(--ok); }
-
-.err { color: var(--accent); font-size: 0.85rem; margin: 0 0 22px; }
-
-.primary {
-  display: inline-block;
-  background: var(--gold);
-  color: #241a00;
-  border: none;
-  border-radius: 8px;
-  padding: 11px 20px;
-  font-weight: 700;
   text-decoration: none;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sign-face);
+  background: #c2213a;
+  border: 1px solid #a3202f;
+  padding: 15px 20px;
+  cursor: pointer;
 }
 
-.switch { display: block; margin-top: 6px; }
+.pass__switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 20px;
+  border-top: 1px solid #cfc5ad;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.pass__switch a {
+  background: none;
+  border: none;
+  border-bottom: 1px solid #e0a8a8;
+  padding: 0;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: #c2213a;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Decorative ticket perforation — a fixed pattern, not per-user like the profile badge's barcode. */
+.pass__perforation {
+  height: 22px;
+  margin: 0 22px 20px;
+  background: repeating-linear-gradient(
+    90deg,
+    #1b1a17 0 1px,
+    transparent 1px 3px,
+    #1b1a17 3px 6px,
+    transparent 6px 7px,
+    #1b1a17 7px 8px,
+    transparent 8px 11px
+  );
+}
