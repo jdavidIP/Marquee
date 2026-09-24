@@ -1,0 +1,105 @@
+# Production stack for the single app host (DEPLOYMENT.md, phase 1). Not for local development — that is
+# docker-compose.yml. Images are pulled by tag, never built here.
+#
+#   docker compose -f docker-compose.prod.yml up -d --wait
+#
+# Everything secret comes from a `.env` file next to this one, written at deploy time from SSM
+# Parameter Store. Compose reads it twice: to interpolate ${...} below, and as the api/worker env_file.
+# See .env.prod.example for the keys.
+#
+# No logging config here on purpose: on EC2 the Docker daemon's default driver is set to awslogs,
+# so this file runs unchanged locally (json-file) and on the host (CloudWatch).
+name: marquee-prod
+
+x-app: &app
+  restart: unless-stopped
+  env_file: .env
+  environment: &app-env
+    ASPNETCORE_ENVIRONMENT: ${APP_ENVIRONMENT:-Production}
+    DOTNET_ENVIRONMENT: ${APP_ENVIRONMENT:-Production}
+    # §4.4's day window and peak hours are evaluated in the container's local time.
+    TZ: America/Toronto
+    ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=marquee;Username=marquee;Password=${POSTGRES_PASSWORD:?}
+    Redis__ConnectionString: redis:6379
+    Messaging__Host: rabbitmq
+    Messaging__Username: marquee
+    Messaging__Password: ${RABBITMQ_PASSWORD:?}
+
+services:
+  # Infrastructure services stay on UTC and publish no host ports: only the api/worker reach them, over
+  # the compose network. Postgres in particular fixes its `timezone` setting at initdb from TZ.
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marquee
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: marquee
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marquee -d marquee"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # appendonly so the hot counters survive a restart within an active Premiere window.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: marquee
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
+    # Management UI on loopback only — reached through an SSM Session Manager port forward, never public.
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  api:
+    <<: *app
+    image: ${REGISTRY:?}/marquee-api:${IMAGE_TAG:?}
+    ports:
+      - "${API_PORT:-80}:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    # The aspnet image has no curl or wget; bash's /dev/tcp makes the HTTP request instead.
+    # start_period covers the EF migrations the API runs on startup.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  worker:
+    <<: *app
+    image: ${REGISTRY:?}/marquee-worker:${IMAGE_TAG:?}
+    # The API owns the schema and migrates on startup; the worker waits until that has happened.
+    depends_on:
+      api: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitdata:
