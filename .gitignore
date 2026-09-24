@@ -506,4 +506,3 @@ npm-debug.log*
 
 # Scratch doc fed to a design agent for the issue #32 redesign — not shipped app documentation
 FRONTEND_DESIGN_CONTEXT.md
-DEPLOYMENT.md
