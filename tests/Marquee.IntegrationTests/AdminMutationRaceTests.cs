@@ -157,8 +157,9 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
     public async Task A_reschedule_racing_activation_never_both_applies()
     {
         // No Redis consequence here — ScheduledFor is not part of PremiereMeta — but the same TOCTOU
-        // shape existed and deserves the same guard: a reschedule must not silently succeed against a
-        // Premiere that has already started.
+        // shape existed and deserves the same guard in both directions: a reschedule must not
+        // silently succeed against a Premiere that has already started, and activation must not
+        // start one that a reschedule has just moved into the future.
         //
         // RescheduleAsync also checks the minimum gap against same-day neighbours (§4.4), which is
         // orthogonal to the race under test, so today is parked clear first.
@@ -173,24 +174,24 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
 
         var (stored, _) = await CurrentStateAsync(id);
 
-        // Activation always wins: a reschedule does not touch Status, so nothing it does can stop
-        // the flip. True in every branch below, which is why it is asserted before them.
-        stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
-
+        // Exactly one of the two applies. A reschedule moves the Premiere out of the due window, so
+        // if it lands before the flip — whether before activation loads its due batch or in the gap
+        // between that load and the guarded flip — activation must leave it alone (#85).
         switch (reschedule.Outcome)
         {
-            // Beat the flip. BeCloseTo rather than Be: Postgres stores timestamps at microsecond
-            // precision while a .NET DateTime carries 100ns ticks, so the value read back has been
-            // truncated and exact equality fails on the last digit — matching how
-            // AdminPremiereEditingTests compares this same column. A second is far tighter than
-            // anything the race could shift, so it still pins down which write landed.
+            // Beat the flip: still Scheduled, at the new time. BeCloseTo rather than Be: Postgres
+            // stores timestamps at microsecond precision while a .NET DateTime carries 100ns ticks,
+            // so the value read back has been truncated and exact equality fails on the last digit —
+            // matching how AdminPremiereEditingTests compares this same column.
             case AdminOutcome.Ok:
+                stored.Status.Should().Be(Domain.Enums.PremiereStatus.Scheduled,
+                    "a reschedule that committed first must not be activated anyway");
                 stored.ScheduledFor.Should().BeCloseTo(proposed, TimeSpan.FromSeconds(1));
                 break;
 
-            // Lost the race, and the guard caught it. That this outcome is reachable at all is the
-            // property the fix exists to provide.
+            // Lost the race, and the guard caught it.
             case AdminOutcome.AlreadyTerminal:
+                stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
                 break;
 
             // §4.4 refused the proposed time for a reason unrelated to the race, and in the last
@@ -203,6 +204,7 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
             // Accepted rather than asserted away, but not a free pass: a refusal must actually have
             // refused, so the stored time must not have moved to what was proposed.
             case AdminOutcome.Invalid:
+                stored.Status.Should().Be(Domain.Enums.PremiereStatus.Active);
                 stored.ScheduledFor.Should().NotBeCloseTo(proposed, TimeSpan.FromSeconds(1),
                     "a refused reschedule must not have written the time it refused");
                 break;
