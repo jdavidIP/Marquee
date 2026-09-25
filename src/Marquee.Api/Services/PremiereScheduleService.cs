@@ -198,8 +198,10 @@ public sealed class PremiereScheduleService(
 
             // Conditional update on the current status, the same guard the open path uses: if another
             // instance (or a previous run of this job) already activated it, this affects 0 rows.
+            // Due-ness is re-checked too: an admin reschedule that committed after the batch load
+            // above may have moved it into the future, and must win rather than be activated anyway.
             var rows = await db.Premieres
-                .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+                .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled && p.ScheduledFor <= now)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(p => p.Status, PremiereStatus.Active)
                     .SetProperty(p => p.OpensAt, now)
