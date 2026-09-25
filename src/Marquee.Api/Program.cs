@@ -62,6 +62,10 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
     throw new InvalidOperationException("Jwt:Key must be configured and at least 32 characters.");
+if (builder.Environment.IsProduction())
+    builder.Configuration.RequireKeys(
+        "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
+        "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl");
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);

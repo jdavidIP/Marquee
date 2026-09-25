@@ -24,6 +24,11 @@ x-app: &app
     Messaging__Host: rabbitmq
     Messaging__Username: marquee
     Messaging__Password: ${RABBITMQ_PASSWORD:?}
+    # Where emailed confirmation/reset links point: the public URL of the site (CloudFront).
+    EmailConfirmation__BaseUrl: ${PUBLIC_BASE_URL:?}
+    PasswordReset__BaseUrl: ${PUBLIC_BASE_URL:?}
+    # No trace collector runs in this stack; exporting would retry against nothing.
+    Tracing__Enabled: "false"
 
 services:
   # Infrastructure services stay on UTC and publish no host ports: only the api/worker reach them, over
