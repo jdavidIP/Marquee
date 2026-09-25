@@ -29,6 +29,9 @@ x-app: &app
     PasswordReset__BaseUrl: ${PUBLIC_BASE_URL:?}
     # No trace collector runs in this stack; exporting would retry against nothing.
     Tracing__Enabled: "false"
+    # The API sits behind CloudFront, and the EC2 security group admits only CloudFront, so the
+    # X-Forwarded-For it appends is trustworthy. Never enable this where the API is directly reachable.
+    ForwardedHeaders__Enabled: "true"
 
 services:
   # Infrastructure services stay on UTC and publish no host ports: only the api/worker reach them, over

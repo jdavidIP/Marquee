@@ -100,10 +100,10 @@ changes how accounts work, and doing that before real users exist avoids a user 
    `ConnectionStrings__Postgres`, …), and in Production the API and Worker refuse to start if any
    key whose default is a local-dev value is missing (`RequireKeys`) — notably `Tmdb:ApiKey` (else the
    offline stub) and `Admin:Password` (else the repository's dev password on the seeded admin).
-4. **Forwarded headers.** Enable `ForwardedHeaders` for `X-Forwarded-For`/`X-Forwarded-Proto` with
-   `ForwardLimit = 1`. Trusting the immediate peer is safe *only* because the security group admits
-   nothing but CloudFront — record that dependency in a comment where it is configured. This fixes
-   the shared rate-limit bucket.
+4. **Forwarded headers.** `ForwardedHeaders` for `X-Forwarded-For` only (nothing reads the scheme),
+   `ForwardLimit = 1`, switched on by `ForwardedHeaders__Enabled` in the prod compose file. Trusting the
+   immediate peer is safe *only* because the security group admits nothing but CloudFront — that
+   dependency is recorded where it is configured. This fixes the shared rate-limit bucket.
 5. **Frontend production environment.** `environment.prod.ts` with relative URLs (`/api`,
    `/hubs/premieres`) wired through `fileReplacements`. The CORS policy stays as-is for local dev;
    production is same-origin and never exercises it.

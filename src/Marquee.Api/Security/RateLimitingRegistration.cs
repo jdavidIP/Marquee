@@ -88,8 +88,7 @@ public static class RateLimitingRegistration
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst
         });
 
-    // No X-Forwarded-For handling: this app is not behind a trusted proxy in v1, and honouring a
-    // client-supplied forwarding header without one would let any caller pick their own bucket.
+    // Behind CloudFront this is the real client IP only because ForwardedHeadersRegistration rewrote it.
     private static string IpKey(HttpContext context) =>
         $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
 }

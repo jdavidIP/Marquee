@@ -73,6 +73,7 @@ builder.Services.AddMarqueeApiServices(builder.Configuration);
 builder.Services.AddMarqueeScheduling(builder.Configuration);
 builder.Services.AddMarqueeApiMessaging(builder.Configuration);
 builder.Services.AddMarqueeRateLimiting(builder.Configuration);
+builder.Services.AddMarqueeForwardedHeaders();
 builder.Services.AddMarqueeHealthChecks(builder.Configuration);
 
 // --- Auth ---
@@ -141,7 +142,10 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// First in the pipeline on purpose: everything after this point, including the request-logging
+// Before anything that reads the client IP (the rate limiter), so it sees the real one behind CloudFront.
+app.UseMarqueeForwardedHeaders(app.Configuration);
+
+// First after that on purpose: everything after this point, including the request-logging
 // middleware immediately below and any exception handler, should be able to name the journey it is
 // talking about.
 app.UseCorrelationId();
