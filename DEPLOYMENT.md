@@ -94,9 +94,12 @@ changes how accounts work, and doing that before real users exist avoids a user 
    - Credentials from an env file written at deploy time from SSM — no `marquee`/`marquee` defaults.
    - Jaeger left out by default (RAM). If wanted, run it bound to `127.0.0.1` and reach it through
      Session Manager port forwarding — same for the RabbitMQ management UI.
-3. **`appsettings.Production.json`** with the non-secret tunables that today exist only in the
-   Development file (schedule, scheduler, clap guards, rate limits, TTLs, messaging retry). Secrets and
-   endpoints come from environment variables (`Jwt__Key`, `ConnectionStrings__Postgres`, …).
+3. **Production configuration without an `appsettings.Production.json`.** Every tunable's in-code
+   default already is its production value (the Development file mostly restates them), so there is
+   nothing to copy. Secrets and endpoints come from environment variables (`Jwt__Key`,
+   `ConnectionStrings__Postgres`, …), and in Production the API and Worker refuse to start if any
+   key whose default is a local-dev value is missing (`RequireKeys`) — notably `Tmdb:ApiKey` (else the
+   offline stub) and `Admin:Password` (else the repository's dev password on the seeded admin).
 4. **Forwarded headers.** Enable `ForwardedHeaders` for `X-Forwarded-For`/`X-Forwarded-Proto` with
    `ForwardLimit = 1`. Trusting the immediate peer is safe *only* because the security group admits
    nothing but CloudFront — record that dependency in a comment where it is configured. This fixes

@@ -12,6 +12,9 @@ using Serilog;
 // It does not run EF migrations either: the API owns the schema, so a cold start of the worker
 // cannot race it into a half-migrated database.
 var builder = Host.CreateApplicationBuilder(args);
+if (builder.Environment.IsProduction())
+    builder.Configuration.RequireKeys(
+        "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password");
 
 // --- Logging (Iteration 6) ---
 // Deliberately the same enricher set and the same console template as the API. The worker's log is
