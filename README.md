@@ -140,14 +140,13 @@ service:
 Tmdb__ApiKey=your-tmdb-v3-key
 ```
 
-**Without a key**, the app falls back to `StubTmdbClient` — a fixed pool of 12 real films — so the
-whole flow (including premiere creation) runs offline. The stub logs a warning and is not for
+**Without a key**, the app falls back to `StubTmdbClient`, so the whole flow (including premiere
+creation) runs offline. It serves 12 curated real films first, then generated "Test Feature #NNNNN"
+entries from a pool of 100,000, so it never runs dry. The stub logs a warning and is not for
 production. See [`.env.example`](./.env.example).
 
-Because §4.6 forbids a movie ever repeating, the stub pool is also a hard ceiling of **12 Premieres
-ever** for a given database. That is plenty for a demo but runs out quickly under repeated load
-testing; set a real `Tmdb__ApiKey`, or clear `premieres`/`movies` in the dev database, before a long
-test session.
+A film can premiere more than once — §4.6 is a cooldown, not a ban. It is unavailable while attached
+to a Premiere that hasn't run yet, or for `MovieCooldownDays` (default 90) after it was last revealed.
 
 ### Building or testing while the API or Worker is running
 
