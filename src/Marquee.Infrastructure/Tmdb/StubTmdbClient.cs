@@ -6,16 +6,14 @@ namespace Marquee.Infrastructure.Tmdb;
 
 /// <summary>
 /// Offline fallback used ONLY when no TMDB API key is configured, so the app (and the iteration-1
-/// acceptance flow) runs without a secret. Honours the same "never repeat" contract as the real
-/// client. Swap in the real <see cref="TmdbClient"/> by setting Tmdb:ApiKey.
+/// acceptance flow) runs without a secret. Honours the same exclusion set as the real client (§4.6's
+/// cooldown). Swap in the real <see cref="TmdbClient"/> by setting Tmdb:ApiKey.
 ///
 /// <para>
 /// Serves the curated films below first, then falls back to a large synthetic pool. The curated list
 /// exists so a demo or a screenshot shows real posters and real titles; the synthetic overflow exists
-/// because §4.6 forbids a movie ever repeating, which made a 12-film pool a hard ceiling of 12
-/// Premieres per database. Iteration 6's load test needs far more than that, and re-running any
-/// acceptance script used to end in "TMDB returned no fresh movie" until the tables were manually
-/// truncated.
+/// because a 12-film pool runs out fast — every film on cooldown or attached to a pending Premiere is
+/// excluded — and Iteration 6's load test needs far more Premieres than that.
 /// </para>
 ///
 /// <para>

@@ -46,7 +46,7 @@ public sealed class TmdbClient(
                 .Where(r => !string.IsNullOrEmpty(r.PosterPath))          // must have a poster (§4.6)
                 .Where(r => r.VoteCount >= _opts.MinVoteCount)             // defensive: filters also sent to API
                 .Where(r => r.VoteAverage >= EffectiveMinVoteAverage(filter))
-                .Where(r => !excludeTmdbIds.Contains(r.Id))                // never repeat (§4.6)
+                .Where(r => !excludeTmdbIds.Contains(r.Id))                // pending or on cooldown (§4.6)
                 .ToList();
 
             if (candidates.Count == 0)
