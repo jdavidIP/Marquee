@@ -86,7 +86,11 @@ changes how accounts work, and doing that before real users exist avoids a user 
 2. **`docker-compose.prod.yml`**, separate from the local `docker-compose.yml`:
    - `api` and `worker` pulled from ECR by tag (the commit SHA), never built on the box.
    - Only the API is published (`80:8080`); Postgres, Redis and RabbitMQ publish **no** host ports.
-   - `TZ` set on every service; `restart: unless-stopped`; `awslogs` log driver to CloudWatch.
+   - `TZ` set on the API and Worker only; infrastructure stays on UTC (Postgres would otherwise fix
+     its `timezone` setting from `TZ` at initdb). `restart: unless-stopped`.
+   - No logging config in the compose file: the EC2 host sets the Docker daemon's default log
+     driver to `awslogs` (`/etc/docker/daemon.json`, in user data), so the same file runs locally
+     on `json-file` and ships to CloudWatch on the host.
    - Credentials from an env file written at deploy time from SSM — no `marquee`/`marquee` defaults.
    - Jaeger left out by default (RAM). If wanted, run it bound to `127.0.0.1` and reach it through
      Session Manager port forwarding — same for the RabbitMQ management UI.

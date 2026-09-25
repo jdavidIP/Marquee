@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+.git/
+.github/
+.claude/
+docs/
+tests/
+src/Marquee.Web/
+**/*.md
+.env
+*.env
+docker-compose*.yml
