@@ -206,9 +206,14 @@ CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
     SignalR's 15 s keep-alive keeps the connection under the idle timeouts — verify under load.
   - `index.html` served `no-cache`; hashed assets long-cached.
   - Standard logging **off** (it would record the SignalR `access_token` query parameter).
-- **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/` — JWT key,
-  Postgres and RabbitMQ passwords, TMDB key, admin seed password. Created by hand once (CDK should not
-  hold secret values), referenced by name.
+- **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
+  hand once (CDK should not hold secret values), named after the `.env` key each becomes:
+  - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
+  - `Jwt__Key` — random, **at least 32 characters** (the API checks this at startup and refuses to
+    start below it).
+  - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
+  - `Admin__Password` — at least 10 characters with a digit (the app's own password policy); this is
+    the seeded admin's sign-in password, so keep it somewhere you can find it again.
 - **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
   Two alarms, both emailing `alertEmail` through an SNS topic (confirm the subscription email once):
   - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
@@ -220,6 +225,47 @@ CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
 - **AWS Budgets**: monthly budget with email alerts at 50/80/100%. Set up **first**, before anything
   else is deployed.
 - Optional: `cdk-nag` (AwsSolutions pack) in synth, with each suppression justified in code.
+
+### 1b-ops. Manual deploy, until 1c exists
+
+`MarqueeStack`'s "Done when" checks need something running on the host before the pipeline in 1c is
+built. Until then, deploy by hand, from `infra/` with the CLI signed in:
+
+```
+aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
+```
+
+gives `HostInstanceId`, `HostPublicDns` and `ArtifactsBucket`. Then, from the repository root:
+
+```
+TAG=$(git rev-parse --short HEAD)
+REGISTRY=<account-id>.dkr.ecr.ca-central-1.amazonaws.com   # aws sts get-caller-identity for the id
+aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
+docker build --target api -t $REGISTRY/marquee-api:$TAG . && docker push $REGISTRY/marquee-api:$TAG
+docker build --target worker -t $REGISTRY/marquee-worker:$TAG . && docker push $REGISTRY/marquee-worker:$TAG
+aws s3 cp docker-compose.prod.yml s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml
+```
+
+Then on the host — no SSH, everything through SSM Run Command (`AWS-RunShellScript`) or, for a shell,
+`aws ssm start-session --target <HostInstanceId>` (needs the Session Manager plugin locally):
+
+```bash
+mkdir -p /opt/marquee && cd /opt/marquee
+aws s3 cp s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml .
+umask 077
+aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'Parameters[].[Name,Value]' \
+  --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
+echo "REGISTRY=$REGISTRY" >> .env
+echo "IMAGE_TAG=$TAG" >> .env
+echo "PUBLIC_BASE_URL=<the site's public URL; a placeholder until #76>" >> .env
+chmod 600 .env
+aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --wait
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/health/ready
+```
+
+The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
@@ -239,11 +285,26 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
 
 ### 1d. Verification
 
-- Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront.
-- Reboot the instance: counters, pending messages and the schedule survive.
-- Restore a snapshot of the data volume into a scratch volume once, to prove backups actually restore.
-- Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
-- Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
+- [x] **2026-09-28** — `docker compose -f docker-compose.prod.yml up -d --wait` on the host: all five
+  containers reach `healthy`/running, `/health/ready` returns 200, and the worker's MassTransit
+  consumers register against RabbitMQ with no errors.
+- [x] **2026-09-28** — Reboot survival: wrote a marker row into Postgres, `aws ec2 reboot-instances`,
+  confirmed via `uptime -s` that the host actually rebooted (not just SSM reconnecting), then confirmed
+  the data volume and swap remounted from `/etc/fstab`, Docker and all five containers restarted on
+  their own (`restart: unless-stopped` survives a daemon restart), `/health/ready` returned 200 again,
+  and the marker row was still there with its original timestamp.
+- [x] **2026-09-28** — Nothing reachable inbound except from CloudFront: direct TCP connection attempts
+  to the host's public DNS name on ports 80, 22, 5432, 6379 and 15672, run from outside AWS, all got no
+  response.
+- [ ] Restore a snapshot of the data volume into a scratch volume once, to prove backups actually
+  restore. Daily snapshot runs 08:00 UTC; first one due 2026-09-29.
+- [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Waits on #76
+  — there is no CloudFront distribution yet, so this was exercised against the host directly instead.
+- [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
+  Waits on #76.
+- [ ] Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
+  `ForwardedHeaders__Enabled` is only safe once the security group admits nothing but CloudFront (#76);
+  unverified until then.
 
 ---
 
