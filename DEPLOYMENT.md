@@ -10,7 +10,8 @@ branches and PRs, and a merge to `main` becomes a deploy.
 1. **Get the cloud infrastructure right for the app to run.** This is the objective.
 2. **Everything is infrastructure as code**, in the **AWS CDK (C#)** — the AWS-native choice, and the
    same language as the rest of the backend. Nothing is created by hand in the console except the
-   one-time account setup (CDK bootstrap, the budget's email subscription confirmation).
+   one-time account setup and CDK bootstrap. (The budget's email alerts need no confirmation — AWS
+   Budgets emails its recipients directly.)
 3. **The domain is second-class.** Phases 1 and 2 run on CloudFront's default
    `https://<id>.cloudfront.net` URL, which already has HTTPS. A domain arrives in phase 3.
 
@@ -138,12 +139,20 @@ stacks:
 - The deploy role is created with **no permissions**. Each stack that owns a resource grants the role
   access to that resource's ARN — never a broad `*`.
 
-Running it, signed in with `aws login`, from `infra/`:
+Running it, signed in with `aws login` and with `aws configure set region ca-central-1` done once, from
+`infra/` in Git Bash:
 
 ```
-cdk bootstrap aws://<account-id>/ca-central-1       # once per account and region
-cdk deploy MarqueeCiStack -c budgetEmail=<address>  # then confirm the AWS Budgets email
+eval "$(aws configure export-credentials --format env)"   # per shell; see below
+cdk bootstrap aws://<account-id>/ca-central-1              # once per account and region
+cdk deploy MarqueeCiStack -c budgetEmail=<address>
 ```
+
+The CDK CLI cannot yet read the `login_session` credentials `aws login` stores, so the first line hands
+it short-lived credentials through environment variables for that shell. In PowerShell the equivalent
+is `aws configure export-credentials --format powershell | Out-String | Invoke-Expression`. Claude
+Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk diff` first, then pass
+`--require-approval never`.
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
 committed; synth refuses to run without `budgetEmail`. The stack outputs `DeployRoleArn` for the
