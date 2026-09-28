@@ -1,0 +1,21 @@
+# Proves the GitHub OIDC trust from MarqueeCiStack: run on main it signs in as the deploy role; run on
+# any other branch AWS must refuse it. Superseded by deploy.yml (#77), which exercises the same path.
+name: AWS OIDC check
+
+on: workflow_dispatch
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  whoami:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          # Repository variable, so the account id stays out of the repository.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ca-central-1
+
+      - run: aws sts get-caller-identity
