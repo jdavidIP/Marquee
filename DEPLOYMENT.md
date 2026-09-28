@@ -147,7 +147,8 @@ Running it, signed in with `aws login` and with `aws configure set region ca-cen
 ```
 eval "$(aws configure export-credentials --format env)"   # per shell; see below
 cdk bootstrap aws://<account-id>/ca-central-1              # once per account and region
-cdk deploy MarqueeCiStack -c budgetEmail=<address>
+cdk deploy MarqueeCiStack -c alertEmail=<address>
+cdk deploy MarqueeStack -c alertEmail=<address>
 ```
 
 The CDK CLI cannot yet read the `login_session` credentials `aws login` stores, so the first line hands
@@ -157,25 +158,43 @@ Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk di
 `--require-approval never`.
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
-committed; synth refuses to run without `budgetEmail`. The stack outputs `DeployRoleArn` for the
-workflows.
+committed; synth refuses to run without `alertEmail`, which receives both the budget and the
+CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
 
 **`MarqueeStack`** — everything the app runs on:
 - **VPC**: 1 AZ, public subnets only, **no NAT gateway** (~$32/mo idle for nothing we need).
-- **EC2**: Amazon Linux 2023, `t3.small` (2 vCPU / 2 GB — five containers do not fit in 1 GB).
+- **EC2**: Amazon Linux 2023, `t3.small` (2 vCPU / 2 GB — five containers do not fit in 1 GB), in
+  `ca-central-1a`.
+  - **CPU credits `standard`**, not the T3 default `unlimited`: sustained load above the 20% baseline
+    throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
-    the instance on the next deploy.
+    the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
-  - User data installs Docker and the compose plugin, mounts the data volume.
-  - **Elastic IP**, so the public DNS name CloudFront uses as its origin survives stop/start.
+  - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
+    than OOM-killing a container.
+  - User data (first boot only — editing it later does not re-run it on the existing host): mounts the
+    data volume, installs Docker from the AL2023 repositories and the compose plugin as a pinned,
+    checksum-verified release binary, and writes `/etc/docker/daemon.json` so every container logs to
+    CloudWatch through the `awslogs` driver. Docker is set to refuse to start without the data volume
+    mounted.
+  - **Elastic IP**, so the public DNS name CloudFront uses as its origin survives stop/start. The stack
+    outputs it as `HostPublicDns`.
   - Instance role: `AmazonSSMManagedInstanceCore`, ECR pull, `ssm:GetParametersByPath` on
-    `/marquee/prod/*`, CloudWatch Logs write.
-- **Data volume**: a separate encrypted gp3 EBS volume for the Docker volumes (Postgres, Redis AOF,
-  RabbitMQ), `RemovalPolicy.RETAIN`, so replacing the instance never destroys data. **Daily snapshots**
-  via Data Lifecycle Manager (or AWS Backup), 7-day retention.
+    `/marquee/prod/*`, CloudWatch Logs write, read on the artifacts bucket.
+- **Data volume**: a separate encrypted 10 GB gp3 EBS volume mounted at `/var/lib/docker/volumes`
+  (Postgres, Redis AOF, RabbitMQ, and Docker's own index of the volumes), `RemovalPolicy.RETAIN`, so
+  replacing the instance never destroys data. **Daily snapshots** via Data Lifecycle Manager at 08:00 UTC
+  (03:00–04:00 in Toronto, outside the Premiere window), 7 kept. Snapshots are crash-consistent, which
+  Postgres recovers from like a power cut.
 - **Security group**: inbound TCP 80 **only** from the managed prefix list
-  `com.amazonaws.global.cloudfront.origin-facing`. Nothing else inbound.
-- **ECR**: `marquee-api` and `marquee-worker`, lifecycle rule keeping the last ~10 images.
+  `com.amazonaws.global.cloudfront.origin-facing`. Nothing else inbound. It is the host's only group,
+  because the prefix list counts as ~55 rules against a group's rule quota.
+- **ECR**: `marquee-api` and `marquee-worker`, scan on push, lifecycle rule keeping the last 10 images.
+- **Artifacts bucket**: private, TLS-only, objects expire after 30 days. Holds each deploy's
+  `docker-compose.prod.yml` and `deploy.sh`.
+- **Deploy role grants** (on `marquee-github-deploy`): push to the two ECR repos, put objects in the
+  artifacts bucket, `ssm:SendCommand` on this instance with `AWS-RunShellScript`. `MarqueeStack` is
+  deployed by hand, never by that role, so the role still cannot change its own permissions.
 - **S3 site bucket**: private, reached only through CloudFront **Origin Access Control**.
 - **CloudFront distribution**:
   - Default behaviour → S3. SPA deep links (`/library`, `/u/…`) are handled by a small **CloudFront
@@ -190,8 +209,14 @@ workflows.
 - **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/` — JWT key,
   Postgres and RabbitMQ passwords, TMDB key, admin seed password. Created by hand once (CDK should not
   hold secret values), referenced by name.
-- **CloudWatch**: log groups per service with 14-day retention; alarm + auto-recover on EC2 system
-  status check failure; CPU alarm.
+- **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
+  Two alarms, both emailing `alertEmail` through an SNS topic (confirm the subscription email once):
+  - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
+    id, Elastic IP and volumes.
+  - CPU credit balance below 20 → about to be throttled to baseline. Under `standard` credits this is
+    the meaningful CPU signal; utilization cannot show it, because it drops once throttled. T3
+    `standard` launches with no credits, so it fires for roughly the first hour after the instance is
+    created.
 - **AWS Budgets**: monthly budget with email alerts at 50/80/100%. Set up **first**, before anything
   else is deployed.
 - Optional: `cdk-nag` (AwsSolutions pack) in synth, with each suppression justified in code.
