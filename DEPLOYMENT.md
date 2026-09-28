@@ -132,7 +132,9 @@ stacks:
 
 **`MarqueeCiStack`** — deployed rarely, by hand:
 - GitHub OIDC identity provider.
-- A deploy role trusted only for `repo:jdavidIP/Marquee:ref:refs/heads/main` (and a read-only
+- A deploy role trusted only for `repo:jdavidIP@90657602/Marquee@1311474951:ref:refs/heads/main` — the
+  repo's OIDC tokens use GitHub's immutable subject format (owner and repo suffixed with their ids) —
+  (and a read-only
   `cdk diff` role for PRs if wanted), scoped to: push to the ECR repos, write the S3 site bucket,
   create CloudFront invalidations, `ssm:SendCommand` to the one instance, read the artifacts bucket.
 - Separate stack so a deploy can never edit the permissions of the role performing it.

@@ -10,7 +10,10 @@ namespace Marquee.Cdk;
 public class MarqueeCiStack : Stack
 {
     private const string GitHubIssuer = "token.actions.githubusercontent.com";
-    private const string DeployRef = "repo:jdavidIP/Marquee:ref:refs/heads/main";
+    // The repo uses GitHub's immutable subject format (owner and repo each suffixed with their numeric
+    // id), so a repo recreated under the same name can never match. Check the live template with
+    // `gh api repos/jdavidIP/Marquee/actions/oidc/customization/sub`.
+    private const string DeployRef = "repo:jdavidIP@90657602/Marquee@1311474951:ref:refs/heads/main";
     private const double MonthlyBudgetUsd = 30;
 
     public MarqueeCiStack(Construct scope, string id, string budgetEmail, IStackProps props)
