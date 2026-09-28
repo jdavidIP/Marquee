@@ -20,6 +20,19 @@ No revenue, no marketing push, no company entity — a small number of real user
 hundreds). Everything below is sized for that. Cost matters: services that bill while idle have to
 earn their place.
 
+## Account
+
+- **Region:** `ca-central-1` (Canada Central).
+- **Created** 2026-09-25, on the **Free plan**: usage draws down the $100 sign-up credit (+ up to $100
+  earned through activities).
+- **Free plan ends 2027-03-24**, or earlier if the credits run out first. The account then **closes
+  automatically** and the deployed app goes offline. At the ~$25–30/month estimate below, $100 lasts
+  roughly 3–4 months, so the credits are likely to be the earlier cutoff.
+- **Intent:** upgrade to the Paid plan before whichever cutoff comes first (leftover credits carry
+  over). The budget alerts are the early warning.
+- **Budget:** `marquee-monthly` (in `MarqueeCiStack`), $30/month measured *before* credits, emailing at
+  50/80/100% of actual and 100% of forecast cost.
+
 ## Constraints the app imposes
 
 These come from the code as it stands, and they shape the infrastructure more than anything else.
@@ -122,6 +135,19 @@ stacks:
   `cdk diff` role for PRs if wanted), scoped to: push to the ECR repos, write the S3 site bucket,
   create CloudFront invalidations, `ssm:SendCommand` to the one instance, read the artifacts bucket.
 - Separate stack so a deploy can never edit the permissions of the role performing it.
+- The deploy role is created with **no permissions**. Each stack that owns a resource grants the role
+  access to that resource's ARN — never a broad `*`.
+
+Running it, signed in with `aws login`, from `infra/`:
+
+```
+cdk bootstrap aws://<account-id>/ca-central-1       # once per account and region
+cdk deploy MarqueeCiStack -c budgetEmail=<address>  # then confirm the AWS Budgets email
+```
+
+The account comes from the signed-in CLI and the alert address from the command line, so neither is
+committed; synth refuses to run without `budgetEmail`. The stack outputs `DeployRoleArn` for the
+workflows.
 
 **`MarqueeStack`** — everything the app runs on:
 - **VPC**: 1 AZ, public subnets only, **no NAT gateway** (~$32/mo idle for nothing we need).
@@ -277,7 +303,6 @@ instance is the next real cost step.
 
 ## Open decisions
 
-- **AWS region** — nearest the expected audience.
 - **Timezone** for `TZ` (§4.4's "local time").
 - **Instance family** — `t3.small` (x86, no surprises) or `t4g.small` (Graviton, cheaper, but images
   must be built for arm64).
