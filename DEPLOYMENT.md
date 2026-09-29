@@ -116,8 +116,10 @@ changes how accounts work, and doing that before real users exist avoids a user 
    offline stub) and `Admin:Password` (else the repository's dev password on the seeded admin).
 4. **Forwarded headers.** `ForwardedHeaders` for `X-Forwarded-For` only (nothing reads the scheme),
    `ForwardLimit = 1`, switched on by `ForwardedHeaders__Enabled` in the prod compose file. Trusting the
-   immediate peer is safe *only* because the security group admits nothing but CloudFront — that
-   dependency is recorded where it is configured. This fixes the shared rate-limit bucket.
+   immediate peer is safe *only* because every request the API accepts came through Marquee's own
+   CloudFront distribution — the security group narrows inbound to CloudFront's address range, and the
+   origin header check (`OriginVerification`, §1b) narrows that to our distribution. That dependency is
+   recorded where it is configured. This fixes the shared rate-limit bucket.
 5. **Frontend production environment.** `environment.prod.ts` with relative URLs (`/api`,
    `/hubs/premieres`) wired through `fileReplacements`. The CORS policy stays as-is for local dev;
    production is same-origin and never exercises it.
@@ -159,7 +161,10 @@ Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk di
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
 committed; synth refuses to run without `alertEmail`, which receives both the budget and the
-CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
+CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows. **Pass the same address
+on every deploy:** a different one replaces the SNS subscription rather than adding to it, and the new
+address has to confirm before any alarm reaches it. `cdk diff` shows this as a subscription destroyed
+and another created — a sign the wrong value was passed.
 
 **`MarqueeStack`** — everything the app runs on:
 - **VPC**: 1 AZ, public subnets only, **no NAT gateway** (~$32/mo idle for nothing we need).
@@ -188,24 +193,35 @@ CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
   Postgres recovers from like a power cut.
 - **Security group**: inbound TCP 80 **only** from the managed prefix list
   `com.amazonaws.global.cloudfront.origin-facing`. Nothing else inbound. It is the host's only group,
-  because the prefix list counts as ~55 rules against a group's rule quota.
+  because the prefix list counts as ~55 rules against a group's rule quota. That list covers *every*
+  CloudFront distribution, anyone's, so the group alone does not make the host ours: the secret origin
+  header below does.
 - **ECR**: `marquee-api` and `marquee-worker`, scan on push, lifecycle rule keeping the last 10 images.
 - **Artifacts bucket**: private, TLS-only, objects expire after 30 days. Holds each deploy's
   `docker-compose.prod.yml` and `deploy.sh`.
 - **Deploy role grants** (on `marquee-github-deploy`): push to the two ECR repos, put objects in the
-  artifacts bucket, `ssm:SendCommand` on this instance with `AWS-RunShellScript`. `MarqueeStack` is
-  deployed by hand, never by that role, so the role still cannot change its own permissions.
-- **S3 site bucket**: private, reached only through CloudFront **Origin Access Control**.
-- **CloudFront distribution**:
-  - Default behaviour → S3. SPA deep links (`/library`, `/u/…`) are handled by a small **CloudFront
-    Function** that rewrites extension-less paths to `/index.html`. *Not* custom error responses:
-    those apply distribution-wide and would turn every API 404 into `index.html` with a 200.
+  artifacts bucket, `ssm:SendCommand` on this instance with `AWS-RunShellScript`, read/write/delete on
+  the site bucket, `cloudfront:CreateInvalidation` on this distribution. `MarqueeStack` is deployed by
+  hand, never by that role, so the role still cannot change its own permissions.
+- **S3 site bucket**: private, TLS-only, reached only through CloudFront **Origin Access Control**.
+- **CloudFront distribution** on the default `*.cloudfront.net` certificate, price class 100:
+  - Default behaviour → S3, `CachingOptimized`, which honours each object's `Cache-Control` as set at
+    upload. SPA deep links (`/library`, `/u/…`) are handled by a small **CloudFront Function** that
+    rewrites any path *not* ending in a known static-file extension to `/index.html` — keyed on the
+    extension rather than "contains a dot", because usernames may contain one (`/u/john.doe`). *Not*
+    custom error responses: those apply distribution-wide and would turn every API 404 into
+    `index.html` with a 200.
   - `/api/*` and `/hubs/*` → the EC2 origin over HTTP, `CachingDisabled`, origin request policy
     `AllViewerExceptHostHeader` (forwards `Authorization`, `X-Anon-Session`, and the query string
     SignalR uses for `access_token` on WebSockets). CloudFront supports WebSockets natively;
     SignalR's 15 s keep-alive keeps the connection under the idle timeouts — verify under load.
+  - **Secret origin header**: the origin adds `X-Origin-Verify`, and the API refuses (403) any request
+    without the right value (`OriginVerification`; `/health/*` exempt for the container healthcheck).
+    A viewer-supplied `X-Origin-Verify` is overwritten by CloudFront, so it cannot be spoofed through
+    the distribution. The value is resolved from SSM at `cdk deploy` time.
   - `index.html` served `no-cache`; hashed assets long-cached.
   - Standard logging **off** (it would record the SignalR `access_token` query parameter).
+  - Outputs: `SiteUrl`, `SiteBucket`, `DistributionId`.
 - **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
   hand once (CDK should not hold secret values), named after the `.env` key each becomes. **Use only
   letters and digits in every value** (`openssl rand -hex 24` for the random ones): the manual deploy
@@ -217,6 +233,11 @@ CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
   - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
   - `Admin__Password` — at least 10 characters with a digit (the app's own password policy); this is
     the seeded admin's sign-in password, so keep it somewhere you can find it again.
+  - `OriginVerify__Secret` — random (`openssl rand -hex 32`). **A plain `String`, not a
+    `SecureString`**: CloudFormation can only resolve a `String` into the CloudFront header, and the
+    value is readable in the distribution's config by anyone with account access anyway. Must exist
+    before `cdk deploy` (the stack reads it) and before the API starts in Production (it is a required
+    key). The host's `.env` picks it up with the rest of the path.
 - **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
   Two alarms, both emailing `alertEmail` through an SNS topic (confirm the subscription email once):
   - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
@@ -238,7 +259,8 @@ built. Until then, deploy by hand, from `infra/` with the CLI signed in:
 aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
 ```
 
-gives `HostInstanceId`, `HostPublicDns` and `ArtifactsBucket`. Then, from the repository root:
+gives `HostInstanceId`, `HostPublicDns`, `ArtifactsBucket`, `SiteUrl`, `SiteBucket` and
+`DistributionId`. Then, from the repository root:
 
 ```
 TAG=$(git rev-parse --short HEAD)
@@ -262,7 +284,7 @@ aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'P
   --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
 echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
-echo "PUBLIC_BASE_URL=<the site's public URL; a placeholder until #76>" >> .env
+echo "PUBLIC_BASE_URL=<SiteUrl>" >> .env
 chmod 600 .env
 aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
 docker compose -f docker-compose.prod.yml pull
@@ -271,6 +293,24 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/health/ready
 ```
 
 The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
+`curl http://localhost/api/...` on the host now returns 403 — it lacks the origin header. That is the
+check working; `/health/*` is exempt.
+
+Then the frontend, from `src/Marquee.Web` locally. Only `index.html` and `favicon.ico` are unhashed;
+everything else is content-hashed and can be cached for good:
+
+```
+npx ng build --configuration production
+cd dist/marquee-web/browser
+aws s3 sync . s3://<SiteBucket> --delete --exclude index.html --exclude favicon.ico \
+  --cache-control "public,max-age=31536000,immutable"
+aws s3 cp index.html s3://<SiteBucket>/index.html --cache-control "no-cache"
+aws s3 cp favicon.ico s3://<SiteBucket>/favicon.ico --cache-control "public,max-age=86400"
+aws cloudfront create-invalidation --distribution-id <DistributionId> --paths "/index.html"
+```
+
+From Git Bash on Windows, prefix the invalidation with `MSYS_NO_PATHCONV=1`, or `/index.html` is
+rewritten into a Windows path and rejected as invalid.
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
@@ -308,13 +348,25 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
   identifier as the live cluster. Its cluster state was `in production`, which is expected for a
   crash-consistent snapshot, and Postgres replays WAL for that on start. Unmounted, detached and
   deleted the scratch volume afterwards.
-- [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Waits on #76
-  — there is no CloudFront distribution yet, so this was exercised against the host directly instead.
+- [x] **2026-09-29** — CloudFront (#76), at `SiteUrl` with the host on the origin-checking image:
+  - The app loads, and refreshing deep links serves the SPA: `/`, `/library`, `/u/someone/friends` and
+    `/u/john.doe` (a username with a dot) all return `index.html` with a 200.
+  - An unknown `/api/...` path returns the API's own 404, not `index.html`.
+  - `index.html` is served `Cache-Control: no-cache`; hashed bundles `max-age=31536000, immutable`.
+  - SignalR over **WebSockets** through CloudFront: in a browser on the site, negotiate offered
+    WebSockets, a `wss://` connection opened with the connection token, and the server answered the
+    JSON protocol handshake with `{}`. The app's own hub client made no long-polling or SSE requests.
+  - The host is unreachable directly: a direct request to port 80 times out (security group). On the
+    host itself, an `/api` request without the origin header gets 403 while `/health/ready` gets 200;
+    through CloudFront the same `/api` request gets through, including when the viewer sends its own
+    `X-Origin-Verify` (overwritten by CloudFront).
+- [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Unblocked by
+  #76; so far exercised against the host directly.
 - [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
-  Waits on #76.
+  Unblocked by #76.
 - [ ] Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
-  `ForwardedHeaders__Enabled` is only safe once the security group admits nothing but CloudFront (#76);
-  unverified until then.
+  `ForwardedHeaders__Enabled` is safe now that the origin header check is live (#76); still
+  unverified behaviourally.
 
 ---
 

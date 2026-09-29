@@ -17,9 +17,10 @@ public static class ForwardedHeadersRegistration
             // Rightmost X-Forwarded-For entry only: the address CloudFront itself saw. Anything a client
             // put to its left is ignored, so the header can't be used to pick your own bucket.
             options.ForwardLimit = 1;
-            // Trusting whoever connects is safe ONLY because the EC2 security group admits nothing but
-            // CloudFront's origin-facing prefix list (DEPLOYMENT.md, MarqueeStack). If the API is ever
-            // reachable another way, this must be restricted to known proxies instead.
+            // Trusting whoever connects is safe ONLY because every request that gets this far came through
+            // Marquee's CloudFront: the EC2 security group admits only CloudFront's address range, and
+            // OriginVerification rejects anything without our distribution's secret header (DEPLOYMENT.md,
+            // MarqueeStack). If the API is ever reachable another way, restrict this to known proxies.
             options.KnownNetworks.Clear();
             options.KnownProxies.Clear();
         });
