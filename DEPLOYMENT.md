@@ -370,9 +370,12 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
     WebSockets, a `wss://` connection opened with the connection token, and the server answered the
     JSON protocol handshake with `{}`. The app's own hub client made no long-polling or SSE requests.
   - The host is unreachable directly: a direct request to port 80 times out (security group). On the
-    host itself, an `/api` request without the origin header gets 403 while `/health/ready` gets 200;
-    through CloudFront the same `/api` request gets through, including when the viewer sends its own
-    `X-Origin-Verify` (overwritten by CloudFront).
+    host itself, requests without the origin header get 403 — `/health/ready` included, since through
+    Docker's port mapping it does not arrive from loopback — while the in-container healthcheck gets
+    200 and Docker reports the API `healthy`. Through CloudFront the same `/api` request gets through,
+    including when the viewer sends its own `X-Origin-Verify` (overwritten by CloudFront). `/health`
+    is not routed to the API at all: through CloudFront it is just another SPA path.
+  - `/u/bob.js` and `/u/x.json` — usernames ending in a static-file extension — also serve the SPA.
 - [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Unblocked by
   #76; so far exercised against the host directly.
 - [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
