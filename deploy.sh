@@ -42,13 +42,15 @@ $COMPOSE pull -q api worker
 if ! $COMPOSE up -d --wait --wait-timeout 240; then
   echo "::: $TAG did not go healthy. Last healthy tag: $PREVIOUS" >&2
   echo "::: Roll back by re-running the Deploy workflow with tag=$PREVIOUS" >&2
+  # States only, never log lines: this output lands in the public Actions log. The containers' logs
+  # are in CloudWatch, log group /marquee/prod.
   $COMPOSE ps --format '{{.Service}} {{.Status}}' >&2 || true
-  $COMPOSE logs --tail 40 api >&2 || true
+  echo "::: container logs: CloudWatch log group /marquee/prod" >&2
   exit 1
 fi
 
 echo "$TAG" > last-healthy-tag
 # Unused images older than a week: the running ones and anything recent are untouched, and a rollback
-# pulls what it needs from ECR.
-docker image prune -af --filter "until=168h" >/dev/null
+# pulls what it needs from ECR. Housekeeping only — it must never turn a healthy deploy into a failed one.
+docker image prune -af --filter "until=168h" >/dev/null || true
 echo "healthy: $TAG"

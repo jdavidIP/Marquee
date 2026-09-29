@@ -362,6 +362,15 @@ The tag is validated against `[A-Za-z0-9._-]` before it reaches the host's shell
 alone: a backend failure stops before it, so it still matches the last healthy tag. Single instance,
 so a failed deploy means downtime until the rollback finishes — accepted for phase 1.
 
+A tag stays deployable only while its pieces exist: ECR keeps the **last 10 images** per repository and
+the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
+is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
+the bucket) cannot be redeployed this way; use 1b-ops.
+
+A failed deploy prints only container states to the Actions log, never log lines — the repository is
+public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
+`/marquee/prod`.
+
 Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand; CI runs `cdk synth` on every
 PR (`ci.yml`, no AWS access) so a stack that cannot even produce a template is caught before merge.
 Automating `cdk deploy` is a later step.
