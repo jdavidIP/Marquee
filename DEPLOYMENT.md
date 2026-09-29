@@ -414,10 +414,19 @@ Automating `cdk deploy` is a later step.
   tag already running (`8df159c`): artifacts fetched, `.env` rewritten (still 600/root, no `.env.new`
   left), images pulled, `up -d --wait` healthy, `last-healthy-tag` written. A no-op as intended — no
   container was recreated.
-- [ ] Pipeline (#77), after merge: a merge to `main` deploys backend and frontend with no manual step.
-- [ ] Pipeline (#77): a deliberately unhealthy image fails the workflow at the health check, and
-  redeploying the recorded last healthy tag restores service.
-- [ ] Pipeline (#77): the repository holds no AWS credentials.
+- [x] **2026-09-29** — Pipeline (#77): merging PR #92 (`b14c689`) deployed backend and frontend with no
+  manual step. CI passed on `main`, Deploy started from it on its own, both jobs passed on the first
+  run, and the host came up on `b14c689` with `last-healthy-tag` recorded.
+- [x] **2026-09-29** — Pipeline (#77): a deliberately unhealthy image fails the workflow at the health
+  check, and redeploying the last healthy tag restores service. The worker image, pushed as
+  `marquee-api:unhealthy-test`, never answers HTTP. `gh workflow run deploy.yml -f tag=unhealthy-test`
+  failed at the SSM step (`Error dependency api failed to start`), printed the last healthy tag and
+  the rollback command, listed the API as `unhealthy`, printed no log lines, and skipped the frontend.
+  `/api` through CloudFront returned 504 meanwhile. `-f tag=b14c689` then passed and the site and API
+  returned 200. The test images and artifacts were deleted afterwards.
+- [x] **2026-09-29** — Pipeline (#77): the repository holds no AWS credentials. No access-key-shaped
+  string in any commit's tree, no secret-key assignments, no GitHub repository secrets; the only
+  setting is the role ARN variable.
 - [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Unblocked by
   #76; so far exercised against the host directly.
 - [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
