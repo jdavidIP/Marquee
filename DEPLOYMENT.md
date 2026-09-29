@@ -216,7 +216,9 @@ and another created — a sign the wrong value was passed.
     SignalR uses for `access_token` on WebSockets). CloudFront supports WebSockets natively;
     SignalR's 15 s keep-alive keeps the connection under the idle timeouts — verify under load.
   - **Secret origin header**: the origin adds `X-Origin-Verify`, and the API refuses (403) any request
-    without the right value (`OriginVerification`; `/health/*` exempt for the container healthcheck).
+    without the right value (`OriginVerification`). `/health/*` is exempt only for loopback callers —
+    the container's own healthcheck — because the security group admits *any* distribution, and an
+    open exemption would let a stranger's run the dependency checks.
     A viewer-supplied `X-Origin-Verify` is overwritten by CloudFront, so it cannot be spoofed through
     the distribution. The value is resolved from SSM at `cdk deploy` time.
   - `index.html` served `no-cache`; hashed assets long-cached.
@@ -289,12 +291,14 @@ chmod 600 .env
 aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d --wait
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost/health/ready
+docker inspect --format '{{.State.Health.Status}}' marquee-prod-api-1
 ```
 
 The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
-`curl http://localhost/api/...` on the host now returns 403 — it lacks the origin header. That is the
-check working; `/health/*` is exempt.
+`curl http://localhost/...` on the host returns 403 for every path, `/health` included: it lacks the
+origin header, and through Docker's port mapping it does not arrive from loopback inside the container.
+That is the check working — read health from Docker (`docker inspect` above), which runs the
+container's own in-container healthcheck.
 
 Then the frontend, from `src/Marquee.Web` locally. Only `index.html` and `favicon.ico` are unhashed;
 everything else is content-hashed and can be cached for good:
@@ -312,6 +316,14 @@ aws cloudfront create-invalidation --distribution-id <DistributionId> --paths "/
 From Git Bash on Windows, prefix the invalidation with `MSYS_NO_PATHCONV=1`, or `/index.html` is
 rewritten into a Windows path and rejected as invalid.
 
+**Rotating the origin secret.** CloudFront and the host each hold a copy, updated separately, so every
+`/api` and `/hubs` request gets 403 between the two steps — minutes, not seconds, because the
+distribution change takes a few minutes to propagate. Do it when nobody is on:
+
+1. `aws ssm put-parameter --name /marquee/prod/OriginVerify__Secret --type String --overwrite --value "$(openssl rand -hex 32)"`
+2. `cdk deploy MarqueeStack` — CloudFront starts sending the new value.
+3. On the host, rewrite `.env` and `docker compose up -d --wait` (the host block above, same `TAG`).
+
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
 A `deploy.yml` workflow on push to `main`, running after CI passes:
@@ -320,8 +332,9 @@ A `deploy.yml` workflow on push to `main`, running after CI passes:
 2. Build and push `marquee-api` / `marquee-worker` images to ECR, tagged with the commit SHA.
 3. Upload `docker-compose.prod.yml` and `deploy.sh` to an artifacts bucket under that SHA.
 4. **SSM Run Command** on the instance: fetch the artifacts, write the env file from Parameter Store,
-   `docker compose pull && docker compose up -d`, then poll `/health/ready` locally and fail the run if
-   it never goes healthy. No SSH anywhere in the path.
+   `docker compose pull && docker compose up -d --wait`, which fails if the API's healthcheck never goes
+   healthy — the run fails with it. (Not `curl localhost/health/ready` from the host: the origin check
+   refuses it, see 1b-ops.) No SSH anywhere in the path.
 5. Build Angular with the production configuration → `aws s3 sync` → CloudFront invalidation of
    `/index.html`.
 

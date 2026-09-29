@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -29,8 +30,12 @@ public static class OriginVerification
         var expected = Encoding.UTF8.GetBytes(secret);
         return app.Use(async (context, next) =>
         {
-            // The container's own healthcheck calls localhost directly, never through CloudFront.
-            if (context.Request.Path.StartsWithSegments("/health")
+            // The container's own healthcheck calls 127.0.0.1 from inside the container, never through
+            // CloudFront. Loopback only: the security group admits any CloudFront distribution, so an
+            // unconditional exemption would let a stranger's distribution run the dependency checks.
+            // Checked on the TCP peer, before the forwarded-headers middleware can rewrite it.
+            if ((context.Request.Path.StartsWithSegments("/health")
+                    && context.Connection.RemoteIpAddress is { } peer && IPAddress.IsLoopback(peer))
                 || CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(context.Request.Headers[HeaderName].ToString()), expected))
             {

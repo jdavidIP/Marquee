@@ -44,13 +44,16 @@ public class MarqueeStack : Stack
     private const string OriginSecretParameter = "/marquee/prod/OriginVerify__Secret";
 
     // SPA deep links (/library, /u/<name>) are Angular routes, not files: serve index.html for them.
-    // Keyed on known static-file extensions rather than "has a dot", because usernames may contain one.
+    // Keyed on known static-file extensions rather than "has a dot", because usernames may contain one —
+    // and everything under /u/ is always a route, since a username may even end in one of those
+    // extensions (/u/bob.js). No static file lives under /u/: the Angular build output is flat.
     // Default behaviour only, so /api and /hubs never reach it. Not custom error responses: those apply
     // to the whole distribution and would turn every API 404 into index.html with a 200.
     private const string SpaRewrite = """
         function handler(event) {
           var request = event.request;
-          if (!/\.(js|css|html|ico|png|svg|jpe?g|webp|gif|woff2?|ttf|json|txt|map|webmanifest)$/i.test(request.uri)) {
+          if (request.uri.startsWith('/u/')
+              || !/\.(js|css|html|ico|png|svg|jpe?g|webp|gif|woff2?|ttf|json|txt|map|webmanifest)$/i.test(request.uri)) {
             request.uri = '/index.html';
           }
           return request;

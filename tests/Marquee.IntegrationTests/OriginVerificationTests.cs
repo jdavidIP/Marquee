@@ -14,8 +14,9 @@ namespace Marquee.IntegrationTests;
 public class OriginVerificationTests
 {
     private const string Secret = "test-origin-secret";
+    private static readonly IPAddress Public = IPAddress.Parse("203.0.113.1");
 
-    private static async Task<HttpClient> ClientAsync(string? secret)
+    private static async Task<TestServer> ServerAsync(string? secret)
     {
         var host = await new HostBuilder()
             .ConfigureWebHost(web => web
@@ -35,40 +36,51 @@ public class OriginVerificationTests
                 }))
             .StartAsync();
 
-        return host.GetTestClient();
+        return host.GetTestServer();
     }
 
-    private static Task<HttpResponseMessage> Get(HttpClient client, string path, string? header)
+    // TestServer leaves the peer address unset, and the health exemption depends on it.
+    private static async Task<int> Get(TestServer server, string path, string? header, IPAddress from)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, path);
-        if (header is not null)
-            request.Headers.Add(OriginVerification.HeaderName, header);
-        return client.SendAsync(request);
+        var context = await server.SendAsync(c =>
+        {
+            c.Request.Method = HttpMethods.Get;
+            c.Request.Path = path;
+            c.Connection.RemoteIpAddress = from;
+            if (header is not null)
+                c.Request.Headers[OriginVerification.HeaderName] = header;
+        });
+        return context.Response.StatusCode;
     }
 
     [Fact]
     public async Task Only_the_right_secret_gets_through()
     {
-        var client = await ClientAsync(Secret);
+        var server = await ServerAsync(Secret);
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await Get(client, "/api/thing", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Get(client, "/api/thing", "wrong")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await Get(client, "/api/thing", Secret)).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, await Get(server, "/api/thing", null, Public));
+        Assert.Equal(StatusCodes.Status403Forbidden, await Get(server, "/api/thing", "wrong", Public));
+        Assert.Equal(StatusCodes.Status200OK, await Get(server, "/api/thing", Secret, Public));
     }
 
     [Fact]
-    public async Task Health_checks_are_exempt()
+    public async Task Health_checks_are_exempt_from_loopback_only()
     {
-        var client = await ClientAsync(Secret);
+        var server = await ServerAsync(Secret);
 
-        Assert.Equal(HttpStatusCode.OK, (await Get(client, "/health/ready", null)).StatusCode);
+        Assert.Equal(StatusCodes.Status200OK, await Get(server, "/health/ready", null, IPAddress.Loopback));
+        Assert.Equal(StatusCodes.Status200OK, await Get(server, "/health/ready", null, IPAddress.IPv6Loopback));
+        // Kestrel on a dual-stack socket reports an IPv4 caller in this mapped form.
+        Assert.Equal(StatusCodes.Status200OK, await Get(server, "/health/ready", null, IPAddress.Loopback.MapToIPv6()));
+        Assert.Equal(StatusCodes.Status403Forbidden, await Get(server, "/health/ready", null, Public));
+        Assert.Equal(StatusCodes.Status403Forbidden, await Get(server, "/api/thing", null, IPAddress.Loopback));
     }
 
     [Fact]
     public async Task Nothing_is_checked_when_no_secret_is_configured()
     {
-        var client = await ClientAsync(null);
+        var server = await ServerAsync(null);
 
-        Assert.Equal(HttpStatusCode.OK, (await Get(client, "/api/thing", null)).StatusCode);
+        Assert.Equal(StatusCodes.Status200OK, await Get(server, "/api/thing", null, Public));
     }
 }
