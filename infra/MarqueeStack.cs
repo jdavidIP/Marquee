@@ -1,4 +1,6 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.CloudFront;
+using Amazon.CDK.AWS.CloudFront.Origins;
 using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.CloudWatch.Actions;
 using Amazon.CDK.AWS.DLM;
@@ -35,6 +37,25 @@ public class MarqueeStack : Stack
     private const string LogGroupName = "/marquee/prod";
     private const string ParameterPath = "marquee/prod";
     private const string BackupTagKey = "marquee:backup";
+
+    // A plain String, not a SecureString: CloudFormation can only resolve the former into a CloudFront
+    // header, and the value is readable in the distribution's config by anyone with account access anyway.
+    // The host's .env picks it up with the rest of /marquee/prod, as OriginVerify__Secret.
+    private const string OriginSecretParameter = "/marquee/prod/OriginVerify__Secret";
+
+    // SPA deep links (/library, /u/<name>) are Angular routes, not files: serve index.html for them.
+    // Keyed on known static-file extensions rather than "has a dot", because usernames may contain one.
+    // Default behaviour only, so /api and /hubs never reach it. Not custom error responses: those apply
+    // to the whole distribution and would turn every API 404 into index.html with a 200.
+    private const string SpaRewrite = """
+        function handler(event) {
+          var request = event.request;
+          if (!/\.(js|css|html|ico|png|svg|jpe?g|webp|gif|woff2?|ttf|json|txt|map|webmanifest)$/i.test(request.uri)) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+        """;
 
     public MarqueeStack(Construct scope, string id, string alertEmail, IStackProps props)
         : base(scope, id, props)
@@ -143,6 +164,66 @@ public class MarqueeStack : Stack
 
         // Keeps the public DNS name — CloudFront's origin — stable across stop/start.
         var hostIp = new CfnEIP(this, "HostIp", new CfnEIPProps { Domain = "vpc", InstanceId = host.InstanceId });
+        var hostDns = Fn.Join("", new[] { "ec2-", Fn.Join("-", Fn.Split(".", hostIp.Ref)), $".{Region}.compute.amazonaws.com" });
+
+        var site = new Bucket(this, "Site", new BucketProps
+        {
+            BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
+            Encryption = BucketEncryption.S3_MANAGED,
+            EnforceSSL = true,
+        });
+
+        // The API and the SignalR hub: never cached, every viewer header and query string forwarded
+        // (Authorization, X-Anon-Session, and SignalR's access_token on WebSockets), plus the secret
+        // header OriginVerification checks on the host.
+        var app = new BehaviorOptions
+        {
+            Origin = new HttpOrigin(hostDns, new HttpOriginProps
+            {
+                ProtocolPolicy = OriginProtocolPolicy.HTTP_ONLY,
+                CustomHeaders = new Dictionary<string, string>
+                {
+                    ["X-Origin-Verify"] = Amazon.CDK.AWS.SSM.StringParameter.ValueForStringParameter(this, OriginSecretParameter),
+                },
+            }),
+            ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            AllowedMethods = AllowedMethods.ALLOW_ALL,
+            CachePolicy = CachePolicy.CACHING_DISABLED,
+            OriginRequestPolicy = OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        };
+
+        // One origin for the SPA, /api and /hubs, so the browser never makes a cross-origin call.
+        // Standard logging stays off: it would record SignalR's access_token query parameter.
+        var distribution = new Amazon.CDK.AWS.CloudFront.Distribution(this, "Cdn", new DistributionProps
+        {
+            Comment = "Marquee",
+            PriceClass = PriceClass.PRICE_CLASS_100,
+            DefaultRootObject = "index.html",
+            DefaultBehavior = new BehaviorOptions
+            {
+                Origin = S3BucketOrigin.WithOriginAccessControl(site),
+                ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                // Honours each object's Cache-Control, set at upload: index.html no-cache, hashed assets long.
+                CachePolicy = CachePolicy.CACHING_OPTIMIZED,
+                FunctionAssociations = new[]
+                {
+                    new FunctionAssociation
+                    {
+                        EventType = FunctionEventType.VIEWER_REQUEST,
+                        Function = new Function(this, "SpaRewrite", new FunctionProps
+                        {
+                            Code = FunctionCode.FromInline(SpaRewrite),
+                            Runtime = FunctionRuntime.JS_2_0,
+                        }),
+                    },
+                },
+            },
+            AdditionalBehaviors = new Dictionary<string, IBehaviorOptions>
+            {
+                ["/api/*"] = app,
+                ["/hubs/*"] = app,
+            },
+        });
 
         DailySnapshots();
         Alarms(host, alertEmail);
@@ -153,6 +234,8 @@ public class MarqueeStack : Stack
         apiRepo.GrantPush(deployRole);
         workerRepo.GrantPush(deployRole);
         artifacts.GrantPut(deployRole);
+        site.GrantReadWrite(deployRole);
+        distribution.GrantCreateInvalidation(deployRole);
         deployRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
             Actions = new[] { "ssm:SendCommand" },
@@ -164,11 +247,11 @@ public class MarqueeStack : Stack
         }));
 
         new CfnOutput(this, "HostInstanceId", new CfnOutputProps { Value = host.InstanceId });
-        new CfnOutput(this, "HostPublicDns", new CfnOutputProps
-        {
-            Value = Fn.Join("", new[] { "ec2-", Fn.Join("-", Fn.Split(".", hostIp.Ref)), $".{Region}.compute.amazonaws.com" }),
-        });
+        new CfnOutput(this, "HostPublicDns", new CfnOutputProps { Value = hostDns });
         new CfnOutput(this, "ArtifactsBucket", new CfnOutputProps { Value = artifacts.BucketName });
+        new CfnOutput(this, "SiteBucket", new CfnOutputProps { Value = site.BucketName });
+        new CfnOutput(this, "DistributionId", new CfnOutputProps { Value = distribution.DistributionId });
+        new CfnOutput(this, "SiteUrl", new CfnOutputProps { Value = $"https://{distribution.DistributionDomainName}" });
     }
 
     private Repository ImageRepository(string id, string name) => new(this, id, new RepositoryProps
