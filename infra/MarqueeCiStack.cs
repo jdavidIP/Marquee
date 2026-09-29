@@ -16,12 +16,14 @@ public class MarqueeCiStack : Stack
     private const string DeployRef = "repo:jdavidIP@90657602/Marquee@1311474951:ref:refs/heads/main";
     private const double MonthlyBudgetUsd = 30;
 
-    public MarqueeCiStack(Construct scope, string id, string budgetEmail, IStackProps props)
+    public const string DeployRoleName = "marquee-github-deploy";
+
+    public MarqueeCiStack(Construct scope, string id, string alertEmail, IStackProps props)
         : base(scope, id, props)
     {
         var subscribers = new[]
         {
-            new CfnBudget.SubscriberProperty { SubscriptionType = "EMAIL", Address = budgetEmail },
+            new CfnBudget.SubscriberProperty { SubscriptionType = "EMAIL", Address = alertEmail },
         };
 
         new CfnBudget(this, "MonthlyBudget", new CfnBudgetProps
@@ -55,7 +57,7 @@ public class MarqueeCiStack : Stack
         // to that resource's ARN, never a broad `*`.
         var deployRole = new Role(this, "DeployRole", new RoleProps
         {
-            RoleName = "marquee-github-deploy",
+            RoleName = DeployRoleName,
             Description = "Assumed by GitHub Actions on pushes to main to deploy Marquee.",
             AssumedBy = new WebIdentityPrincipal(github.OidcProviderArn, new Dictionary<string, object>
             {

@@ -147,7 +147,8 @@ Running it, signed in with `aws login` and with `aws configure set region ca-cen
 ```
 eval "$(aws configure export-credentials --format env)"   # per shell; see below
 cdk bootstrap aws://<account-id>/ca-central-1              # once per account and region
-cdk deploy MarqueeCiStack -c budgetEmail=<address>
+cdk deploy MarqueeCiStack -c alertEmail=<address>
+cdk deploy MarqueeStack -c alertEmail=<address>
 ```
 
 The CDK CLI cannot yet read the `login_session` credentials `aws login` stores, so the first line hands
@@ -157,25 +158,43 @@ Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk di
 `--require-approval never`.
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
-committed; synth refuses to run without `budgetEmail`. The stack outputs `DeployRoleArn` for the
-workflows.
+committed; synth refuses to run without `alertEmail`, which receives both the budget and the
+CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
 
 **`MarqueeStack`** — everything the app runs on:
 - **VPC**: 1 AZ, public subnets only, **no NAT gateway** (~$32/mo idle for nothing we need).
-- **EC2**: Amazon Linux 2023, `t3.small` (2 vCPU / 2 GB — five containers do not fit in 1 GB).
+- **EC2**: Amazon Linux 2023, `t3.small` (2 vCPU / 2 GB — five containers do not fit in 1 GB), in
+  `ca-central-1a`.
+  - **CPU credits `standard`**, not the T3 default `unlimited`: sustained load above the 20% baseline
+    throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
-    the instance on the next deploy.
+    the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
-  - User data installs Docker and the compose plugin, mounts the data volume.
-  - **Elastic IP**, so the public DNS name CloudFront uses as its origin survives stop/start.
+  - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
+    than OOM-killing a container.
+  - User data (first boot only — editing it later does not re-run it on the existing host): mounts the
+    data volume, installs Docker from the AL2023 repositories and the compose plugin as a pinned,
+    checksum-verified release binary, and writes `/etc/docker/daemon.json` so every container logs to
+    CloudWatch through the `awslogs` driver. Docker is set to refuse to start without the data volume
+    mounted.
+  - **Elastic IP**, so the public DNS name CloudFront uses as its origin survives stop/start. The stack
+    outputs it as `HostPublicDns`.
   - Instance role: `AmazonSSMManagedInstanceCore`, ECR pull, `ssm:GetParametersByPath` on
-    `/marquee/prod/*`, CloudWatch Logs write.
-- **Data volume**: a separate encrypted gp3 EBS volume for the Docker volumes (Postgres, Redis AOF,
-  RabbitMQ), `RemovalPolicy.RETAIN`, so replacing the instance never destroys data. **Daily snapshots**
-  via Data Lifecycle Manager (or AWS Backup), 7-day retention.
+    `/marquee/prod/*`, CloudWatch Logs write, read on the artifacts bucket.
+- **Data volume**: a separate encrypted 10 GB gp3 EBS volume mounted at `/var/lib/docker/volumes`
+  (Postgres, Redis AOF, RabbitMQ, and Docker's own index of the volumes), `RemovalPolicy.RETAIN`, so
+  replacing the instance never destroys data. **Daily snapshots** via Data Lifecycle Manager at 08:00 UTC
+  (03:00–04:00 in Toronto, outside the Premiere window), 7 kept. Snapshots are crash-consistent, which
+  Postgres recovers from like a power cut.
 - **Security group**: inbound TCP 80 **only** from the managed prefix list
-  `com.amazonaws.global.cloudfront.origin-facing`. Nothing else inbound.
-- **ECR**: `marquee-api` and `marquee-worker`, lifecycle rule keeping the last ~10 images.
+  `com.amazonaws.global.cloudfront.origin-facing`. Nothing else inbound. It is the host's only group,
+  because the prefix list counts as ~55 rules against a group's rule quota.
+- **ECR**: `marquee-api` and `marquee-worker`, scan on push, lifecycle rule keeping the last 10 images.
+- **Artifacts bucket**: private, TLS-only, objects expire after 30 days. Holds each deploy's
+  `docker-compose.prod.yml` and `deploy.sh`.
+- **Deploy role grants** (on `marquee-github-deploy`): push to the two ECR repos, put objects in the
+  artifacts bucket, `ssm:SendCommand` on this instance with `AWS-RunShellScript`. `MarqueeStack` is
+  deployed by hand, never by that role, so the role still cannot change its own permissions.
 - **S3 site bucket**: private, reached only through CloudFront **Origin Access Control**.
 - **CloudFront distribution**:
   - Default behaviour → S3. SPA deep links (`/library`, `/u/…`) are handled by a small **CloudFront
@@ -187,14 +206,71 @@ workflows.
     SignalR's 15 s keep-alive keeps the connection under the idle timeouts — verify under load.
   - `index.html` served `no-cache`; hashed assets long-cached.
   - Standard logging **off** (it would record the SignalR `access_token` query parameter).
-- **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/` — JWT key,
-  Postgres and RabbitMQ passwords, TMDB key, admin seed password. Created by hand once (CDK should not
-  hold secret values), referenced by name.
-- **CloudWatch**: log groups per service with 14-day retention; alarm + auto-recover on EC2 system
-  status check failure; CPU alarm.
+- **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
+  hand once (CDK should not hold secret values), named after the `.env` key each becomes. **Use only
+  letters and digits in every value** (`openssl rand -hex 24` for the random ones): the manual deploy
+  below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
+  there, so a value containing either would be silently corrupted.
+  - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
+  - `Jwt__Key` — random, **at least 32 characters** (the API checks this at startup and refuses to
+    start below it).
+  - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
+  - `Admin__Password` — at least 10 characters with a digit (the app's own password policy); this is
+    the seeded admin's sign-in password, so keep it somewhere you can find it again.
+- **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
+  Two alarms, both emailing `alertEmail` through an SNS topic (confirm the subscription email once):
+  - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
+    id, Elastic IP and volumes.
+  - CPU credit balance below 20 → about to be throttled to baseline. Under `standard` credits this is
+    the meaningful CPU signal; utilization cannot show it, because it drops once throttled. T3
+    `standard` launches with no credits, so it fires for roughly the first hour after the instance is
+    created.
 - **AWS Budgets**: monthly budget with email alerts at 50/80/100%. Set up **first**, before anything
   else is deployed.
 - Optional: `cdk-nag` (AwsSolutions pack) in synth, with each suppression justified in code.
+
+### 1b-ops. Manual deploy, until 1c exists
+
+`MarqueeStack`'s "Done when" checks need something running on the host before the pipeline in 1c is
+built. Until then, deploy by hand, from `infra/` with the CLI signed in:
+
+```
+aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
+```
+
+gives `HostInstanceId`, `HostPublicDns` and `ArtifactsBucket`. Then, from the repository root:
+
+```
+TAG=$(git rev-parse --short HEAD)
+REGISTRY=<account-id>.dkr.ecr.ca-central-1.amazonaws.com   # aws sts get-caller-identity for the id
+aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
+docker build --target api -t $REGISTRY/marquee-api:$TAG . && docker push $REGISTRY/marquee-api:$TAG
+docker build --target worker -t $REGISTRY/marquee-worker:$TAG . && docker push $REGISTRY/marquee-worker:$TAG
+aws s3 cp docker-compose.prod.yml s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml
+```
+
+Then on the host — no SSH, everything through SSM Run Command (`AWS-RunShellScript`) or, for a shell,
+`aws ssm start-session --target <HostInstanceId>` (needs the Session Manager plugin locally):
+
+```bash
+TAG=<the tag from above>
+REGISTRY=<the same registry host>
+mkdir -p /opt/marquee && cd /opt/marquee
+aws s3 cp s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml .
+umask 077
+aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'Parameters[].[Name,Value]' \
+  --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
+echo "REGISTRY=$REGISTRY" >> .env
+echo "IMAGE_TAG=$TAG" >> .env
+echo "PUBLIC_BASE_URL=<the site's public URL; a placeholder until #76>" >> .env
+chmod 600 .env
+aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d --wait
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/health/ready
+```
+
+The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
@@ -214,11 +290,31 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
 
 ### 1d. Verification
 
-- Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront.
-- Reboot the instance: counters, pending messages and the schedule survive.
-- Restore a snapshot of the data volume into a scratch volume once, to prove backups actually restore.
-- Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
-- Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
+- [x] **2026-09-28** — `docker compose -f docker-compose.prod.yml up -d --wait` on the host: all five
+  containers reach `healthy`/running, `/health/ready` returns 200, and the worker's MassTransit
+  consumers register against RabbitMQ with no errors.
+- [x] **2026-09-28** — Reboot survival: wrote a marker row into Postgres, `aws ec2 reboot-instances`,
+  confirmed via `uptime -s` that the host actually rebooted (not just SSM reconnecting), then confirmed
+  the data volume and swap remounted from `/etc/fstab`, Docker and all five containers restarted on
+  their own (`restart: unless-stopped` survives a daemon restart), `/health/ready` returned 200 again,
+  and the marker row was still there with its original timestamp.
+- [x] **2026-09-28** — Nothing reachable inbound except from CloudFront: direct TCP connection attempts
+  to the host's public DNS name on ports 80, 22, 5432, 6379 and 15672, run from outside AWS, all got no
+  response.
+- [x] **2026-09-29** — Snapshot restore: created a scratch gp3 volume from the first DLM snapshot of
+  the data volume, attached it to the host and mounted it read-only (`ro,nouuid,norecovery`, since the
+  XFS clone shares the live volume's UUID). All three named volumes were present, and `pg_controldata`
+  run on the restored Postgres directory read it cleanly and returned the same database system
+  identifier as the live cluster. Its cluster state was `in production`, which is expected for a
+  crash-consistent snapshot, and Postgres replays WAL for that on start. Unmounted, detached and
+  deleted the scratch volume afterwards.
+- [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Waits on #76
+  — there is no CloudFront distribution yet, so this was exercised against the host directly instead.
+- [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
+  Waits on #76.
+- [ ] Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
+  `ForwardedHeaders__Enabled` is only safe once the security group admits nothing but CloudFront (#76);
+  unverified until then.
 
 ---
 
