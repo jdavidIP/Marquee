@@ -248,6 +248,20 @@ public class MarqueeStack : Stack
                 FormatArn(new ArnComponents { Service = "ssm", Account = "", Resource = "document", ResourceName = "AWS-RunShellScript" }),
             },
         }));
+        // Polling the deploy command for its result. The action supports no resource-level scoping, so
+        // it is `*`; it only reads command output, and SendCommand above stays scoped to this instance.
+        deployRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "ssm:GetCommandInvocation" },
+            Resources = new[] { "*" },
+        }));
+        // The pipeline reads this stack's outputs (instance, buckets, distribution, site URL) live, so a
+        // replaced resource never leaves a stale id in the repository's settings.
+        deployRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "cloudformation:DescribeStacks" },
+            Resources = new[] { StackId },
+        }));
 
         new CfnOutput(this, "HostInstanceId", new CfnOutputProps { Value = host.InstanceId });
         new CfnOutput(this, "HostPublicDns", new CfnOutputProps { Value = hostDns });
