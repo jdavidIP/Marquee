@@ -44,6 +44,29 @@ jobs:
           name: dotnet-test-results
           path: tests/**/TestResults/*.trx
 
+  # Catches a broken stack before merge; `cdk deploy` stays a deliberate manual step. Needs no AWS
+  # access: the account comes from CDK_DEFAULT_ACCOUNT (unset here) and nothing in the stacks is
+  # looked up. alertEmail only has to be present — nothing is deployed with it.
+  cdk:
+    name: CDK synth
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Synth
+        run: npx --yes aws-cdk@2.1143.0 synth --quiet -c alertEmail=ci@example.invalid
+
   angular:
     name: Angular build
     runs-on: ubuntu-latest
