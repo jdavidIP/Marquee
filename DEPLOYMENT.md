@@ -296,8 +296,13 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
 - [x] **2026-09-28** — Nothing reachable inbound except from CloudFront: direct TCP connection attempts
   to the host's public DNS name on ports 80, 22, 5432, 6379 and 15672, run from outside AWS, all got no
   response.
-- [ ] Restore a snapshot of the data volume into a scratch volume once, to prove backups actually
-  restore. Daily snapshot runs 08:00 UTC; first one due 2026-09-29.
+- [x] **2026-09-29** — Snapshot restore: created a scratch gp3 volume from the first DLM snapshot of
+  the data volume, attached it to the host and mounted it read-only (`ro,nouuid,norecovery`, since the
+  XFS clone shares the live volume's UUID). All three named volumes were present, and `pg_controldata`
+  run on the restored Postgres directory read it cleanly and returned the same database system
+  identifier as the live cluster. Its cluster state was `in production`, which is expected for a
+  crash-consistent snapshot, and Postgres replays WAL for that on start. Unmounted, detached and
+  deleted the scratch volume afterwards.
 - [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Waits on #76
   — there is no CloudFront distribution yet, so this was exercised against the host directly instead.
 - [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
