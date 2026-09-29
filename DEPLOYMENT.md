@@ -201,8 +201,10 @@ and another created — a sign the wrong value was passed.
   `docker-compose.prod.yml` and `deploy.sh`.
 - **Deploy role grants** (on `marquee-github-deploy`): push to the two ECR repos, put objects in the
   artifacts bucket, `ssm:SendCommand` on this instance with `AWS-RunShellScript`, read/write/delete on
-  the site bucket, `cloudfront:CreateInvalidation` on this distribution. `MarqueeStack` is deployed by
-  hand, never by that role, so the role still cannot change its own permissions.
+  the site bucket, `cloudfront:CreateInvalidation` on this distribution, `cloudformation:DescribeStacks`
+  on this stack (the pipeline reads the outputs live), and `ssm:GetCommandInvocation` on `*` (to poll
+  the deploy command; the action supports no resource scoping, and only reads output). `MarqueeStack`
+  is deployed by hand, never by that role, so the role still cannot change its own permissions.
 - **S3 site bucket**: private, TLS-only, reached only through CloudFront **Origin Access Control**.
 - **CloudFront distribution** on the default `*.cloudfront.net` certificate, price class 100:
   - Default behaviour → S3, `CachingOptimized`, which honours each object's `Cache-Control` as set at
@@ -252,10 +254,10 @@ and another created — a sign the wrong value was passed.
   else is deployed.
 - Optional: `cdk-nag` (AwsSolutions pack) in synth, with each suppression justified in code.
 
-### 1b-ops. Manual deploy, until 1c exists
+### 1b-ops. Manual deploy (fallback)
 
-`MarqueeStack`'s "Done when" checks need something running on the host before the pipeline in 1c is
-built. Until then, deploy by hand, from `infra/` with the CLI signed in:
+The pipeline in 1c is the normal path. This is what it automates, for when GitHub Actions is
+unavailable or a step needs doing by hand. From `infra/` with the CLI signed in:
 
 ```
 aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
@@ -322,24 +324,47 @@ distribution change takes a few minutes to propagate. Do it when nobody is on:
 
 1. `aws ssm put-parameter --name /marquee/prod/OriginVerify__Secret --type String --overwrite --value "$(openssl rand -hex 32)"`
 2. `cdk deploy MarqueeStack` — CloudFront starts sending the new value.
-3. On the host, rewrite `.env` and `docker compose up -d --wait` (the host block above, same `TAG`).
+3. Redeploy the running tag so the host rewrites `.env` from SSM: `gh workflow run deploy.yml -f
+   tag=<running tag>` (the host's `/opt/marquee/last-healthy-tag`).
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
-A `deploy.yml` workflow on push to `main`, running after CI passes:
+`.github/workflows/deploy.yml` runs when **CI succeeds on a push to `main`**, and deploys the commit CI
+tested (`workflow_run`, not its own `push` trigger — CI cancels superseded runs, which is right for
+tests but must never interrupt a deploy). Deploys share a concurrency group and **queue, never cancel**.
 
-1. Assume the deploy role via **OIDC**.
-2. Build and push `marquee-api` / `marquee-worker` images to ECR, tagged with the commit SHA.
-3. Upload `docker-compose.prod.yml` and `deploy.sh` to an artifacts bucket under that SHA.
-4. **SSM Run Command** on the instance: fetch the artifacts, write the env file from Parameter Store,
-   `docker compose pull && docker compose up -d --wait`, which fails if the API's healthcheck never goes
-   healthy — the run fails with it. (Not `curl localhost/health/ready` from the host: the origin check
-   refuses it, see 1b-ops.) No SSH anywhere in the path.
-5. Build Angular with the production configuration → `aws s3 sync` → CloudFront invalidation of
-   `/index.html`.
+**Backend job:**
 
-Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first; CI additionally runs
-`cdk synth` on PRs so a broken stack is caught before merge. Automating `cdk deploy` is a later step.
+1. Assume the deploy role via **OIDC** — the repository holds no AWS credentials, only the role ARN
+   as the `AWS_DEPLOY_ROLE_ARN` variable. The role trusts `main` only.
+2. Read `MarqueeStack`'s outputs live (`describe-stacks`), so no resource id is copied into settings.
+3. Build and push `marquee-api` / `marquee-worker` to ECR, tagged with the 7-character commit SHA.
+4. Upload `docker-compose.prod.yml` and `deploy.sh` to the artifacts bucket under that tag.
+5. **SSM Run Command** runs `deploy.sh` on the host: fetch the compose file, write `.env` from
+   Parameter Store (via a temp file, mode 600), pull the api/worker images, `docker compose up -d
+   --wait --wait-timeout 240`. That exits non-zero if the API's in-container healthcheck never passes
+   — not `curl localhost/health/ready` from the host, which the origin check refuses (1b-ops). On
+   success it records the tag in `/opt/marquee/last-healthy-tag`; on failure it prints that tag, the
+   container states and the API's last log lines, and exits 1. The workflow polls the command
+   (`ssm:GetCommandInvocation`), prints its output, and fails with it. No SSH anywhere in the path.
+
+**Frontend job**, only after a healthy backend: `ng build --configuration production` → `aws s3
+sync` with the cache headers from 1b-ops → CloudFront invalidation of `/index.html`. A failed backend
+therefore never ships a frontend ahead of its API.
+
+**Rollback** is the same workflow run by hand with an existing tag — backend only, no build:
+
+```
+gh workflow run deploy.yml -f tag=<last healthy tag>
+```
+
+The tag is validated against `[A-Za-z0-9._-]` before it reaches the host's shell. The frontend is left
+alone: a backend failure stops before it, so it still matches the last healthy tag. Single instance,
+so a failed deploy means downtime until the rollback finishes — accepted for phase 1.
+
+Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand; CI runs `cdk synth` on every
+PR (`ci.yml`, no AWS access) so a stack that cannot even produce a template is caught before merge.
+Automating `cdk deploy` is a later step.
 
 ### 1d. Verification
 
@@ -376,6 +401,14 @@ Infrastructure changes go through `cdk diff` / `cdk deploy` run by hand at first
     including when the viewer sends its own `X-Origin-Verify` (overwritten by CloudFront). `/health`
     is not routed to the API at all: through CloudFront it is just another SPA path.
   - `/u/bob.js` and `/u/x.json` — usernames ending in a static-file extension — also serve the SPA.
+- [x] **2026-09-29** — `deploy.sh` (#77) run for real on the host through SSM, before merge, with the
+  tag already running (`8df159c`): artifacts fetched, `.env` rewritten (still 600/root, no `.env.new`
+  left), images pulled, `up -d --wait` healthy, `last-healthy-tag` written. A no-op as intended — no
+  container was recreated.
+- [ ] Pipeline (#77), after merge: a merge to `main` deploys backend and frontend with no manual step.
+- [ ] Pipeline (#77): a deliberately unhealthy image fails the workflow at the health check, and
+  redeploying the recorded last healthy tag restores service.
+- [ ] Pipeline (#77): the repository holds no AWS credentials.
 - [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Unblocked by
   #76; so far exercised against the host directly.
 - [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
