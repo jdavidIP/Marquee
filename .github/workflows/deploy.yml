@@ -1,0 +1,201 @@
+# Deploys to the host and the CDN (DEPLOYMENT.md §1c). Runs when CI passes on a push to main — the
+# commit CI tested is the commit deployed — or by hand to redeploy an existing tag, which is also the
+# rollback: `gh workflow run deploy.yml -f tag=<last healthy tag>`.
+#
+# Deploys queue rather than cancel (an interrupted deploy can leave the host between versions).
+# The backend goes first and the frontend only follows a healthy one, so the site never runs ahead of
+# its API. If the backend fails, the frontend is untouched and still matches the last healthy tag.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to (re)deploy; its images and artifacts must already exist. Backend only.
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ca-central-1
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    # `push` only: a fork's PR can also report head_branch "main".
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      build: ${{ steps.tag.outputs.build }}
+      site-bucket: ${{ steps.stack.outputs.site-bucket }}
+      distribution-id: ${{ steps.stack.outputs.distribution-id }}
+    steps:
+      - name: Work out the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            # Goes into a shell command on the host, so only plain tag characters.
+            [[ "$INPUT_TAG" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || { echo "invalid tag" >&2; exit 1; }
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${RUN_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.build == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          # Repository variable, so the account id stays out of the repository.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Read live from the stack rather than copied into repository settings, so a replaced resource
+      # never leaves a stale id behind.
+      - name: Read the stack's outputs
+        id: stack
+        run: |
+          out() { aws cloudformation describe-stacks --stack-name MarqueeStack \
+            --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          {
+            echo "instance-id=$(out HostInstanceId)"
+            echo "artifacts-bucket=$(out ArtifactsBucket)"
+            echo "site-bucket=$(out SiteBucket)"
+            echo "distribution-id=$(out DistributionId)"
+            echo "site-url=$(out SiteUrl)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the images
+        if: steps.tag.outputs.build == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for target in api worker; do
+            docker build --target "$target" -t "$REGISTRY/marquee-$target:$TAG" .
+            docker push "$REGISTRY/marquee-$target:$TAG"
+          done
+
+      - name: Upload the deploy artifacts
+        if: steps.tag.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUCKET: ${{ steps.stack.outputs.artifacts-bucket }}
+        run: |
+          aws s3 cp docker-compose.prod.yml "s3://$BUCKET/$TAG/docker-compose.prod.yml"
+          aws s3 cp deploy.sh "s3://$BUCKET/$TAG/deploy.sh"
+
+      - name: Deploy on the host (SSM Run Command)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          BUCKET: ${{ steps.stack.outputs.artifacts-bucket }}
+          INSTANCE: ${{ steps.stack.outputs.instance-id }}
+          SITE_URL: ${{ steps.stack.outputs.site-url }}
+        run: |
+          jq -n --arg tag "$TAG" --arg registry "$REGISTRY" --arg bucket "$BUCKET" --arg url "$SITE_URL" '{
+            commands: [
+              "aws s3 cp s3://\($bucket)/\($tag)/deploy.sh /opt/marquee/deploy.sh --only-show-errors",
+              "bash /opt/marquee/deploy.sh \($tag) \($registry) \($bucket) \($url)"
+            ],
+            executionTimeout: ["900"]
+          }' > params.json
+
+          id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
+            --comment "deploy $TAG" --parameters file://params.json \
+            --query Command.CommandId --output text)
+          echo "command $id"
+
+          # A just-sent command is briefly unknown to get-command-invocation; that one error means
+          # "not yet". Any other error (a missing permission, say) fails now rather than looking like
+          # twenty minutes of Pending.
+          status=Pending
+          for _ in $(seq 1 120); do
+            if result=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+                --query Status --output text 2>&1); then
+              status=$result
+              case "$status" in Success|Failed|Cancelled|TimedOut) break ;; esac
+            elif ! grep -q InvocationDoesNotExist <<< "$result"; then
+              echo "$result" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          # The host's output is not ours to trust as workflow commands: a line starting with `::`
+          # would otherwise be obeyed by the runner.
+          token=$(openssl rand -hex 16)
+          echo "::stop-commands::$token"
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+            --query StandardOutputContent --output text
+          echo "--- stderr ---"
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+            --query StandardErrorContent --output text
+          echo "::$token::"
+          [ "$status" = Success ] || { echo "deploy of $TAG ended $status" >&2; exit 1; }
+
+  frontend:
+    name: Frontend
+    needs: backend
+    runs-on: ubuntu-latest
+    if: needs.backend.outputs.build == 'true'
+    defaults:
+      run:
+        working-directory: src/Marquee.Web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: src/Marquee.Web/package-lock.json
+
+      - run: npm ci
+
+      - run: npx ng build --configuration production
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Everything but index.html and favicon.ico is content-hashed, so it can be cached for good;
+      # index.html must be re-fetched so a new build is picked up at once.
+      - name: Publish to the site bucket
+        env:
+          BUCKET: ${{ needs.backend.outputs.site-bucket }}
+          DISTRIBUTION: ${{ needs.backend.outputs.distribution-id }}
+        run: |
+          cd dist/marquee-web/browser
+          aws s3 sync . "s3://$BUCKET" --delete --exclude index.html --exclude favicon.ico \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp index.html "s3://$BUCKET/index.html" --cache-control "no-cache"
+          aws s3 cp favicon.ico "s3://$BUCKET/favicon.ico" --cache-control "public,max-age=86400"
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/index.html"
