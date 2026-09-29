@@ -65,7 +65,8 @@ if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
 if (builder.Environment.IsProduction())
     builder.Configuration.RequireKeys(
         "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
-        "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl");
+        "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl",
+        OriginVerification.SecretKey);
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
@@ -141,6 +142,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+// First: a request that did not come through Marquee's CloudFront is refused before anything trusts it.
+app.UseMarqueeOriginVerification(app.Configuration);
 
 // Before anything that reads the client IP (the rate limiter), so it sees the real one behind CloudFront.
 app.UseMarqueeForwardedHeaders(app.Configuration);

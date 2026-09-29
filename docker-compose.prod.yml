@@ -29,7 +29,8 @@ x-app: &app
     PasswordReset__BaseUrl: ${PUBLIC_BASE_URL:?}
     # No trace collector runs in this stack; exporting would retry against nothing.
     Tracing__Enabled: "false"
-    # The API sits behind CloudFront, and the EC2 security group admits only CloudFront, so the
+    # The API sits behind CloudFront: the EC2 security group admits only CloudFront, and the API refuses
+    # requests without our distribution's secret origin header (OriginVerify__Secret, from .env), so the
     # X-Forwarded-For it appends is trustworthy. Never enable this where the API is directly reachable.
     ForwardedHeaders__Enabled: "true"
 
