@@ -13,8 +13,8 @@ using Constructs;
 
 namespace Marquee.Cdk;
 
-// The single app host (DEPLOYMENT.md Â§1b): one EC2 instance running docker-compose.prod.yml, with its
-// data on a separate retained volume. Single instance by design â€” see "Constraints the app imposes".
+// The single app host (DEPLOYMENT.md §1b): one EC2 instance running docker-compose.prod.yml, with its
+// data on a separate retained volume. Single instance by design — see "Constraints the app imposes".
 public class MarqueeStack : Stack
 {
     private const string Az = "ca-central-1a";
@@ -24,7 +24,7 @@ public class MarqueeStack : Stack
     // /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64.
     private const string HostAmi = "ami-0c1364958a673e3af";
 
-    // com.amazonaws.global.cloudfront.origin-facing in ca-central-1 â€” hardcoded rather than looked up so
+    // com.amazonaws.global.cloudfront.origin-facing in ca-central-1 — hardcoded rather than looked up so
     // synth needs no AWS access (CI synthesizes without credentials).
     private const string CloudFrontOriginFacing = "pl-38a64351";
 
@@ -51,7 +51,7 @@ public class MarqueeStack : Stack
         });
 
         // Its own group: the prefix list counts as one rule per entry (~55) against the group's rule quota.
-        // Nothing else is admitted inbound â€” the forwarded-header trust in docker-compose.prod.yml relies on it.
+        // Nothing else is admitted inbound — the forwarded-header trust in docker-compose.prod.yml relies on it.
         var hostSg = new SecurityGroup(this, "HostSg", new SecurityGroupProps
         {
             Vpc = vpc,
@@ -88,7 +88,7 @@ public class MarqueeStack : Stack
         logs.GrantWrite(hostRole);
         artifacts.GrantRead(hostRole);
         // The secrets are SecureStrings under the AWS-managed aws/ssm key, whose key policy already lets
-        // callers in the account decrypt through SSM â€” no kms:Decrypt grant needed.
+        // callers in the account decrypt through SSM — no kms:Decrypt grant needed.
         hostRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
         {
             Actions = new[] { "ssm:GetParametersByPath" },
@@ -141,7 +141,7 @@ public class MarqueeStack : Stack
             Device = "/dev/sdf",
         });
 
-        // Keeps the public DNS name â€” CloudFront's origin â€” stable across stop/start.
+        // Keeps the public DNS name — CloudFront's origin — stable across stop/start.
         var hostIp = new CfnEIP(this, "HostIp", new CfnEIPProps { Domain = "vpc", InstanceId = host.InstanceId });
 
         DailySnapshots();
@@ -195,8 +195,8 @@ public class MarqueeStack : Stack
         userData.AddCommands(
             "set -euo pipefail",
 
-            // Data volume at Docker's volume directory, so Postgres, Redis and RabbitMQ data â€” and Docker's
-            // own index of the volumes â€” survive the instance being replaced. The attachment is created
+            // Data volume at Docker's volume directory, so Postgres, Redis and RabbitMQ data — and Docker's
+            // own index of the volumes — survive the instance being replaced. The attachment is created
             // after the instance, so wait for it; format only a blank volume, never one holding data.
             $"DEV={device}",
             "for i in $(seq 1 60); do [ -e \"$DEV\" ] && break; sleep 5; done",
@@ -260,7 +260,7 @@ public class MarqueeStack : Stack
                     new CfnLifecyclePolicy.ScheduleProperty
                     {
                         Name = "daily",
-                        // 08:00 UTC is 03:00â€“04:00 in Toronto, outside the 07:00â€“23:00 Premiere window.
+                        // 08:00 UTC is 03:00–04:00 in Toronto, outside the 07:00–23:00 Premiere window.
                         CreateRule = new CfnLifecyclePolicy.CreateRuleProperty
                         {
                             Interval = 24,

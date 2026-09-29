@@ -207,7 +207,10 @@ CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows.
   - `index.html` served `no-cache`; hashed assets long-cached.
   - Standard logging **off** (it would record the SignalR `access_token` query parameter).
 - **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
-  hand once (CDK should not hold secret values), named after the `.env` key each becomes:
+  hand once (CDK should not hold secret values), named after the `.env` key each becomes. **Use only
+  letters and digits in every value** (`openssl rand -hex 24` for the random ones): the manual deploy
+  below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
+  there, so a value containing either would be silently corrupted.
   - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
   - `Jwt__Key` — random, **at least 32 characters** (the API checks this at startup and refuses to
     start below it).
@@ -250,6 +253,8 @@ Then on the host — no SSH, everything through SSM Run Command (`AWS-RunShellSc
 `aws ssm start-session --target <HostInstanceId>` (needs the Session Manager plugin locally):
 
 ```bash
+TAG=<the tag from above>
+REGISTRY=<the same registry host>
 mkdir -p /opt/marquee && cd /opt/marquee
 aws s3 cp s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml .
 umask 077
