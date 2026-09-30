@@ -17,6 +17,7 @@ Iteration 2's before/after numbers live in
 | `queue-check.mjs` | Node 22+ (no deps) | **Iteration 4.** Asserts the queue acceptance criteria: the worker fans out off the request path, a killed-and-restarted worker loses and duplicates nothing, a replayed event changes nothing, and a poisoned message is dead-lettered without blocking the queue. Exits non-zero on failure. |
 | `security-check.mjs` | Node 22+ (no deps) | **Iteration 5.** Asserts the security and social acceptance criteria: an abusive script is throttled while a normal user beside it is not, a private profile shows a stranger only username and bio while staying discoverable in search, friend intersection is per viewer and never broadcast, and admin endpoints return 403/401. With `OPEN_PREMIERE=1` it also drives a Premiere open and checks the anonymous fan-out. Exits non-zero on failure. |
 | `premiere-rush.js` | [k6](https://k6.io) | **Iteration 6.** The realistic Premiere: a burst of anonymous participants arriving at once, then a decaying tail. Asserts the acceptance criteria that exactly one clap reports `opened=true` and that no clap ever 5xxes. |
+| `capacity.js` | [k6](https://k6.io) | **Phase 1 (#78).** How much the *deployed* box takes, through CloudFront: `SCENARIO=connections` ramps held-open SignalR WebSockets, `SCENARIO=reads` ramps page-load traffic. Measures, does not assert. Against production only inside a deliberate rate-limiting-off window — see DEPLOYMENT.md §1d. |
 
 ## Prerequisites
 
