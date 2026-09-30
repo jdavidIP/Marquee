@@ -427,13 +427,53 @@ Automating `cdk deploy` is a later step.
 - [x] **2026-09-29** — Pipeline (#77): the repository holds no AWS credentials. No access-key-shaped
   string in any commit's tree, no secret-key assignments, no GitHub repository secrets; the only
   setting is the role ARN variable.
-- [ ] Clap a Premiere open from two browsers; watch SignalR counts move through CloudFront. Unblocked by
-  #76; so far exercised against the host directly.
-- [ ] Run the k6 scripts against the CloudFront URL and check them against the capacity estimate below.
-  Unblocked by #76.
-- [ ] Confirm the rate limiter sees distinct client IPs (log line per request carries the IP).
-  `ForwardedHeaders__Enabled` is safe now that the origin header check is live (#76); still
-  unverified behaviourally.
+- [x] **2026-09-29** — Phase 1 gate (#78): a restored backup **starts**. The data-volume snapshot
+  restored into a scratch volume, mounted read-write on the host, and a throwaway `postgres:16`
+  (no network) started on it: it reported the unclean shutdown, replayed WAL in milliseconds and
+  accepted connections. Its contents matched the live database row for row (10 Premieres, 1 user,
+  10 movies, same last scheduled Premiere). Container, mount and volume removed afterwards.
+- [x] **2026-09-29** — Phase 1 gate (#78): the rate limiter sees distinct client IPs, checked by
+  behaviour rather than by logging IPs (an IP is personal data, and nothing else needs it logged).
+  One IP exhausted `SessionIssue` (10 per 5 minutes: ten 200s, then 429s at 23:55:30 UTC); a phone on
+  mobile data — another IP, same CloudFront — was issued a session at 23:57:25; the first IP was still
+  refused at 23:58:04. **Read the result from the request log** (`/marquee/prod`, filter
+  `sessions/anonymous`), not from the page: the SPA deliberately hides a refused session and renders
+  normally without one, and it skips the call entirely when it already holds a session.
+- [x] **2026-09-29** — Phase 1 gate (#78): the schedule runs in Toronto time. The day's four
+  Premieres fell at 09:25, 14:56, 18:00 and 20:51 EDT — inside 07:00–23:00, gaps 5h31/3h04/2h51, all
+  over the 2-hour minimum — and the 20:51 slot (`00:51Z` the next UTC day) is listed under the local
+  day.
+- [x] **2026-09-29** — Phase 1 gate (#78): k6 against the CloudFront URL (`capacity.js`), inside a
+  deliberate window with `RateLimiting__Enabled=false` set in SSM and redeployed — every k6 request
+  comes from one IP, so with limits on it would have measured the limiter. The parameter was deleted
+  and redeployed afterwards, and 429s confirmed back (ten 200s, then 429). Results replace the estimate
+  in "Measured capacity" below.
+- [x] **2026-09-29** — Phase 1 gate (#78): budget. Free plan credits **$159.58** remaining, plan ends
+  **2027-03-24** (`aws freetier get-account-plan-state`). Cost Explorer cannot forecast yet (too little
+  history); at the running rate — see "Rough monthly cost" — the credits last ~6.4 months, just past
+  the plan's end, so phase 1 stays inside the credits.
+- [x] **2026-09-30** — Phase 1 gate (#78): a real Premiere (20:51 EDT, threshold 48) clapped from
+  several browsers through CloudFront — an admin browser, a scripted anonymous browser and a tester's
+  phone. Counts moved live between them (21 on every screen without a refresh), over WebSockets: the
+  scripted browser's only hub HTTP request was the negotiate, no long-polling or SSE.
+- [x] **2026-09-30** — Phase 1 gate (#78): reboot mid-Premiere. **Reboot 1**, while Active at 21 of
+  48: `uptime -s` confirmed a real reboot (00:53:39 UTC), the site was back in ~40 s, every container
+  restarted on its own, and the Premiere came back Active with the same 21 claps, 3 contributors,
+  `ExpiresAt` and day schedule (Redis AOF + Postgres). **Reboot 2**, with a fan-out message waiting:
+  the worker was stopped, the Premiere clapped open (48 claps; `marquee-premiere-fanout` then held 1
+  message, 0 consumers; 0 library entries), and the host rebooted (00:56:53 UTC). The message was
+  still there afterwards — the worker, stopped by hand, stays stopped across a reboot, which is what
+  made this checkable — and starting the worker delivered it: queue at 0, 1 library entry, the film in
+  the admin's library.
+  - Found along the way, filed as follow-ups rather than fixed here: a page reconnecting at the moment
+    the reveal is broadcast never learns the Premiere opened (#95) — the reveal waits for the
+    worker's fan-out (`PremiereRevealReady`), so it can arrive well after the open; the clap pips
+    overflow the card at a large cap (#96 — one confirmed user makes the cap the whole threshold,
+    48 here); and the Premiere card has no phone layout (#97).
+  - After a reboot the API starts before RabbitMQ is ready (compose `depends_on` applies to `up`, not
+    to Docker restarting containers at boot) and logs `BrokerUnreachable` for a few seconds until
+    MassTransit's retry connects. Harmless — the outbox holds anything published meanwhile — but it
+    looks alarming in the log.
 
 ---
 
@@ -519,13 +559,31 @@ Decisions to make first:
 Phase 2 adds effectively nothing at this user count (Cognito's free MAU allowance). Phase 3's RDS
 instance is the next real cost step.
 
-## Expected capacity (phase 1 instance)
+## Measured capacity (phase 1 instance)
 
-- The Redis clap counter is not the bottleneck (tens of thousands of ops/sec on modest hardware).
-- The real limit is CPU/RAM contention between the colocated services plus held-open SignalR
-  connections. Estimate for a 2 vCPU / 2 GB box: a few hundred concurrent clappers per Premiere, low
-  thousands of idle connections. The k6 run in 1d replaces this estimate with a measurement.
-- If it strains: a bigger instance first, splitting services apart last.
+Measured 2026-09-29 with `tests/Marquee.LoadTests/capacity.js` from one machine through CloudFront,
+against the `t3.small` running all five containers, host sampled every ~10 s (`docker stats`,
+`/proc/loadavg`, `/proc/meminfo`).
+
+| Load | Result | Host at peak |
+|---|---|---|
+| **1,000 held-open SignalR WebSockets**, ramped over 3 min, held 2 min | All 1,000 connected and stayed up (none dropped early); handshake p95 259 ms, negotiate p95 57 ms | API memory 118 → 220 MB (**~100 KB per connection**); host free memory 1,086 → 933 MB, no swap; load average ≤ 0.6 |
+| **Page-load reads** (`/today` + `/active`), ramped to 200 page loads/s = **~400 req/s** | 54,250 requests, **0 failed**; p50 33 ms, p95 56 ms, p99 100 ms | API ~67% CPU, Postgres ~29%; **load average 3.85 on 2 vCPUs** — work queueing; memory flat |
+
+- **CPU strains first, not memory.** At ~400 req/s the box was past its two cores while latency was
+  still good — the next step up is where latency would climb. Memory would give out only around
+  **8,000–9,000** held connections at the measured cost.
+- **Every page-load read hits Postgres** (~30% CPU at peak): the obvious first optimisation is caching
+  the shared part of `/today` and `/active` in Redis — #94, a follow-up rather than done here.
+- **Clap throughput at scale cannot be measured in production yet.** With one confirmed user, §4.1
+  puts the threshold at its 30–50 floor, so a Premiere opens after a few dozen claps. Iteration 2's
+  local numbers (`docs/concurrency-findings.md`) remain the reference for the counter path; the Redis
+  counter was never the expected bottleneck.
+- CPU credits (`standard`) are the real budget under sustained load: a `t3.small` earns ~24/hour and
+  held 322 during the run. A sustained ~400 req/s would drain them and throttle the host to its 20%
+  per-vCPU baseline — the `CPUCreditBalance` alarm is the warning.
+- If it strains: a bigger instance first (or `unlimited` credits, accepting the billing), splitting
+  services apart last.
 
 ## Open decisions
 
