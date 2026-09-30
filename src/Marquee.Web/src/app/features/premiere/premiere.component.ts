@@ -581,6 +581,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
     this.premieres.get(cur.id).subscribe({
       next: (fresh) => {
         if (this.premiere()?.id !== fresh.id || isOpenStatus(this.premiere()!.status)) return;
+        // The fallback poll may have raised "could not load" while the connection was down.
+        this.error.set(null);
         if (isOpenStatus(fresh.status)) {
           this.premiere.set(fresh);
           this.onRevealed();
@@ -628,7 +630,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
     this.premieres.lobby(p.id).subscribe({
       next: (l) => this.lobby.set(l),
       // 404 once the Premiere is no longer live: the reveal may have been missed, so ask (#95).
-      error: () => this.refreshCurrent(),
+      error: (err: unknown) => {
+        if ((err as { status?: number }).status === 404) this.refreshCurrent();
+      },
     });
   }
 

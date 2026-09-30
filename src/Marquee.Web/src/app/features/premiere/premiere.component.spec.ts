@@ -560,6 +560,30 @@ describe('PremiereComponent', () => {
       expect(c['premiere']().totalClaps).toBe(40);
     });
 
+    it('does not refetch on a lobby network error, only on a 404', () => {
+      const c = make();
+      const get = jasmine.createSpy('get').and.returnValue(of(premiere()));
+      getImpl = get;
+
+      lobbyImpl = () => throwError(() => ({ status: 0 }));
+      c['fetchLobby']();
+      expect(get).not.toHaveBeenCalled();
+
+      lobbyImpl = () => throwError(() => ({ status: 404 }));
+      c['fetchLobby']();
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears a stale "could not load" error once it has caught up', () => {
+      const c = make();
+      c['error'].set('Could not load the Premiere.');
+      getImpl = () => of(revealed());
+
+      realtimeFake.reconnected.next();
+
+      expect(c['error']()).toBeNull();
+    });
+
     it('never lets a slower read pull a live Premiere\'s counts backwards', () => {
       const c = make();
       c['premiere'].set(premiere({ totalClaps: 50, myClaps: 3 }));
