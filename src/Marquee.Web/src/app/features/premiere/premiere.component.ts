@@ -541,6 +541,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
       next: (p) => {
         this.premiere.set(p);
         this.todaySchedule.set(null);
+        // A banner the fallback poll raised while the connection was down is stale now.
+        this.error.set(null);
         this.loading.set(false);
         void this.realtime.watchPremiere(p.id);
         if (isOpenStatus(p.status)) {

@@ -687,10 +687,40 @@ describe('PremiereComponent', () => {
     it('keeps the reveal on screen when nothing new went live during the gap', () => {
       const c = makeAfterGap();
       c['premiere'].set(revealed());
+      const active = jasmine.createSpy('getActive').and.returnValue(throwError(() => ({ status: 404 })));
+      getActiveImpl = active;
 
       realtimeFake.reconnected.next();
 
+      expect(active).toHaveBeenCalledTimes(1);
       expect(c['premiere']().status).toBe('Opened');
+    });
+
+    it('probes /active exactly once after a catch-up reveal, even when nothing is live', () => {
+      // The 404 routes back into refreshCurrent(), which must stop because the reveal is on screen.
+      const c = makeAfterGap();
+      const active = jasmine.createSpy('getActive').and.returnValue(throwError(() => ({ status: 404 })));
+      getActiveImpl = active;
+      const get = jasmine.createSpy('get').and.returnValue(of(revealed()));
+      getImpl = get;
+
+      realtimeFake.reconnected.next();
+
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(active).toHaveBeenCalledTimes(1);
+      expect(c['premiere']().status).toBe('Opened');
+    });
+
+    it('clears a stale "could not load" banner when the probe finds a new Premiere', () => {
+      const c = makeAfterGap();
+      c['premiere'].set(revealed());
+      c['error'].set('Could not load the Premiere.');
+      getActiveImpl = () => of(next());
+
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().id).toBe('p2');
+      expect(c['error']()).toBeNull();
     });
 
     it('does not probe /active on the normal reveal broadcast', () => {
