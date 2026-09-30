@@ -70,6 +70,7 @@ describe('PremiereComponent', () => {
 
   // Per-test hooks for the calls the reconnect tests (#95) need to steer; every other test leaves them.
   let getImpl: () => Observable<PremiereDto>;
+  let getActiveImpl: () => Observable<PremiereDto>;
   let lobbyImpl: () => Observable<LobbyDto>;
   let realtimeFake: {
     reconnected: Subject<void>;
@@ -83,6 +84,7 @@ describe('PremiereComponent', () => {
     todaySchedule: TodayScheduleDto | null = null,
   ) {
     getImpl = () => of(premiere());
+    getActiveImpl = () => of(premiere());
     lobbyImpl = () => of(lobby());
     realtimeFake = { reconnected: new Subject<void>(), premiereOpened: new Subject(), connected: signal(true) };
     TestBed.resetTestingModule();
@@ -96,7 +98,7 @@ describe('PremiereComponent', () => {
             // A schedule to seed means these tests want the idle branch, reached the same way the
             // real app reaches it: getActive() 404s, which is what triggers loadTodaySchedule().
             getActive: () =>
-              todaySchedule ? throwError(() => ({ status: 404 })) : of(premiere()),
+              todaySchedule ? throwError(() => ({ status: 404 })) : getActiveImpl(),
             getToday: () => of(todaySchedule ?? schedule([])),
             lobby: () => lobbyImpl(),
             clap: () => of(premiere()),
@@ -586,13 +588,60 @@ describe('PremiereComponent', () => {
 
     it('never lets a slower read pull a live Premiere\'s counts backwards', () => {
       const c = make();
-      c['premiere'].set(premiere({ totalClaps: 50, myClaps: 3 }));
-      getImpl = () => of(premiere({ totalClaps: 40, myClaps: 2 }));
+      c['premiere'].set(premiere({ totalClaps: 50, myClaps: 3, contributors: 9 }));
+      getImpl = () => of(premiere({ totalClaps: 40, myClaps: 2, contributors: 7 }));
 
       realtimeFake.reconnected.next();
 
       expect(c['premiere']().totalClaps).toBe(50);
       expect(c['premiere']().myClaps).toBe(3);
+      expect(c['premiere']().contributors).toBe(9);
+    });
+
+    it('catches up when /active 404s on a non-initial load and a live Premiere is still on screen', () => {
+      const c = make();
+      getActiveImpl = () => throwError(() => ({ status: 404 }));
+      getImpl = () => of(revealed());
+
+      c['load'](false);
+
+      expect(c['premiere']().status).toBe('Opened');
+    });
+
+    it('drops a slow refetch if the page has since moved on to a different Premiere', () => {
+      const c = make();
+      const pending = new Subject<PremiereDto>();
+      getImpl = () => pending;
+      realtimeFake.reconnected.next();
+
+      c['premiere'].set(premiere({ id: 'p2' }));
+      const onRevealed = spyOn(c as any, 'onRevealed');
+      pending.next(revealed()); // the reveal of p1, arriving late
+
+      expect(c['premiere']().id).toBe('p2');
+      expect(c['premiere']().status).toBe('Active');
+      expect(onRevealed).not.toHaveBeenCalled();
+    });
+
+    it('does not reveal twice when the event beats the refetch', () => {
+      const c = make();
+      const pending = new Subject<PremiereDto>();
+      getImpl = () => pending;
+      const onRevealed = spyOn(c as any, 'onRevealed').and.callThrough();
+      realtimeFake.reconnected.next();
+
+      realtimeFake.premiereOpened.next({
+        premiereId: 'p1',
+        status: 'Opened',
+        totalClaps: 120,
+        contributors: 0,
+        openedAt: '2026-01-01T00:30:00Z',
+        movie: revealed().movie,
+      });
+      pending.next(revealed());
+
+      expect(c['premiere']().status).toBe('Opened');
+      expect(onRevealed).toHaveBeenCalledTimes(1);
     });
 
     it('does not refetch a Premiere that is already revealed', () => {

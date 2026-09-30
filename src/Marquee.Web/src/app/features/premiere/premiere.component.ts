@@ -588,13 +588,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
           this.onRevealed();
         } else {
           // Still live: only the counts can have moved, and a clap that landed while this request
-          // was in flight may already be ahead of it. Never let the older read pull them back.
+          // was in flight (its clapUpdate, or this viewer's own clap response) may already be ahead
+          // of it. Never let the older read pull them back.
           this.premiere.update((c) =>
             c
               ? {
                   ...fresh,
                   totalClaps: Math.max(c.totalClaps, fresh.totalClaps),
                   myClaps: Math.max(c.myClaps, fresh.myClaps),
+                  contributors: Math.max(c.contributors, fresh.contributors),
                 }
               : c,
           );
