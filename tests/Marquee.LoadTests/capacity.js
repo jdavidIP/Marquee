@@ -19,7 +19,8 @@
 
 import http from 'k6/http';
 import ws from 'k6/ws';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
+import exec from 'k6/execution';
 import { Counter, Trend } from 'k6/metrics';
 
 const SITE = (__ENV.SITE || 'http://host.docker.internal:5080').replace(/\/$/, '');
@@ -81,20 +82,29 @@ export function holdConnection() {
   });
   if (!check(negotiate, { 'negotiate 200': (r) => r.status === 200 })) {
     connectFailed.add(1);
+    sleep(1); // otherwise a failing VU loops straight back into negotiate and hammers it
     return;
   }
 
   const token = negotiate.json('connectionToken');
   const url = `${SITE.replace(/^http/, 'ws')}/hubs/premieres?id=${token}`;
   const started = Date.now();
-  // Stay connected until the scenario ends: hold time is the rest of the run.
-  const holdMs = (RAMP_SECONDS + HOLD_SECONDS) * 1000;
+  // Stay connected until the scenario ends, however late in the ramp this VU started.
+  const endAt = exec.scenario.startTime + (RAMP_SECONDS + HOLD_SECONDS) * 1000;
   let handshaken = false;
+  let closedByUs = false;
 
   const res = ws.connect(url, { tags: { name: 'hub' } }, (socket) => {
     socket.on('open', () => socket.send(JSON.stringify({ protocol: 'json', version: 1 }) + RS));
     socket.on('message', (data) => {
       if (handshaken) return;
+      // The first record is the handshake response: `{}` accepts, `{"error": ...}` rejects.
+      const reply = JSON.parse(String(data).split(RS)[0] || '{}');
+      if (reply.error) {
+        closedByUs = true;
+        socket.close();
+        return;
+      }
       handshaken = true;
       handshakeTime.add(Date.now() - started);
       connected.add(1);
@@ -102,9 +112,14 @@ export function holdConnection() {
     });
     // Client pings keep the server's 30 s client timeout from closing an idle socket.
     socket.setInterval(() => socket.send(JSON.stringify({ type: 6 }) + RS), 10000);
-    socket.setTimeout(() => socket.close(), holdMs);
+    socket.setTimeout(() => {
+      closedByUs = true;
+      socket.close();
+    }, Math.max(0, endAt - Date.now()));
+    // Dropped means the server or the network closed it — not us at the end, and not k6 tearing the
+    // VU down as the scenario finishes.
     socket.on('close', () => {
-      if (Date.now() - started < holdMs - 5000) droppedEarly.add(1);
+      if (!closedByUs && Date.now() < endAt - 5000) droppedEarly.add(1);
     });
   });
 

@@ -377,6 +377,9 @@ Automating `cdk deploy` is a later step.
 
 ### 1d. Verification
 
+Entries are dated in Toronto time (the audience's day, and the scheduler's); clock times inside an
+entry say which zone they are in.
+
 - [x] **2026-09-28** — `docker compose -f docker-compose.prod.yml up -d --wait` on the host: all five
   containers reach `healthy`/running, `/health/ready` returns 200, and the worker's MassTransit
   consumers register against RabbitMQ with no errors.
@@ -450,13 +453,15 @@ Automating `cdk deploy` is a later step.
   in "Measured capacity" below.
 - [x] **2026-09-29** — Phase 1 gate (#78): budget. Free plan credits **$159.58** remaining, plan ends
   **2027-03-24** (`aws freetier get-account-plan-state`). Cost Explorer cannot forecast yet (too little
-  history); at the running rate — see "Rough monthly cost" — the credits last ~6.4 months, just past
-  the plan's end, so phase 1 stays inside the credits.
-- [x] **2026-09-30** — Phase 1 gate (#78): a real Premiere (20:51 EDT, threshold 48) clapped from
+  history), so the answer is a range: the credits outlast the plan (~5.8 months away) only at
+  **≤ ~$27/month**. At the table's ~$25 they last ~6.4 months; at its ~$30, ~5.3 months — running
+  out around early March. The first days' actual rate sits at the low end, but that is not yet
+  proof: **recheck once Cost Explorer has a month of history** (it can then forecast).
+- [x] **2026-09-29** — Phase 1 gate (#78): a real Premiere (20:51 EDT, threshold 48) clapped from
   several browsers through CloudFront — an admin browser, a scripted anonymous browser and a tester's
   phone. Counts moved live between them (21 on every screen without a refresh), over WebSockets: the
   scripted browser's only hub HTTP request was the negotiate, no long-polling or SSE.
-- [x] **2026-09-30** — Phase 1 gate (#78): reboot mid-Premiere. **Reboot 1**, while Active at 21 of
+- [x] **2026-09-29** — Phase 1 gate (#78): reboot mid-Premiere. **Reboot 1**, while Active at 21 of
   48: `uptime -s` confirmed a real reboot (00:53:39 UTC), the site was back in ~40 s, every container
   restarted on its own, and the Premiere came back Active with the same 21 claps, 3 contributors,
   `ExpiresAt` and day schedule (Redis AOF + Postgres). **Reboot 2**, with a fan-out message waiting:
@@ -578,7 +583,7 @@ against the `t3.small` running all five containers, host sampled every ~10 s (`d
 - **Clap throughput at scale cannot be measured in production yet.** With one confirmed user, §4.1
   puts the threshold at its 30–50 floor, so a Premiere opens after a few dozen claps. Iteration 2's
   local numbers (`docs/concurrency-findings.md`) remain the reference for the counter path; the Redis
-  counter was never the expected bottleneck.
+  counter was never the expected bottleneck. Tracked as #98, to run once thresholds are off the floor.
 - CPU credits (`standard`) are the real budget under sustained load: a `t3.small` earns ~24/hour and
   held 322 during the run. A sustained ~400 req/s would drain them and throttle the host to its 20%
   per-vCPU baseline — the `CPUCreditBalance` alarm is the warning.
