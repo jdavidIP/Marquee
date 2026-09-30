@@ -514,10 +514,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
             }
           : cur,
       );
-      this.stopLobbyPolling();
-      this.scheduleEmblemSettle();
-      // The Premiere the viewer just watched is over; refresh today's programme.
-      this.loadTodaySchedule();
+      this.onRevealed();
+    });
+
+    this.realtime.reconnected.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      // A live Premiere on screen may have opened during the gap; a revealed one (or none) may
+      // have been followed by a new one whose premiereActivated was missed too.
+      const cur = this.premiere();
+      if (cur && !isOpenStatus(cur.status)) this.refreshCurrent();
+      else this.load(false);
     });
 
     this.realtime.premiereActivated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((p) => {
@@ -536,6 +541,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
       next: (p) => {
         this.premiere.set(p);
         this.todaySchedule.set(null);
+        // A banner the fallback poll raised while the connection was down is stale now.
+        this.error.set(null);
         this.loading.set(false);
         void this.realtime.watchPremiere(p.id);
         if (isOpenStatus(p.status)) {
@@ -552,11 +559,61 @@ export class PremiereComponent implements OnInit, OnDestroy {
           if (initial) {
             this.premiere.set(null);
             this.loadTodaySchedule();
+          } else {
+            // ...but not a stale live one: it may have opened while the reveal broadcast was missed (#95).
+            this.refreshCurrent();
           }
         } else {
           this.error.set('Could not load the Premiere.');
         }
       },
+    });
+  }
+
+  /** What the page does once the Premiere it is showing has opened, however it found out. */
+  private onRevealed(): void {
+    this.stopLobbyPolling();
+    this.scheduleEmblemSettle();
+    // The Premiere the viewer just watched is over; refresh today's programme.
+    this.loadTodaySchedule();
+  }
+
+  /**
+   * Re-fetches the Premiere on screen by id, so the page converges to the server's state after any
+   * gap in the connection (#95). Only a live one needs it: a revealed Premiere has nothing left to
+   * miss. Idempotent with the premiereOpened event — whichever arrives first wins, the other no-ops.
+   */
+  private refreshCurrent(): void {
+    const cur = this.premiere();
+    if (!cur || isOpenStatus(cur.status)) return;
+    this.premieres.get(cur.id).subscribe({
+      next: (fresh) => {
+        if (this.premiere()?.id !== fresh.id || isOpenStatus(this.premiere()!.status)) return;
+        // The fallback poll may have raised "could not load" while the connection was down.
+        this.error.set(null);
+        if (isOpenStatus(fresh.status)) {
+          this.premiere.set(fresh);
+          this.onRevealed();
+          // Only reached on a catch-up, never on the normal broadcast: if the reveal was missed,
+          // the next Premiere's activation may have been as well.
+          this.load(false);
+        } else {
+          // Still live: only the counts can have moved, and a clap that landed while this request
+          // was in flight (its clapUpdate, or this viewer's own clap response) may already be ahead
+          // of it. Never let the older read pull them back.
+          this.premiere.update((c) =>
+            c
+              ? {
+                  ...fresh,
+                  totalClaps: Math.max(c.totalClaps, fresh.totalClaps),
+                  myClaps: Math.max(c.myClaps, fresh.myClaps),
+                  contributors: Math.max(c.contributors, fresh.contributors),
+                }
+              : c,
+          );
+        }
+      },
+      error: () => {},
     });
   }
 
@@ -585,8 +642,10 @@ export class PremiereComponent implements OnInit, OnDestroy {
     if (!p) return;
     this.premieres.lobby(p.id).subscribe({
       next: (l) => this.lobby.set(l),
-      // 404 once the Premiere is no longer live — harmless, the poll is about to be stopped anyway.
-      error: () => {},
+      // 404 once the Premiere is no longer live: the reveal may have been missed, so ask (#95).
+      error: (err: unknown) => {
+        if ((err as { status?: number }).status === 404) this.refreshCurrent();
+      },
     });
   }
 
