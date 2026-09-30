@@ -514,11 +514,10 @@ export class PremiereComponent implements OnInit, OnDestroy {
             }
           : cur,
       );
-      this.stopLobbyPolling();
-      this.scheduleEmblemSettle();
-      // The Premiere the viewer just watched is over; refresh today's programme.
-      this.loadTodaySchedule();
+      this.onRevealed();
     });
+
+    this.realtime.reconnected.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refreshCurrent());
 
     this.realtime.premiereActivated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((p) => {
       // A new Premiere went live while this page was open — switch to it.
@@ -552,11 +551,54 @@ export class PremiereComponent implements OnInit, OnDestroy {
           if (initial) {
             this.premiere.set(null);
             this.loadTodaySchedule();
+          } else {
+            // ...but not a stale live one: it may have opened while the reveal broadcast was missed (#95).
+            this.refreshCurrent();
           }
         } else {
           this.error.set('Could not load the Premiere.');
         }
       },
+    });
+  }
+
+  /** What the page does once the Premiere it is showing has opened, however it found out. */
+  private onRevealed(): void {
+    this.stopLobbyPolling();
+    this.scheduleEmblemSettle();
+    // The Premiere the viewer just watched is over; refresh today's programme.
+    this.loadTodaySchedule();
+  }
+
+  /**
+   * Re-fetches the Premiere on screen by id, so the page converges to the server's state after any
+   * gap in the connection (#95). Only a live one needs it: a revealed Premiere has nothing left to
+   * miss. Idempotent with the premiereOpened event — whichever arrives first wins, the other no-ops.
+   */
+  private refreshCurrent(): void {
+    const cur = this.premiere();
+    if (!cur || isOpenStatus(cur.status)) return;
+    this.premieres.get(cur.id).subscribe({
+      next: (fresh) => {
+        if (this.premiere()?.id !== fresh.id || isOpenStatus(this.premiere()!.status)) return;
+        if (isOpenStatus(fresh.status)) {
+          this.premiere.set(fresh);
+          this.onRevealed();
+        } else {
+          // Still live: only the counts can have moved, and a clap that landed while this request
+          // was in flight may already be ahead of it. Never let the older read pull them back.
+          this.premiere.update((c) =>
+            c
+              ? {
+                  ...fresh,
+                  totalClaps: Math.max(c.totalClaps, fresh.totalClaps),
+                  myClaps: Math.max(c.myClaps, fresh.myClaps),
+                }
+              : c,
+          );
+        }
+      },
+      error: () => {},
     });
   }
 
@@ -585,8 +627,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
     if (!p) return;
     this.premieres.lobby(p.id).subscribe({
       next: (l) => this.lobby.set(l),
-      // 404 once the Premiere is no longer live — harmless, the poll is about to be stopped anyway.
-      error: () => {},
+      // 404 once the Premiere is no longer live: the reveal may have been missed, so ask (#95).
+      error: () => this.refreshCurrent(),
     });
   }
 

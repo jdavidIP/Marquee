@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { of, throwError, Subject } from 'rxjs';
+import { Observable, of, throwError, Subject } from 'rxjs';
 import { PremiereComponent } from './premiere.component';
 import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
@@ -68,11 +68,23 @@ describe('PremiereComponent', () => {
     return { scopeId: 'global', slots };
   }
 
+  // Per-test hooks for the calls the reconnect tests (#95) need to steer; every other test leaves them.
+  let getImpl: () => Observable<PremiereDto>;
+  let lobbyImpl: () => Observable<LobbyDto>;
+  let realtimeFake: {
+    reconnected: Subject<void>;
+    premiereOpened: Subject<unknown>;
+    connected: WritableSignal<boolean>;
+  };
+
   function make(
     loggedIn = true,
     anonSessionToken: string | null = null,
     todaySchedule: TodayScheduleDto | null = null,
   ) {
+    getImpl = () => of(premiere());
+    lobbyImpl = () => of(lobby());
+    realtimeFake = { reconnected: new Subject<void>(), premiereOpened: new Subject(), connected: signal(true) };
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [PremiereComponent],
@@ -86,20 +98,21 @@ describe('PremiereComponent', () => {
             getActive: () =>
               todaySchedule ? throwError(() => ({ status: 404 })) : of(premiere()),
             getToday: () => of(todaySchedule ?? schedule([])),
-            lobby: () => of(lobby()),
+            lobby: () => lobbyImpl(),
             clap: () => of(premiere()),
-            get: () => of(premiere()),
+            get: () => getImpl(),
           },
         },
         {
           provide: RealtimeService,
           useValue: {
-            connected: signal(true),
+            connected: realtimeFake.connected,
             connect: () => Promise.resolve(),
             watchPremiere: () => Promise.resolve(),
             stopWatching: () => Promise.resolve(),
             clapUpdates: new Subject(),
-            premiereOpened: new Subject(),
+            premiereOpened: realtimeFake.premiereOpened,
+            reconnected: realtimeFake.reconnected,
             premiereActivated: new Subject(),
           },
         },
@@ -503,5 +516,70 @@ describe('PremiereComponent', () => {
       schedule([slot({ status: 'AutoOpened', totalClaps: 1 }), slot({ status: 'Scheduled' })]),
     );
     expect(some['programmeSubtext']()).toBe('One of two have run');
+  });
+
+  describe('catching up after a missed reveal (#95)', () => {
+    const revealed = () =>
+      premiere({
+        status: 'Opened',
+        totalClaps: 120,
+        openedAt: '2026-01-01T00:30:00Z',
+        movie: { tmdbId: 1, title: 'The Volcano', posterUrl: null, releaseYear: 1997, overview: null, voteAverage: 6, voteCount: 900 },
+      });
+
+    it('shows the reveal and stops polling the lobby once reconnected after a missed broadcast', () => {
+      const c = make();
+      const stopLobby = spyOn(c as any, 'stopLobbyPolling').and.callThrough();
+      expect(c['premiere']().status).toBe('Active');
+
+      // The reveal went out while the socket was down; only the server knows the Premiere opened.
+      getImpl = () => of(revealed());
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().status).toBe('Opened');
+      expect(c['premiere']().movie?.title).toBe('The Volcano');
+      expect(stopLobby).toHaveBeenCalled();
+    });
+
+    it('also catches up when the lobby poll starts 404ing, without waiting for a reconnect', () => {
+      const c = make();
+      getImpl = () => of(revealed());
+      lobbyImpl = () => throwError(() => ({ status: 404 }));
+
+      c['fetchLobby']();
+
+      expect(c['premiere']().status).toBe('Opened');
+    });
+
+    it('leaves a still-live Premiere on screen after a reconnect, just refreshed', () => {
+      const c = make();
+      getImpl = () => of(premiere({ totalClaps: 40 }));
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().status).toBe('Active');
+      expect(c['premiere']().totalClaps).toBe(40);
+    });
+
+    it('never lets a slower read pull a live Premiere\'s counts backwards', () => {
+      const c = make();
+      c['premiere'].set(premiere({ totalClaps: 50, myClaps: 3 }));
+      getImpl = () => of(premiere({ totalClaps: 40, myClaps: 2 }));
+
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().totalClaps).toBe(50);
+      expect(c['premiere']().myClaps).toBe(3);
+    });
+
+    it('does not refetch a Premiere that is already revealed', () => {
+      const c = make();
+      c['premiere'].set(revealed());
+      const get = jasmine.createSpy('get').and.returnValue(of(premiere()));
+      getImpl = get;
+
+      realtimeFake.reconnected.next();
+
+      expect(get).not.toHaveBeenCalled();
+    });
   });
 });

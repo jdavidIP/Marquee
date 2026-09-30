@@ -30,6 +30,12 @@ export class RealtimeService {
   readonly premiereOpened = new Subject<PremiereOpenedNotification>();
   readonly premiereActivated = new Subject<PremiereDto>();
 
+  /**
+   * Fires after a reconnect, once the groups are rejoined. A broadcast sent while the socket was
+   * down is gone for good, so a page that showed live state must re-fetch it rather than wait.
+   */
+  readonly reconnected = new Subject<void>();
+
   /** Idempotent: repeated calls reuse the existing connection. */
   async connect(): Promise<void> {
     if (this.connection) {
@@ -54,6 +60,7 @@ export class RealtimeService {
       this.connected.set(true);
       // Group membership does not survive a reconnect — the server sees a new connection id.
       await this.rejoin();
+      this.reconnected.next();
     });
     connection.onreconnecting(() => this.connected.set(false));
     connection.onclose(() => this.connected.set(false));
