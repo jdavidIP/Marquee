@@ -3,12 +3,29 @@ import {
   HubConnection,
   HubConnectionBuilder,
   HubConnectionState,
+  IRetryPolicy,
   LogLevel,
 } from '@microsoft/signalr';
 import { Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
 import { ClapUpdate, PremiereDto, PremiereOpenedNotification } from './models';
+
+/** Longest wait between reconnect attempts, in step with the fallback poll's 10 s. */
+const MAX_RETRY_DELAY_MS = 10_000;
+/** Spread so clients disconnected together (an API restart on deploy) don't all retry in step. */
+const RETRY_JITTER_MS = 1_000;
+
+/**
+ * Never gives up (#105). SignalR's default stops after four attempts (~72 s with drop detection),
+ * after which nothing reopens the socket and the page is on polling until refreshed. Roughly 1, 2,
+ * 4, 8 s, then about 10 s indefinitely. Returning a number, never null, keeps recovery on
+ * onreconnected, which rejoins the groups and emits `reconnected` for the #95 catch-up.
+ */
+export const reconnectForever: IRetryPolicy = {
+  nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
+    Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** previousRetryCount) + Math.random() * RETRY_JITTER_MS,
+};
 
 /**
  * The live Premiere feed. One hub connection for the app, shared by whoever is listening.
@@ -48,7 +65,7 @@ export class RealtimeService {
         // Watching is public, so an anonymous visitor connects without a token.
         accessTokenFactory: () => this.auth.token ?? '',
       })
-      .withAutomaticReconnect()
+      .withAutomaticReconnect(reconnectForever)
       .configureLogging(LogLevel.Warning)
       .build();
 
