@@ -230,6 +230,39 @@ describe('PremiereComponent', () => {
     const c = make();
     c['premiere'].set(premiere({ myClaps: 3, myCap: 6 }));
     expect(c['pips']()).toEqual([true, true, true, false, false, false]);
+    expect(c['pipsScaled']()).toBe(false);
+  });
+
+  it('keeps one pip per clap at exactly ten', () => {
+    const c = make();
+    c['premiere'].set(premiere({ myClaps: 4, myCap: 10 }));
+    expect(c['pipsScaled']()).toBe(false);
+    expect(c['pips']().filter(Boolean).length).toBe(4);
+    expect(c['pips']().length).toBe(10);
+  });
+
+  // #96: one confirmed user makes the cap the whole threshold (30-50), which overflowed the card.
+  it('draws ten pips above a cap of ten, each a tenth of the cap', () => {
+    const c = make();
+    const lit = (claps: number) => {
+      c['premiere'].set(premiere({ myClaps: claps, myCap: 48 }));
+      expect(c['pips']().length).toBe(10);
+      return c['pips']().filter(Boolean).length;
+    };
+    expect(lit(0)).toBe(0);
+    expect(lit(4)).toBe(0); // under a tenth of 48
+    expect(lit(5)).toBe(1);
+    expect(lit(10)).toBe(2);
+    expect(lit(24)).toBe(5);
+    expect(c['pipsScaled']()).toBe(true);
+  });
+
+  it('lights the last scaled pip only at the cap, so all lit always means capped', () => {
+    const c = make();
+    c['premiere'].set(premiere({ myClaps: 47, myCap: 48 }));
+    expect(c['pips']().filter(Boolean).length).toBe(9);
+    c['premiere'].set(premiere({ myClaps: 48, myCap: 48 }));
+    expect(c['pips']().every(Boolean)).toBe(true);
   });
 
   // --- Faces ---

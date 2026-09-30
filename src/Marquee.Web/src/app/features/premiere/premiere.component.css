@@ -389,6 +389,10 @@
   text-transform: uppercase;
   color: var(--muted-2);
 }
+/* The exact count, shown only when each pip stands for a share of the cap (#96). */
+.pip-count {
+  color: var(--accent-amber);
+}
 .pip-row {
   display: flex;
   gap: 5px;
