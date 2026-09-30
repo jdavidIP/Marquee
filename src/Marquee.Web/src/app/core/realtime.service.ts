@@ -11,20 +11,23 @@ import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
 import { ClapUpdate, PremiereDto, PremiereOpenedNotification } from './models';
 
-/** Longest wait between reconnect attempts, in step with the fallback poll's 10 s. */
+/** First wait between attempts; doubles each time until it reaches the cap. */
+const RETRY_BASE_DELAY_MS = 1_000;
+/** Longest wait between attempts, in step with the fallback poll (environment.fallbackPollIntervalMs). */
 const MAX_RETRY_DELAY_MS = 10_000;
 /** Spread so clients disconnected together (an API restart on deploy) don't all retry in step. */
 const RETRY_JITTER_MS = 1_000;
 
 /**
  * Never gives up (#105). SignalR's default stops after four attempts (~72 s with drop detection),
- * after which nothing reopens the socket and the page is on polling until refreshed. Roughly 1, 2,
- * 4, 8 s, then about 10 s indefinitely. Returning a number, never null, keeps recovery on
- * onreconnected, which rejoins the groups and emits `reconnected` for the #95 catch-up.
+ * after which nothing reopens the socket and the page is on polling until refreshed. Backs off from
+ * the base to the cap, then stays at the cap indefinitely. Returning a number, never null, keeps
+ * recovery on onreconnected, which rejoins the groups and emits `reconnected` for the #95 catch-up.
  */
 export const reconnectForever: IRetryPolicy = {
   nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
-    Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** previousRetryCount) + Math.random() * RETRY_JITTER_MS,
+    Math.min(MAX_RETRY_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** previousRetryCount) +
+    Math.random() * RETRY_JITTER_MS,
 };
 
 /**
@@ -39,6 +42,8 @@ export class RealtimeService {
 
   private connection: HubConnection | null = null;
   private joinedPremiereId: string | null = null;
+  private failedStarts = 0;
+  private startRetryHandle: ReturnType<typeof setTimeout> | null = null;
 
   /** Drives the "live" indicator; also tells the page whether it needs its polling fallback. */
   readonly connected = signal(false);
@@ -48,8 +53,9 @@ export class RealtimeService {
   readonly premiereActivated = new Subject<PremiereDto>();
 
   /**
-   * Fires after a reconnect, once the groups are rejoined. A broadcast sent while the socket was
-   * down is gone for good, so a page that showed live state must re-fetch it rather than wait.
+   * Fires after a reconnect, once the groups are rejoined — and after a first connection that only
+   * succeeded on a retry. A broadcast sent while the socket was down is gone for good, so a page
+   * that showed live state must re-fetch it rather than wait.
    */
   readonly reconnected = new Subject<void>();
 
@@ -113,10 +119,29 @@ export class RealtimeService {
       await connection.start();
       this.connected.set(true);
       await this.rejoin();
+      // Came up late (the API was down at page load, say a deploy): the page ran on polling until
+      // now, so let it converge the same way it does after a reconnect.
+      if (this.failedStarts > 0) this.reconnected.next();
+      this.failedStarts = 0;
     } catch {
-      // The page falls back to polling; automatic reconnect keeps trying in the background.
+      // The page falls back to polling meanwhile. SignalR's automatic reconnect only covers a
+      // connection that was established once, so a failed first start is retried here (#105).
       this.connected.set(false);
+      this.scheduleStartRetry();
     }
+  }
+
+  private scheduleStartRetry(): void {
+    if (this.startRetryHandle) return;
+    const delay = reconnectForever.nextRetryDelayInMilliseconds({
+      previousRetryCount: this.failedStarts++,
+      elapsedMilliseconds: 0,
+      retryReason: new Error('Initial connection failed'),
+    })!;
+    this.startRetryHandle = setTimeout(() => {
+      this.startRetryHandle = null;
+      void this.started();
+    }, delay);
   }
 
   private async rejoin(): Promise<void> {
