@@ -38,6 +38,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets a race test drive one step of a service directly, to pin an interleaving deterministically. -->
+    <InternalsVisibleTo Include="Marquee.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Marquee.Domain\Marquee.Domain.csproj" />
     <ProjectReference Include="..\Marquee.Infrastructure\Marquee.Infrastructure.csproj" />
   </ItemGroup>

@@ -271,12 +271,15 @@ public sealed class PremiereScheduleService(
     /// (§4.6 counts a film as spent only once a Premiere has actually opened).
     ///
     /// Guarded by the same conditional update the activation path uses, so a concurrent tick cannot
-    /// both activate and retire the same row.
+    /// both activate and retire the same row. Past-grace is re-checked there too, against the stored
+    /// time rather than the batch copy: an admin reschedule that committed after the batch load must
+    /// win rather than be marked Missed against the time it replaced (#87).
     /// </summary>
-    private async Task MarkMissedAsync(Premiere premiere, DateTime now, CancellationToken ct)
+    internal async Task MarkMissedAsync(Premiere premiere, DateTime now, CancellationToken ct)
     {
+        var cutoff = now - TimeSpan.FromMinutes(_scheduler.ActivationGraceMinutes);
         var rows = await db.Premieres
-            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled)
+            .Where(p => p.Id == premiere.Id && p.Status == PremiereStatus.Scheduled && p.ScheduledFor < cutoff)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(p => p.Status, PremiereStatus.Missed)
                 .SetProperty(p => p.UpdatedAt, now), ct);

@@ -215,6 +215,40 @@ public class AdminMutationRaceTests(MarqueeAppFactory factory)
         }
     }
 
+    [Fact]
+    public async Task A_reschedule_that_lands_before_the_Missed_flip_is_not_marked_Missed()
+    {
+        // The Missed branch of the same TOCTOU as #85 (#87): the scheduler decides a Premiere is past
+        // its activation grace from its batch load, and an admin reschedule can commit before the
+        // guarded flip. Driven step by step rather than raced — the window is microseconds wide, so a
+        // Task.WhenAll race would pass on the broken guard almost every run.
+        var id = await DueNowAsync(minutesAgo: 4 * 60);
+
+        Premiere batchCopy;
+        using (var load = factory.Services.CreateScope())
+            batchCopy = await load.ServiceProvider.GetRequiredService<MarqueeDbContext>()
+                .Premieres.AsNoTracking().FirstAsync(p => p.Id == id);
+
+        // The reschedule commits in the gap. Written directly: AdminService's own §4.4 checks depend
+        // on the wall clock's hour and are orthogonal to the guard under test.
+        var rescheduledTo = DateTime.UtcNow.AddHours(2);
+        using (var admin = factory.Services.CreateScope())
+            await admin.ServiceProvider.GetRequiredService<MarqueeDbContext>().Premieres
+                .Where(p => p.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ScheduledFor, rescheduledTo), default);
+
+        using (var tick = factory.Services.CreateScope())
+        {
+            var schedule = (PremiereScheduleService)tick.ServiceProvider.GetRequiredService<IPremiereScheduleService>();
+            await schedule.MarkMissedAsync(batchCopy, DateTime.UtcNow, default);
+        }
+
+        var (stored, _) = await CurrentStateAsync(id);
+        stored.Status.Should().Be(Domain.Enums.PremiereStatus.Scheduled,
+            "a reschedule that committed first must win rather than be marked Missed against its stale time");
+        stored.ScheduledFor.Should().BeCloseTo(rescheduledTo, TimeSpan.FromSeconds(1));
+    }
+
     private async Task ParkOtherPremieresTodayAsync()
     {
         using var scope = factory.Services.CreateScope();
