@@ -276,8 +276,13 @@
         @if (canParticipate()) {
           <div class="clap-block">
             <div class="pip-head">
-              <span class="pip-label">Your claps</span>
-              <div class="pip-row">
+              <span class="pip-label">
+                Your claps
+                @if (pipsScaled()) {
+                  <span class="pip-count">· {{ premiere()!.myClaps }} / {{ premiere()!.myCap }}</span>
+                }
+              </span>
+              <div class="pip-row" role="img" [attr.aria-label]="pipsLabel()">
                 @for (filled of pips(); track $index) {
                   <span
                     class="pip"

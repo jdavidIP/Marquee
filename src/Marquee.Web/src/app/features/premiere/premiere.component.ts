@@ -16,6 +16,11 @@ import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 const BULB_COUNT = 22;
 /** Matches the backend's LobbyDto.Faces cap — also what a visitor's blank-disc count is clamped to. */
 const MAX_LOBBY_FACES = 9;
+/**
+ * Most "Your claps" pips drawn; above this each pip is a tenth of the cap (#96). Measured room is
+ * ~20 pips at 1920 px with nothing to spare, so 10 leaves slack and makes each pip a clean 10%.
+ */
+const MAX_PIPS = 10;
 /** How long after a reveal to re-fetch once, to pick up MyEmblemTier if the Worker had not
  *  assigned it yet at the moment of reveal (it does so asynchronously, not in the clap path). */
 const EMBLEM_SETTLE_DELAY_MS = 1500;
@@ -263,9 +268,29 @@ export class PremiereComponent implements OnInit, OnDestroy {
       : base;
   });
 
+  /**
+   * One pip per clap while the cap fits in a line; above MAX_PIPS each pip stands for an equal share
+   * of the cap instead (#96). The cap comes from the confirmed-user count (§4.2), and with very few
+   * users it is the whole threshold — 30 to 50 pips would overflow the card. The last pip lights only
+   * at the cap itself, so "all lit" always means capped, as it does with one pip per clap.
+   */
+  protected readonly pipsScaled = computed(() => (this.premiere()?.myCap ?? 0) > MAX_PIPS);
+
   protected readonly pips = computed(() => {
     const p = this.premiere();
-    return p ? Array.from({ length: p.myCap }, (_, i) => i < p.myClaps) : [];
+    if (!p) return [];
+    if (!this.pipsScaled()) return Array.from({ length: p.myCap }, (_, i) => i < p.myClaps);
+    const lit = p.myClaps >= p.myCap ? MAX_PIPS : Math.min(MAX_PIPS - 1, Math.floor((p.myClaps * MAX_PIPS) / p.myCap));
+    return Array.from({ length: MAX_PIPS }, (_, i) => i < lit);
+  });
+
+  /**
+   * The pips are CSS dots with no text, so a screen reader announced nothing for them — and at a small
+   * cap they were the only display of claps spent. The row is labelled as one image instead.
+   */
+  protected readonly pipsLabel = computed(() => {
+    const p = this.premiere();
+    return p ? `${p.myClaps} of ${p.myCap} claps used` : '';
   });
 
   protected readonly clapButtonState = computed<'on' | 'capped' | 'off'>(() => {
@@ -288,8 +313,13 @@ export class PremiereComponent implements OnInit, OnDestroy {
         ? `That is the whole visitor cap of ${p.myCap} claps — an account gets you ${p.registeredClapCap}`
         : `You have spent your cap of ${p.myCap} claps — the rest is up to the room`;
     }
-    return visitor
-      ? `Visitors get ${p.myCap} claps and keep nothing. An account gets you ${p.registeredClapCap} and the film.`
+    if (visitor) {
+      return `Visitors get ${p.myCap} claps and keep nothing. An account gets you ${p.registeredClapCap} and the film.`;
+    }
+    // With very few confirmed users §4.2's cap reaches the whole threshold (its documented small-count
+    // limitation), and "no one opens a Premiere alone" would be false (#96).
+    return p.myCap >= p.threshold
+      ? 'You could open this one yourself — or bring friends.'
       : `Cap of ${p.myCap} claps per person, so no one opens a Premiere alone`;
   });
 
