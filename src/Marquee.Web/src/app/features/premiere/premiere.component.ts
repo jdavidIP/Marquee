@@ -284,6 +284,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
     return Array.from({ length: MAX_PIPS }, (_, i) => i < lit);
   });
 
+  /**
+   * The pips are CSS dots with no text, so a screen reader announced nothing for them — and at a small
+   * cap they were the only display of claps spent. The row is labelled as one image instead.
+   */
+  protected readonly pipsLabel = computed(() => {
+    const p = this.premiere();
+    return p ? `${p.myClaps} of ${p.myCap} claps used` : '';
+  });
+
   protected readonly clapButtonState = computed<'on' | 'capped' | 'off'>(() => {
     if (!this.premiere() || this.isOpen()) return 'off';
     return this.capReached() ? 'capped' : 'on';

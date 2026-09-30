@@ -257,6 +257,14 @@ describe('PremiereComponent', () => {
     expect(c['pipsScaled']()).toBe(true);
   });
 
+  it('labels the pip row with the exact count for screen readers, scaled or not', () => {
+    const c = make();
+    c['premiere'].set(premiere({ myClaps: 3, myCap: 6 }));
+    expect(c['pipsLabel']()).toBe('3 of 6 claps used');
+    c['premiere'].set(premiere({ myClaps: 7, myCap: 48 }));
+    expect(c['pipsLabel']()).toBe('7 of 48 claps used');
+  });
+
   it('lights the last scaled pip only at the cap, so all lit always means capped', () => {
     const c = make();
     c['premiere'].set(premiere({ myClaps: 47, myCap: 48 }));
