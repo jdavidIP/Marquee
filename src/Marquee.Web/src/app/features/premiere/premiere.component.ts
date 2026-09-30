@@ -304,8 +304,13 @@ export class PremiereComponent implements OnInit, OnDestroy {
         ? `That is the whole visitor cap of ${p.myCap} claps — an account gets you ${p.registeredClapCap}`
         : `You have spent your cap of ${p.myCap} claps — the rest is up to the room`;
     }
-    return visitor
-      ? `Visitors get ${p.myCap} claps and keep nothing. An account gets you ${p.registeredClapCap} and the film.`
+    if (visitor) {
+      return `Visitors get ${p.myCap} claps and keep nothing. An account gets you ${p.registeredClapCap} and the film.`;
+    }
+    // With very few confirmed users §4.2's cap reaches the whole threshold (its documented small-count
+    // limitation), and "no one opens a Premiere alone" would be false (#96).
+    return p.myCap >= p.threshold
+      ? 'You could open this one yourself — or bring friends.'
       : `Cap of ${p.myCap} claps per person, so no one opens a Premiere alone`;
   });
 

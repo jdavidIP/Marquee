@@ -316,6 +316,16 @@ describe('PremiereComponent', () => {
     expect(c['capNote']()).toBe('That is the whole visitor cap of 2 claps — an account gets you 6');
   });
 
+  it('promises no one opens a Premiere alone only while the cap is below the threshold', () => {
+    const c = make();
+    c['premiere'].set(premiere({ myCap: 6, threshold: 100 }));
+    expect(c['capNote']()).toBe('Cap of 6 claps per person, so no one opens a Premiere alone');
+
+    // #96: one confirmed user makes the cap the whole threshold (§4.2's small-count limitation).
+    c['premiere'].set(premiere({ myCap: 48, threshold: 48 }));
+    expect(c['capNote']()).toBe('You could open this one yourself — or bring friends.');
+  });
+
   it('says to create an account, not "in your library", once revealed for a signed-out viewer', () => {
     const c = make(false, 'anon-token');
     c['premiere'].set(premiere({ status: 'Opened', myClaps: 2, myCap: 2 }));
