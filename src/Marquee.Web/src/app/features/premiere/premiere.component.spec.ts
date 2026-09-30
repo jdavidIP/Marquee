@@ -529,8 +529,17 @@ describe('PremiereComponent', () => {
         movie: { tmdbId: 1, title: 'The Volcano', posterUrl: null, releaseYear: 1997, overview: null, voteAverage: 6, voteCount: 900 },
       });
 
-    it('shows the reveal and stops polling the lobby once reconnected after a missed broadcast', () => {
+    const next = () => premiere({ id: 'p2', totalClaps: 0 });
+
+    /** The server's state after the gap: the Premiere on screen has opened and nothing is live. */
+    function makeAfterGap() {
       const c = make();
+      getActiveImpl = () => throwError(() => ({ status: 404 }));
+      return c;
+    }
+
+    it('shows the reveal and stops polling the lobby once reconnected after a missed broadcast', () => {
+      const c = makeAfterGap();
       const stopLobby = spyOn(c as any, 'stopLobbyPolling').and.callThrough();
       expect(c['premiere']().status).toBe('Active');
 
@@ -544,7 +553,7 @@ describe('PremiereComponent', () => {
     });
 
     it('also catches up when the lobby poll starts 404ing, without waiting for a reconnect', () => {
-      const c = make();
+      const c = makeAfterGap();
       getImpl = () => of(revealed());
       lobbyImpl = () => throwError(() => ({ status: 404 }));
 
@@ -554,7 +563,7 @@ describe('PremiereComponent', () => {
     });
 
     it('leaves a still-live Premiere on screen after a reconnect, just refreshed', () => {
-      const c = make();
+      const c = makeAfterGap();
       getImpl = () => of(premiere({ totalClaps: 40 }));
       realtimeFake.reconnected.next();
 
@@ -563,7 +572,7 @@ describe('PremiereComponent', () => {
     });
 
     it('does not refetch on a lobby network error, only on a 404', () => {
-      const c = make();
+      const c = makeAfterGap();
       const get = jasmine.createSpy('get').and.returnValue(of(premiere()));
       getImpl = get;
 
@@ -577,7 +586,7 @@ describe('PremiereComponent', () => {
     });
 
     it('clears a stale "could not load" error once it has caught up', () => {
-      const c = make();
+      const c = makeAfterGap();
       c['error'].set('Could not load the Premiere.');
       getImpl = () => of(revealed());
 
@@ -587,7 +596,7 @@ describe('PremiereComponent', () => {
     });
 
     it('never lets a slower read pull a live Premiere\'s counts backwards', () => {
-      const c = make();
+      const c = makeAfterGap();
       c['premiere'].set(premiere({ totalClaps: 50, myClaps: 3, contributors: 9 }));
       getImpl = () => of(premiere({ totalClaps: 40, myClaps: 2, contributors: 7 }));
 
@@ -599,8 +608,7 @@ describe('PremiereComponent', () => {
     });
 
     it('catches up when /active 404s on a non-initial load and a live Premiere is still on screen', () => {
-      const c = make();
-      getActiveImpl = () => throwError(() => ({ status: 404 }));
+      const c = makeAfterGap();
       getImpl = () => of(revealed());
 
       c['load'](false);
@@ -609,7 +617,7 @@ describe('PremiereComponent', () => {
     });
 
     it('drops a slow refetch if the page has since moved on to a different Premiere', () => {
-      const c = make();
+      const c = makeAfterGap();
       const pending = new Subject<PremiereDto>();
       getImpl = () => pending;
       realtimeFake.reconnected.next();
@@ -624,7 +632,7 @@ describe('PremiereComponent', () => {
     });
 
     it('does not reveal twice when the event beats the refetch', () => {
-      const c = make();
+      const c = makeAfterGap();
       const pending = new Subject<PremiereDto>();
       getImpl = () => pending;
       const onRevealed = spyOn(c as any, 'onRevealed').and.callThrough();
@@ -645,7 +653,7 @@ describe('PremiereComponent', () => {
     });
 
     it('does not refetch a Premiere that is already revealed', () => {
-      const c = make();
+      const c = makeAfterGap();
       c['premiere'].set(revealed());
       const get = jasmine.createSpy('get').and.returnValue(of(premiere()));
       getImpl = get;
@@ -653,6 +661,54 @@ describe('PremiereComponent', () => {
       realtimeFake.reconnected.next();
 
       expect(get).not.toHaveBeenCalled();
+    });
+
+    it('picks up the next Premiere if its activation was missed in the same gap as the reveal', () => {
+      const c = makeAfterGap();
+      getImpl = () => of(revealed());
+      getActiveImpl = () => of(next());
+
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().id).toBe('p2');
+      expect(c['premiere']().status).toBe('Active');
+    });
+
+    it('picks up a new Premiere on reconnect when the one on screen was already revealed', () => {
+      const c = makeAfterGap();
+      c['premiere'].set(revealed());
+      getActiveImpl = () => of(next());
+
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().id).toBe('p2');
+    });
+
+    it('keeps the reveal on screen when nothing new went live during the gap', () => {
+      const c = makeAfterGap();
+      c['premiere'].set(revealed());
+
+      realtimeFake.reconnected.next();
+
+      expect(c['premiere']().status).toBe('Opened');
+    });
+
+    it('does not probe /active on the normal reveal broadcast', () => {
+      const c = makeAfterGap();
+      const active = jasmine.createSpy('getActive').and.returnValue(of(next()));
+      getActiveImpl = active;
+
+      realtimeFake.premiereOpened.next({
+        premiereId: 'p1',
+        status: 'Opened',
+        totalClaps: 120,
+        contributors: 0,
+        openedAt: '2026-01-01T00:30:00Z',
+        movie: revealed().movie,
+      });
+
+      expect(active).not.toHaveBeenCalled();
+      expect(c['premiere']().id).toBe('p1');
     });
   });
 });

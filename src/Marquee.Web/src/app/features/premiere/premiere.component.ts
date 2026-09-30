@@ -517,7 +517,13 @@ export class PremiereComponent implements OnInit, OnDestroy {
       this.onRevealed();
     });
 
-    this.realtime.reconnected.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refreshCurrent());
+    this.realtime.reconnected.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      // A live Premiere on screen may have opened during the gap; a revealed one (or none) may
+      // have been followed by a new one whose premiereActivated was missed too.
+      const cur = this.premiere();
+      if (cur && !isOpenStatus(cur.status)) this.refreshCurrent();
+      else this.load(false);
+    });
 
     this.realtime.premiereActivated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((p) => {
       // A new Premiere went live while this page was open — switch to it.
@@ -586,6 +592,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
         if (isOpenStatus(fresh.status)) {
           this.premiere.set(fresh);
           this.onRevealed();
+          // Only reached on a catch-up, never on the normal broadcast: if the reveal was missed,
+          // the next Premiere's activation may have been as well.
+          this.load(false);
         } else {
           // Still live: only the counts can have moved, and a clap that landed while this request
           // was in flight (its clapUpdate, or this viewer's own clap response) may already be ahead
