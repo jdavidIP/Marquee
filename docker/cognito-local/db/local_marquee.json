@@ -1,0 +1,24 @@
+{
+  "Options": {
+    "Id": "local_marquee",
+    "Name": "marquee",
+    "Arn": "arn:aws:cognito-idp:local:local:userpool/local_marquee",
+    "UsernameAttributes": [],
+    "AliasAttributes": ["email"],
+    "UsernameConfiguration": { "CaseSensitive": false },
+    "AutoVerifiedAttributes": ["email"],
+    "VerificationMessageTemplate": { "DefaultEmailOption": "CONFIRM_WITH_CODE" },
+    "Policies": {
+      "PasswordPolicy": {
+        "MinimumLength": 10,
+        "RequireNumbers": true,
+        "RequireLowercase": false,
+        "RequireUppercase": false,
+        "RequireSymbols": false,
+        "TemporaryPasswordValidityDays": 7
+      }
+    },
+    "MfaConfiguration": "OFF"
+  },
+  "Users": {}
+}
