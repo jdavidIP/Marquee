@@ -484,43 +484,152 @@ entry say which zone they are in.
 
 ## Phase 2 — authentication moves to Cognito
 
-**This phase changes a domain rule and needs decisions before it starts** (CLAUDE.md §4.1/§4.2 are
-written around `EmailConfirmedAt` in Postgres). Must land before real users sign up: existing password
-hashes cannot be imported into Cognito, so switching later would need a User Migration Lambda.
+**This phase changes domain rules** (CLAUDE.md §4.1/§4.2 are written around `EmailConfirmedAt` in
+Postgres). Must land before real users sign up: existing password hashes cannot be imported into
+Cognito, so switching later would need a User Migration Lambda. The decisions below were settled on
+2026-10-04; the replacement CLAUDE.md wording is written out under *Domain rule changes* and is
+swapped in by the phase 2 build, not before — until then CLAUDE.md describes what is built.
 
 What changes:
 
 - **Cognito User Pool** (CDK) for sign-up, sign-in, confirmation and password reset. The existing
-  `PasswordHasherService`, confirmation-token and reset-token services and the #27 password rules are
-  replaced by pool configuration.
-- **The API validates Cognito tokens** — `JwtBearer` pointed at the pool as authority. Integration
-  tests keep minting their own tokens through a test issuer accepted only outside Production.
-- **The frontend keeps its own screens** (the pass-card login, #64/#67) and calls Cognito through
-  Amplify's Auth module or the raw API. Cognito's hosted Managed Login is not used — it would discard
-  the redesign.
+  `PasswordHasherService`, confirmation-token and reset-token services are replaced by the pool.
+- **The API validates Cognito access tokens** — `JwtBearer` pointed at the pool as authority (decision
+  9). Integration tests keep minting their own tokens through a test issuer accepted only outside
+  Production.
+- **The frontend keeps its own screens** (the pass-card login, #64/#67) and calls Cognito's API
+  directly (decision 6). Cognito's hosted Managed Login is not used — it would discard the redesign.
 - **Email uses Cognito's built-in sender** — no domain or SES needed, capped at a small daily quota
-  (check the current limit). Fine for the target scale until phase 3.
+  (check the current limit when building). Every sign-up and resend counts against it: fine with no
+  users invited, a hard ceiling for a launch. Phase 3's SES lifts it.
 
-Proposed division of responsibility: **Cognito owns authentication only.** Role, permissions,
-`IsBlocked`, username and everything else the domain uses stay in Postgres as the source of truth.
+Division of responsibility: **Cognito owns authentication only.** Role, permissions, `IsBlocked`,
+username and everything else the domain uses stay in Postgres as the source of truth.
 
-Decisions to make first:
+### Decisions (settled 2026-10-04)
 
-1. **Unconfirmed accounts.** Cognito will not let an unconfirmed user sign in at all, whereas today an
-   unconfirmed account can authenticate and clap as an anonymous participant (§4.2). Under Cognito an
-   unconfirmed account is simply a visitor with an anonymous session — simpler, and the
-   `unconfirmed:` branch of `ParticipantResolver` disappears. §4.2 needs rewording to match.
-2. **When the Postgres `User` row is created.** Options: (a) a **Post Confirmation Lambda trigger**
-   writes it — AWS-native, but the Lambda needs VPC access to Postgres and the design must not assume
-   a failed trigger rolls the confirmation back; (b) **just-in-time on first authenticated request** —
-   no Lambda, and since only confirmed users can sign in, every row is confirmed by construction.
-   Under (b) a user who confirms but never signs in does not count toward §4.1's threshold until they
-   do — a rule change to decide on explicitly.
+1. **Unconfirmed accounts are plain visitors.** Cognito refuses sign-in to an unconfirmed user
+   (`UserNotConfirmedException`), so "signed in but unconfirmed" stops existing. Until confirming, the
+   person is an ordinary visitor with an anonymous session. Removed: the `unconfirmed:` branch of
+   `ParticipantResolver`, the `marquee:email_confirmed` claim and `IsEmailConfirmed()`, and the login
+   screen's signed-in "unconfirmed" state. A visitor who registers mid-Premiere keeps clapping on their
+   existing anonymous session until they confirm, instead of switching to a derived `unconfirmed:` one;
+   once signed in they are registered and win over the anonymous header, exactly as today.
+2. **The Postgres `User` row is created just-in-time** on the first authenticated request, by the same
+   per-request lookup as decision 7 — a token whose `sub` has no row gets one. `User.Id` **is** the
+   Cognito `sub` (both GUIDs, no mapping column); the username comes from the access token's `username`
+   claim, and the email — which access tokens do not carry (decision 9) — from one `GetUser` call made
+   with that same access token (no IAM needed), only on row creation. Every row is confirmed by
+   construction; `EmailConfirmedAt` stays and is set at row creation, so the existing filters become
+   always-true (removing them is left to the cleanup issue). **Creation must be idempotent** (CLAUDE.md
+   §7): a page load fires several parallel first requests, so insert, and on a unique-key conflict
+   re-read the row that won. A Cognito username or email already held by a row with a *different* id
+   (a pre-cutover row, say) is refused and logged, never merged or overwritten. The frontend signs in
+   immediately after `ConfirmSignUp` with the password it still holds, so the gap between confirming
+   and counting is a single request.
+   *Rejected:* a Post Confirmation Lambda. Postgres is not published on the host, there is no NAT (so a
+   VPC Lambda cannot reach SSM without a ~$8/month interface endpoint), it also fires on password resets,
+   and a failed trigger leaves a confirmed user with no row — so it would need this path as a fallback
+   anyway.
 3. **Confirmation by code, not link.** Cognito's link confirmation lands on a Cognito page that cannot
-   redirect back into the app, so `confirm-email` becomes a code-entry step.
-4. **Issue #30** (expire unconfirmed accounts) becomes cleanup of unconfirmed Cognito users rather
-   than Postgres rows — re-scope it.
-5. **Admin seed.** The seeded admin must exist in Cognito too; Role stays in Postgres.
+   redirect back into the app. The existing `confirm-email` route becomes the code-entry page
+   (`/confirm-email?u=<username>`, survives a reload), reached right after registering and whenever sign-in
+   returns `UserNotConfirmedException`, with a "resend code" action (`ResendConfirmationCode`). Sign-up
+   codes are valid 24h. **Password reset follows the same shape**: `ForgotPassword` /
+   `ConfirmForgotPassword`, so `reset-password` becomes "code + new password"; reset codes are valid
+   **1 hour** and Cognito allows 5–20 reset attempts per user per hour. This does not reopen #48 — signing
+   in still needs the password, a code is never a session, and a mail scanner cannot type one.
+4. **Issue #30 is kept as a learning task.** With no Postgres row before confirmation, an unconfirmed
+   Cognito user holds nothing a visitor doesn't except its username — low product value, and every
+   foreign-key concern in #30 is moot. It is re-scoped to: an EventBridge Scheduler schedule (daily) runs a
+   small Lambda (CDK, no VPC — it only calls Cognito) that deletes users with
+   `cognito:user_status = "UNCONFIRMED"` older than 7 days (single stage, configurable). Admin-created
+   users are never `UNCONFIRMED`, so the filter cannot reach the seeded admin. Cost: effectively $0
+   (Scheduler's 14M free invocations/month, Lambda's always-free tier). Built after phase 2's core.
+5. **Admin seed: startup seeder, Cognito first.** On start, `AdminCreateUser` (with `email_verified=true`,
+   `MessageAction=SUPPRESS`; `AdminGetUser` if it already exists), then `AdminSetUserPassword` with
+   `Permanent=true`, then the Postgres row with `Id = sub` and `Role = Admin`. The instance role gets
+   those three actions scoped to the pool ARN; the password stays in `/marquee/prod/Admin__Password`.
+   Cognito enforces the pool policy on `AdminSetUserPassword`, so a weak password now fails seeding
+   rather than warning (today `SeedAdminAsync` only logs against `PasswordPolicyOptions`). Any seeding
+   failure — weak password, Cognito unreachable, a missing IAM permission — is logged as an error and the
+   API keeps starting. *Rejected:* promoting a configured
+   username to Admin at first sign-in — whoever registers that name first becomes admin.
+   **Cutover:** existing prod user rows (the admin, §1d test accounts) have random GUIDs that will never
+   match a `sub`; with no real users, reset the user-linked prod data at cutover (confirm at the time).
+6. **The frontend calls Cognito directly, not through Amplify.** `SignUp`, `ConfirmSignUp`,
+   `InitiateAuth` (`USER_PASSWORD_AUTH`) and the rest are unsigned JSON POSTs to the `cognito-idp`
+   endpoint, made from the existing `AuthService` — the interceptor and the `HttpTestingController` specs
+   keep working, no new dependency. Accepted trade-off: the password travels over TLS to Cognito (as it
+   does to our API today) instead of Amplify's SRP flow. Refresh, if wanted, is one
+   `REFRESH_TOKEN_AUTH` call; today's behaviour (24h token, sign in again) needs none.
+7. **Role and permissions are loaded per request, not carried in the token.** `BlockedUserMiddleware`'s
+   Redis-cached lookup (`IUserBlockCache`, invalidated by the admin endpoint) grows into one cached
+   "access" entry — blocked, role, permissions — invalidated the same way on a role change, so role
+   changes take effect on the next request instead of at token expiry. The authorization policies
+   (`AuthPolicies.cs`) read permissions from that entry instead of the `marquee:perm` claim
+   `JwtTokenService` writes today. The frontend's `jwt.ts` gets permissions from an API response instead
+   of decoding them from the token. *Rejected:* a Pre Token
+   Generation Lambda — it would need to reach Postgres, the same problem as decision 2.
+8. **Local development runs `cognito-local`** (Docker image `jagregory/cognito-local`) in
+   `docker-compose.yml`: offline, no AWS credentials, codes printed in its log instead of emailed. It
+   supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /
+   admin operations, and a JWKS endpoint, so only the issuer URL differs from prod — confirm refresh and
+   the exact operation list when building. Fidelity is "good enough for local development" (it likely
+   does not enforce the pool's password policy, for one), so behaviour is verified once against the real
+   pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
+   real email addresses, quota) and keeping the old password auth in Development (two auth
+   implementations).
+9. **The API accepts Cognito access tokens, not ID tokens.** An access token is the credential meant for
+   calling an API; the ID token describes the signed-in user to the frontend. Access tokens carry no
+   `aud` claim, so `ValidateAudience` is turned off and the API checks the equivalent itself:
+   `client_id` must be our app client and `token_use` must be `access` (which also refuses an ID token
+   presented in its place). Issuer and signature are validated against the pool's JWKS as usual. The
+   same validation applies to the SignalR hub, which receives the token in the `access_token` query
+   string. The email the row needs comes from `GetUser` (decision 2), which works because
+   `USER_PASSWORD_AUTH` access tokens carry the `aws.cognito.signin.user.admin` scope — keep it on the
+   app client. *Rejected:* accepting ID tokens — they carry `email` and an `aud`, but they are not
+   meant as an API credential.
+
+**Password policy — only what Cognito enforces.** The browser calls Cognito directly, so no server code
+ever sees the password and no Lambda trigger receives it: a rule Cognito cannot express could only be a
+frontend hint, bypassable by calling `cognito-idp` by hand. Rather than keep unenforced hints, the policy
+**is** the pool's: **at least 10 characters, at least one number.** #27's repeated-character,
+contains-username/email and common-password rules, and its any-alphabet letter rule (Cognito can only
+require basic Latin A–Z), are removed from `PasswordPolicy` and the UI. Cognito's *default* policy also
+requires upper case, lower case and a symbol, so the pool must set those three to **false** explicitly.
+The documented `Admin__Password` requirement (SSM secrets, above: ≥10 + a digit) must satisfy the pool,
+or decision 5's seeding fails — nothing at startup checks it today beyond presence. *Rejected:*
+routing every auth call through the API with a client-secret app client to keep #27 server-side — it
+reverses decision 6 to protect only an account owner from their own choice.
+
+### Domain rule changes (applied to CLAUDE.md by the phase 2 build)
+
+- **§3 User:** `PasswordHash` is removed; `Id` is the Cognito `sub`; `EmailConfirmedAt` is set when the
+  row is created (rows only exist for confirmed users).
+- **§4.1:** the "counts only confirmed accounts" paragraph is replaced by: *"**`totalRegisteredUsers`
+  counts every `User` row.** A row is created on an account's first authenticated request, and the
+  identity provider only issues tokens to accounts that have confirmed their email, so every row is a
+  confirmed account by construction. An account that never confirms never reaches the app at all: it
+  cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an
+  account does. This matters specifically because it is the one count in this section an attacker can
+  inflate for free — a wave of throwaway sign-ups moves nothing here, unlike claps, which are already
+  guarded (Iteration 5)."*
+- **§4.2:** the four-bullet "unconfirmed account" block and the "no re-login required" line are replaced
+  by: *"An account that has not confirmed its email cannot sign in (the identity provider refuses it), so
+  it never reaches the app as a registered participant. Until it confirms, the person is an ordinary
+  visitor with an anonymous session: anonymous cap, no emblems, no library entries, no friendships.
+  Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the
+  first sign-in a registered one."*
+
+### Verification against the real pool (once, after the first prod deploy)
+
+`cognito-local` stands in for Cognito everywhere but prod, so these are checked live and recorded here
+with dates, as §1d was: sign-up → code email arrives → confirm → auto sign-in creates the row; wrong and
+expired code; resend; sign-in while unconfirmed routes to code entry; password reset end to end; a
+9-character and a digit-less password are refused, and an all-lowercase password with a digit is
+accepted; an ID token presented to the API is refused; the seeded admin can sign in and is Admin; a role
+change and a block take effect on the next request.
 
 ---
 
@@ -595,7 +704,6 @@ against the `t3.small` running all five containers, host sampled every ~10 s (`d
 - **Timezone** for `TZ` (§4.4's "local time").
 - **Instance family** — `t3.small` (x86, no surprises) or `t4g.small` (Graviton, cheaper, but images
   must be built for arm64).
-- **Phase 2 decisions** 1–5 above.
 
 ## Legal / licensing — resolve before inviting real users
 
