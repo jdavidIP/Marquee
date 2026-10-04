@@ -577,15 +577,19 @@ username and everything else the domain uses stay in Postgres as the source of t
    admin operations, and a JWKS endpoint, so only the issuer URL differs from prod — confirm refresh and
    the exact operation list when building. Fidelity is "good enough for local development" (it likely
    does not enforce the pool's password policy, for one), so behaviour is verified once against the real
-   pool (below).
+   pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
+   real email addresses, quota) and keeping the old password auth in Development (two auth
+   implementations).
 9. **The API accepts Cognito access tokens, not ID tokens.** An access token is the credential meant for
    calling an API; the ID token describes the signed-in user to the frontend. Access tokens carry no
    `aud` claim, so `ValidateAudience` is turned off and the API checks the equivalent itself:
    `client_id` must be our app client and `token_use` must be `access` (which also refuses an ID token
    presented in its place). Issuer and signature are validated against the pool's JWKS as usual. The
    same validation applies to the SignalR hub, which receives the token in the `access_token` query
-   string. The email the row needs comes from `GetUser` (decision 2). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run, real
-   email addresses, quota) and keeping the old password auth in Development (two auth implementations).
+   string. The email the row needs comes from `GetUser` (decision 2), which works because
+   `USER_PASSWORD_AUTH` access tokens carry the `aws.cognito.signin.user.admin` scope — keep it on the
+   app client. *Rejected:* accepting ID tokens — they carry `email` and an `aud`, but they are not
+   meant as an API credential.
 
 **Password policy — only what Cognito enforces.** The browser calls Cognito directly, so no server code
 ever sees the password and no Lambda trigger receives it: a rule Cognito cannot express could only be a
