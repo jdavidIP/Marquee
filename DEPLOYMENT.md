@@ -675,9 +675,9 @@ The `cognito` service in `docker-compose.yml` (decision 8). Image `jagregory/cog
 digest because the project publishes no version tags (the pinned build is from 2026-05-21). The pool
 `local_marquee` and client `marquee-local-web` are seeded from `docker/cognito-local/db` with fixed ids,
 so local config can name them; users live in the `marquee-cognitodata` volume — in the same file as
-the pool, so a seed edit only reaches a machine after `docker volume rm marquee_marquee-cognitodata`. `config.json` turns off
-the emulator's default of email-as-username and sets the issuer to `http://localhost:9229`, so tokens
-carry `iss: http://localhost:9229/local_marquee` and JwtBearer finds
+the pool, so a seed edit only reaches a machine after `docker volume rm marquee_marquee-cognitodata`.
+`config.json` turns off the emulator's default of email-as-username and sets the issuer to
+`http://localhost:9229`, so tokens carry `iss: http://localhost:9229/local_marquee` and JwtBearer finds
 `/.well-known/openid-configuration` and the JWKS under it. `CODE=123456` makes every code the same.
 
 **Matches the real pool** (checked 2026-10-04 with the AWS CLI): `SignUp`; `UserNotConfirmedException`
