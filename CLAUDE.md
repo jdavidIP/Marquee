@@ -86,6 +86,8 @@ Entities and their essential fields. Add audit fields (`CreatedAt`, `UpdatedAt`)
 **User**
 `Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `EmailConfirmedAt` (nullable, set once when the confirmation link is used, never cleared — see §4.1), `CreatedAt`
 
+> **Pending — phase 2 (Cognito).** Decided 2026-10-04, not yet built: `PasswordHash` goes, `Id` becomes the Cognito `sub`, and the unconfirmed-account rules in §4.1/§4.2 and the password policy change. The replacement wording is in `DEPLOYMENT.md` § Phase 2 → *Domain rule changes*; the phase 2 build swaps it in here. Until then this file describes what is built.
+
 **Premiere**
 `Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened` | `Missed` — see §4.5), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
 
@@ -127,6 +129,8 @@ These are exact. Implement them as pure functions in `Marquee.Domain` and unit-t
 ### 4.1 Threshold
 
 Computed once, at Premiere creation, from the total count of registered users.
+
+> **Pending — phase 2 (Cognito):** this paragraph and §4.2's unconfirmed-account block are replaced; see the note under §3 User.
 
 **`totalRegisteredUsers` counts only confirmed accounts** (`EmailConfirmedAt` set) — issue #29. An account that has never confirmed its email does not exist for this formula at all: it cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an account does. See §4.2 for what that means for the account itself while it stays unconfirmed. This matters specifically because it is the one count in this section an attacker can inflate for free — a wave of throwaway signups moves nothing here, unlike claps, which are already guarded (Iteration 5).
 
