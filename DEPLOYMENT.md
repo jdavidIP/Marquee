@@ -576,9 +576,9 @@ username and everything else the domain uses stay in Postgres as the source of t
    supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /
    admin operations, refresh, and a JWKS endpoint, so only the issuer URL differs from prod. Fidelity is
    "good enough for local development" — no password policy, no resend, case-sensitive usernames among
-   the gaps recorded in §2b — so behaviour is verified once against the real pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
-   real email addresses, quota) and keeping the old password auth in Development (two auth
-   implementations).
+   the gaps recorded in §2b — so behaviour is verified once against the real pool (below).
+   *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run, real email
+   addresses, quota) and keeping the old password auth in Development (two auth implementations).
 9. **The API accepts Cognito access tokens, not ID tokens.** An access token is the credential meant for
    calling an API; the ID token describes the signed-in user to the frontend. Access tokens carry no
    `aud` claim, so `ValidateAudience` is turned off and the API checks the equivalent itself:
@@ -674,7 +674,8 @@ read back from IAM with exactly the three actions on the pool ARN.
 The `cognito` service in `docker-compose.yml` (decision 8). Image `jagregory/cognito-local`, pinned by
 digest because the project publishes no version tags (the pinned build is from 2026-05-21). The pool
 `local_marquee` and client `marquee-local-web` are seeded from `docker/cognito-local/db` with fixed ids,
-so local config can name them; users live in the `marquee-cognitodata` volume. `config.json` turns off
+so local config can name them; users live in the `marquee-cognitodata` volume — in the same file as
+the pool, so a seed edit only reaches a machine after `docker volume rm marquee_marquee-cognitodata`. `config.json` turns off
 the emulator's default of email-as-username and sets the issuer to `http://localhost:9229`, so tokens
 carry `iss: http://localhost:9229/local_marquee` and JwtBearer finds
 `/.well-known/openid-configuration` and the JWKS under it. `CODE=123456` makes every code the same.
@@ -690,7 +691,8 @@ on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSign
 
 **Differs — covered only by the real-pool checklist:**
 
-- **No password policy.** `abc` is accepted. Only the real pool (and the frontend's hints) enforce it.
+- **No password policy.** `abc` is accepted. Only the real pool (and the frontend's hints) enforce it;
+  the policy in the seed file is there to mirror the real pool, not because the emulator reads it.
 - **Usernames are case-sensitive**, despite `CaseSensitive: false`: `ALICE` signs up as a second user
   beside `alice`, and signing in must match the case used at sign-up.
 - **No sign-in by email alias** — only the username works.

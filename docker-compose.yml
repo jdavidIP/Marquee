@@ -72,7 +72,8 @@ services:
   # Stand-in for the Cognito user pool (DEPLOYMENT.md § Phase 2, decision 8): offline, no AWS
   # credentials, and every confirmation/reset code is CODE rather than an email. The pool and client are
   # seeded with fixed ids (docker/cognito-local/db) so local config can name them; users land in the
-  # volume, and cp -n never overwrites them. config.json is copied rather than mounted because the
+  # volume, and cp -n never overwrites them — which also means an edited seed only takes effect after
+  # `docker volume rm marquee_marquee-cognitodata`. config.json is copied rather than mounted because the
   # emulator rewrites it on start. Fidelity gaps against the real pool are listed in DEPLOYMENT.md §2b.
   # Pinned by digest: the project publishes no version tags.
   cognito:

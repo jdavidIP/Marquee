@@ -113,8 +113,10 @@ AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws cognito-idp sign-up \
   --username alice --password abcdefghij1 --user-attributes Name=email,Value=alice@example.test
 ```
 
-Users persist in the `marquee-cognitodata` volume; `docker compose down -v` resets them (and every
-other volume).
+Users persist in the `marquee-cognitodata` volume. To reset them — or to pick up an edit to the seeded
+pool or client in `docker/cognito-local/db`, which an existing volume never sees — stop the service and
+run `docker volume rm marquee_marquee-cognitodata` (`docker compose down -v` also works, but resets
+every volume).
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
 
