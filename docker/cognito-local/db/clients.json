@@ -1,0 +1,13 @@
+{
+  "Clients": {
+    "marquee-local-web": {
+      "ClientId": "marquee-local-web",
+      "ClientName": "marquee-web",
+      "UserPoolId": "local_marquee",
+      "ExplicitAuthFlows": ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+      "TokenValidityUnits": { "AccessToken": "hours", "IdToken": "hours", "RefreshToken": "days" },
+      "AccessTokenValidity": 24,
+      "IdTokenValidity": 24
+    }
+  }
+}

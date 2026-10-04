@@ -92,13 +92,29 @@ those rows and is idempotent, so a restart simply picks up on the next tick.
 
 ## Running it
 
-**1. Start Postgres + Redis + RabbitMQ + Jaeger**
+**1. Start Postgres + Redis + RabbitMQ + Jaeger + cognito-local**
 
 ```bash
 docker compose up -d
 # RabbitMQ management UI: http://localhost:15672  (marquee / marquee)
 # Jaeger (traces):        http://localhost:16686
+# cognito-local:          http://localhost:9229  (pool local_marquee, client marquee-local-web)
 ```
+
+`cognito-local` stands in for the Cognito user pool during phase 2 (not used by the app until the
+phase 2 build lands). It sends no email: **every confirmation and password-reset code is `123456`**,
+and each one is also printed in its log (`docker logs marquee-cognito`). It has no "resend code" and
+enforces no password policy — see DEPLOYMENT.md §2b for every difference from the real pool. To try it
+by hand with the AWS CLI, any credentials work:
+
+```bash
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws cognito-idp sign-up \
+  --endpoint-url http://localhost:9229 --region ca-central-1 --client-id marquee-local-web \
+  --username alice --password abcdefghij1 --user-attributes Name=email,Value=alice@example.test
+```
+
+Users persist in the `marquee-cognitodata` volume; `docker compose down -v` resets them (and every
+other volume).
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
 

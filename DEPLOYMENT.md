@@ -574,10 +574,9 @@ username and everything else the domain uses stay in Postgres as the source of t
 8. **Local development runs `cognito-local`** (Docker image `jagregory/cognito-local`) in
    `docker-compose.yml`: offline, no AWS credentials, codes printed in its log instead of emailed. It
    supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /
-   admin operations, and a JWKS endpoint, so only the issuer URL differs from prod — confirm refresh and
-   the exact operation list when building. Fidelity is "good enough for local development" (it likely
-   does not enforce the pool's password policy, for one), so behaviour is verified once against the real
-   pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
+   admin operations, refresh, and a JWKS endpoint, so only the issuer URL differs from prod. Fidelity is
+   "good enough for local development" — no password policy, no resend, case-sensitive usernames among
+   the gaps recorded in §2b — so behaviour is verified once against the real pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
    real email addresses, quota) and keeping the old password auth in Development (two auth
    implementations).
 9. **The API accepts Cognito access tokens, not ID tokens.** An access token is the credential meant for
@@ -669,6 +668,36 @@ with a digit accepted (via `AdminCreateUser` + `AdminSetUserPassword --permanent
 — status `CONFIRMED`); `InitiateAuth` with `USER_PASSWORD_AUTH` signed in using the username in upper
 case (case-insensitive) and returned a 24h token; test user deleted, pool left empty. Host role policy
 read back from IAM with exactly the three actions on the pool ARN.
+
+### 2b. Local stand-in: `cognito-local` (#108)
+
+The `cognito` service in `docker-compose.yml` (decision 8). Image `jagregory/cognito-local`, pinned by
+digest because the project publishes no version tags (the pinned build is from 2026-05-21). The pool
+`local_marquee` and client `marquee-local-web` are seeded from `docker/cognito-local/db` with fixed ids,
+so local config can name them; users live in the `marquee-cognitodata` volume. `config.json` turns off
+the emulator's default of email-as-username and sets the issuer to `http://localhost:9229`, so tokens
+carry `iss: http://localhost:9229/local_marquee` and JwtBearer finds
+`/.well-known/openid-configuration` and the JWKS under it. `CODE=123456` makes every code the same.
+
+**Matches the real pool** (checked 2026-10-04 with the AWS CLI): `SignUp`; `UserNotConfirmedException`
+on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSignUp`;
+`USER_PASSWORD_AUTH` and `REFRESH_TOKEN_AUTH`; access-token claims `iss`, `sub`, `client_id`,
+`token_use: access`, `username`, `scope: aws.cognito.signin.user.admin` and no `aud` (decision 9);
+`GetUser` with the access token returns the email (decision 2); `ForgotPassword` +
+`ConfirmForgotPassword`; `AdminCreateUser` (`UsernameExistsException` on a repeat), `AdminGetUser`,
+`AdminSetUserPassword --permanent` → `CONFIRMED` (decision 5's seeder); `ListUsers` with
+`cognito:user_status = "UNCONFIRMED"` (#30).
+
+**Differs — covered only by the real-pool checklist:**
+
+- **No password policy.** `abc` is accepted. Only the real pool (and the frontend's hints) enforce it.
+- **Usernames are case-sensitive**, despite `CaseSensitive: false`: `ALICE` signs up as a second user
+  beside `alice`, and signing in must match the case used at sign-up.
+- **No sign-in by email alias** — only the username works.
+- **No `ResendConfirmationCode`** (`Unsupported`). With `CODE` fixed, the original code always works, so
+  locally "resend" is a no-op the UI must survive, not a path to exercise.
+- **`email_verified` stays `false`** after confirmation, unlike the real pool's auto-verification.
+- `InitiateAuth` responses carry no `ExpiresIn`; read expiry from the token's `exp`.
 
 ---
 
