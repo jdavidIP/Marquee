@@ -637,12 +637,19 @@ change and a block take effect on the next request.
 only copy of users' password hashes — they cannot be exported, so losing it means everyone resets.
 `MarqueeStack` can be torn down and rebuilt without touching it. Stack termination protection on; the
 pool has deletion protection and a `RETAIN` removal policy. Deploy order: `MarqueeAuthStack` before
-`MarqueeStack`, which reads the pool ARN for the host role's grant.
+`MarqueeStack`, which reads the pool ARN for the host role's grant. CDK wires that ARN through
+`Fn::GetStackOutput` (resolved at deploy time) rather than a CloudFormation export, which is why the auth
+stack has an auto-named `PublishOutputFnGetAtt…` output; its name derives from the pool's construct id
+(`Users`), so renaming that id renames the output. The pool name, the `email` alias, case-insensitive
+usernames and the required `email` attribute are **immutable after creation** — changing any of them
+replaces the pool, which deletion protection and `RETAIN` exist to stop.
 
 - **Pool** `ca-central-1_4mv04X3ap`, issuer `https://cognito-idp.ca-central-1.amazonaws.com/ca-central-1_4mv04X3ap`.
   Username sign-in, case-insensitive, `email` alias (Cognito enforces username uniqueness at sign-up and
   email uniqueness among confirmed users only); code verification ("Your Marquee code is {####}");
-  recovery by verified email only; password policy min 10 + numbers, upper/lower/symbols off.
+  recovery by verified email only; password policy min 10 + numbers, upper/lower/symbols off. The
+  verification email ("Your Marquee code is {####}.") names no expiry, because Cognito sends the same
+  template for password resets (1h) as for sign-up (24h).
 - **Feature plan: Lite** — 10,000 MAU/month always free, then $0.0055/MAU. Essentials (the default for
   new pools, $0.015/MAU after the same free tier) adds passwordless and password-history features this
   app does not use.
@@ -650,7 +657,9 @@ pool has deletion protection and a `RETAIN` removal policy. Deploy order: `Marqu
   `no-reply@verificationemail.com`. Every sign-up, resend and reset counts. Phase 3's SES lifts it.
 - **App client** `marquee-web` (`20ljh9mr0pc2hpjbriduqqtp1t`): public, no secret,
   `USER_PASSWORD_AUTH` + refresh, OAuth/hosted UI disabled, access and ID tokens 24h (Cognito's maximum),
-  user-existence errors suppressed.
+  user-existence errors suppressed. The refresh token keeps CDK's default **30 days** — longer than
+  today's "24h, then sign in again". It only matters if the frontend stores it; whether to (and whether
+  to shorten it) is #111's call.
 - **Grants**: the host role has `AdminCreateUser`, `AdminGetUser`, `AdminSetUserPassword` on the pool
   ARN only; the deploy role can `DescribeStacks` on `MarqueeAuthStack` to read its outputs.
 

@@ -33,11 +33,13 @@ public class MarqueeAuthStack : Stack
             },
             AutoVerify = new AutoVerifiedAttrs { Email = true },
             // A code, not a link: link confirmation lands on a Cognito page that cannot return to the app.
+            // Cognito sends this same template for password resets, whose codes last 1 hour rather than
+            // sign-up's 24 — so the message names no expiry.
             UserVerification = new UserVerificationConfig
             {
                 EmailStyle = VerificationEmailStyle.CODE,
                 EmailSubject = "Your Marquee code",
-                EmailBody = "Your Marquee code is {####}. It expires in 24 hours.",
+                EmailBody = "Your Marquee code is {####}.",
             },
             // The product policy is exactly what Cognito enforces. The three false flags are not
             // redundant: Cognito's defaults turn them on.
