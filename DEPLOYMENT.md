@@ -631,6 +631,36 @@ expired code; resend; sign-in while unconfirmed routes to code entry; password r
 accepted; an ID token presented to the API is refused; the seeded admin can sign in and is Admin; a role
 change and a block take effect on the next request.
 
+### 2a. User pool (#107 — deployed 2026-10-04)
+
+`MarqueeAuthStack` (`infra/MarqueeAuthStack.cs`), separate from `MarqueeStack` because the pool is the
+only copy of users' password hashes — they cannot be exported, so losing it means everyone resets.
+`MarqueeStack` can be torn down and rebuilt without touching it. Stack termination protection on; the
+pool has deletion protection and a `RETAIN` removal policy. Deploy order: `MarqueeAuthStack` before
+`MarqueeStack`, which reads the pool ARN for the host role's grant.
+
+- **Pool** `ca-central-1_4mv04X3ap`, issuer `https://cognito-idp.ca-central-1.amazonaws.com/ca-central-1_4mv04X3ap`.
+  Username sign-in, case-insensitive, `email` alias (Cognito enforces username uniqueness at sign-up and
+  email uniqueness among confirmed users only); code verification ("Your Marquee code is {####}");
+  recovery by verified email only; password policy min 10 + numbers, upper/lower/symbols off.
+- **Feature plan: Lite** — 10,000 MAU/month always free, then $0.0055/MAU. Essentials (the default for
+  new pools, $0.015/MAU after the same free tier) adds passwordless and password-history features this
+  app does not use.
+- **Email: Cognito's built-in sender, 50 messages per day per AWS account, not adjustable**, from
+  `no-reply@verificationemail.com`. Every sign-up, resend and reset counts. Phase 3's SES lifts it.
+- **App client** `marquee-web` (`20ljh9mr0pc2hpjbriduqqtp1t`): public, no secret,
+  `USER_PASSWORD_AUTH` + refresh, OAuth/hosted UI disabled, access and ID tokens 24h (Cognito's maximum),
+  user-existence errors suppressed.
+- **Grants**: the host role has `AdminCreateUser`, `AdminGetUser`, `AdminSetUserPassword` on the pool
+  ARN only; the deploy role can `DescribeStacks` on `MarqueeAuthStack` to read its outputs.
+
+Checked live 2026-10-04: `SignUp` with a 9-character password → `InvalidPasswordException` (not long
+enough); with no digit → `InvalidPasswordException` (numeric characters); an all-lowercase password
+with a digit accepted (via `AdminCreateUser` + `AdminSetUserPassword --permanent`, so no email was sent
+— status `CONFIRMED`); `InitiateAuth` with `USER_PASSWORD_AUTH` signed in using the username in upper
+case (case-insensitive) and returned a 24h token; test user deleted, pool left empty. Host role policy
+read back from IAM with exactly the three actions on the pool ARN.
+
 ---
 
 ## Phase 3 — managed database, domain, real email
