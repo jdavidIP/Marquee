@@ -99,8 +99,9 @@ public static class RedisKeys
     public static string FriendsLoaded(Guid userId) => $"user:{userId}:friends:loaded";
 
     /// <summary>
-    /// Cached block status, so the per-request block check is a Redis GET rather than a database
-    /// round trip. Short TTL: this is a cache in front of the users table, never the record itself.
+    /// Cached block status and role, so the per-request access check is a Redis GET rather than a
+    /// database round trip. Short TTL: this is a cache in front of the users table, never the record
+    /// itself.
     /// </summary>
-    public static string UserBlocked(Guid userId) => $"user:{userId}:blocked";
+    public static string UserAccess(Guid userId) => $"user:{userId}:access";
 }

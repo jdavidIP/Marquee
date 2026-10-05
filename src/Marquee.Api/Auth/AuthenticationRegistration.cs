@@ -45,6 +45,9 @@ public static class AuthenticationRegistration
                     ValidIssuer = cognito.Issuer,
                     // Access tokens have no aud; client_id stands in for it below.
                     ValidateAudience = false,
+                    // Not the default ("AuthenticationTypes.Federation"): UserAccessMiddleware reads
+                    // this to know the caller is a Cognito account it may need to create a row for.
+                    AuthenticationType = CognitoScheme,
                 };
                 options.Events = new JwtBearerEvents
                 {

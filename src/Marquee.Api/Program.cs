@@ -126,12 +126,13 @@ app.UseSerilogRequestLogging();
 
 app.UseCors(CorsPolicy);
 // Explicit, because the order of the next four is load-bearing. Authentication first so the rate
-// limiter and the block check both know who is calling; the block check before the rate limiter so
-// a blocked account cannot spend a bucket; the rate limiter after routing so it can see the
-// per-endpoint [EnableRateLimiting] metadata.
+// limiter and the access check both know who is calling; the access check before the rate limiter so
+// a blocked account cannot spend a bucket, and before authorization because it sets the permissions
+// authorization reads; the rate limiter after routing so it can see the per-endpoint
+// [EnableRateLimiting] metadata.
 app.UseRouting();
 app.UseAuthentication();
-app.UseBlockedUserCheck();
+app.UseUserAccess();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();

@@ -80,7 +80,7 @@ public sealed class AdminService(
     IMovieCatalog movies,
     IPremiereCache cache,
     IPremiereBroadcaster broadcaster,
-    IUserBlockCache blockCache,
+    IUserAccessCache accessCache,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<MarqueeRulesOptions> rules,
     IOptions<SchedulerOptions> scheduler,
@@ -135,7 +135,7 @@ public sealed class AdminService(
 
         // Invalidate rather than overwrite: the next request from this user re-reads Postgres, so
         // the cached answer cannot disagree with the row even if this write raced another one.
-        await blockCache.InvalidateAsync(userId, ct);
+        await accessCache.InvalidateAsync(userId, ct);
 
         logger.LogWarning(
             "User {UserId} ({Username}) {Action}. Reason: {Reason}",

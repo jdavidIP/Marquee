@@ -33,11 +33,9 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new(ClaimsPrincipalExtensions.EmailConfirmedClaimType, (user.EmailConfirmedAt != null).ToString())
         };
 
-        // Permissions are stamped into the token from the role at issue time, so authorisation is a
-        // claim check with no database round trip. The cost is that a permission change only takes
-        // effect on the holder's next login — acceptable for capabilities that change rarely, and
-        // deliberately not how blocking works: that has to bite immediately, so it is checked per
-        // request against Redis instead (see BlockedUserMiddleware).
+        // Still stamped for the old frontend's benefit, but never trusted: UserAccessMiddleware
+        // replaces them on every request with what the role grants now. This whole service goes with
+        // the old auth (#112).
         claims.AddRange(RolePermissions.For(user.Role)
             .Select(permission => new Claim(MarqueePermissions.ClaimType, permission)));
 

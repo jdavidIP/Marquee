@@ -21,6 +21,8 @@ public static class ApiServiceRegistration
         services.AddScoped<ILibraryService, LibraryService>();
         services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.Configure<CognitoOptions>(configuration.GetSection(CognitoOptions.SectionName));
+        services.AddHttpClient<CognitoUserProvisioner>();
         services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
 
         // Registered here rather than alongside MarqueeRulesOptions in Infrastructure: the Worker

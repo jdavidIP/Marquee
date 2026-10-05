@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Marquee.Api.Auth;
 using Marquee.Domain.Entities;
 
 namespace Marquee.Api.Dtos;
@@ -62,8 +63,15 @@ public sealed record UserDto(
     string Role,
     bool EmailConfirmed,
     /// <summary>Null for anyone who has not set a picture — the client draws a monogram instead.</summary>
-    string? AvatarUrl)
+    string? AvatarUrl,
+    /// <summary>
+    /// What the account may do, from its role now — the same answer the API authorises against. The
+    /// client reads these instead of decoding its token, which carries none (DEPLOYMENT.md § Phase 2,
+    /// decision 7).
+    /// </summary>
+    IReadOnlyList<string> Permissions)
 {
     public static UserDto From(User u) =>
-        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString(), u.EmailConfirmedAt != null, u.AvatarUrl);
+        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString(), u.EmailConfirmedAt != null, u.AvatarUrl,
+            RolePermissions.For(u.Role));
 }
