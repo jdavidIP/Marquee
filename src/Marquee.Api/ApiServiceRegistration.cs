@@ -22,7 +22,9 @@ public static class ApiServiceRegistration
         services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.Configure<CognitoOptions>(configuration.GetSection(CognitoOptions.SectionName));
-        services.AddHttpClient<CognitoUserProvisioner>();
+        // Short, because it runs inside a user's first request; the default is 100 seconds. A timeout
+        // fails that request and creates nothing, so the next one simply tries again.
+        services.AddHttpClient<CognitoUserProvisioner>(http => http.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
 
         // Registered here rather than alongside MarqueeRulesOptions in Infrastructure: the Worker

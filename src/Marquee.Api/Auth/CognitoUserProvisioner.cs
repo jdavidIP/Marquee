@@ -28,8 +28,14 @@ public sealed class CognitoUserProvisioner(
     ILogger<CognitoUserProvisioner> logger)
 {
     /// <summary>
-    /// The new account's access, or null when the token's username or email already belongs to a
-    /// different row — refused rather than merged, because nothing proves the two are the same person.
+    /// The new account's access, or null when it is refused: the token's username or email already
+    /// belongs to a different row (refused rather than merged, because nothing proves the two are the
+    /// same person), or is longer than its column — Cognito allows longer of both, and the browser
+    /// calls Cognito directly, so no frontend limit is enforceable.
+    ///
+    /// A refusal is not cached, so a refused account repeats this work on every request. Accepted:
+    /// once production holds only rows Cognito created, Cognito's own uniqueness makes a refusal
+    /// practically unreachable, and caching one would need a third state in the access cache.
     /// </summary>
     public async Task<UserAccess?> ProvisionAsync(HttpContext context, Guid userId, CancellationToken ct)
     {
@@ -37,12 +43,20 @@ public sealed class CognitoUserProvisioner(
             ?? throw new InvalidOperationException("Cognito access token has no username claim.");
         var token = await context.GetTokenAsync("access_token")
             ?? throw new InvalidOperationException("Cognito access token was not saved on the request.");
+        var email = (await GetEmailAsync(token, ct)).ToLowerInvariant();
+
+        if (username.Length > User.UsernameMaxLength || email.Length > User.EmailMaxLength)
+        {
+            logger.LogWarning(
+                "Refused Cognito account {UserId}: username or email is longer than the users table allows.", userId);
+            return null;
+        }
 
         db.Users.Add(new User
         {
             Id = userId,
             Username = username,
-            Email = (await GetEmailAsync(token, ct)).ToLowerInvariant(),
+            Email = email,
             // Cognito holds the password; the column goes with the old auth (#112). An empty hash
             // never verifies, so the old login endpoint cannot sign in as this account.
             PasswordHash = "",

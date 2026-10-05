@@ -4,6 +4,10 @@ namespace Marquee.Domain.Entities;
 
 public class User : AuditableEntity
 {
+    /// <summary>Column widths. Cognito allows longer of both, so rows it creates are checked against these.</summary>
+    public const int UsernameMaxLength = 50;
+    public const int EmailMaxLength = 256;
+
     public string Username { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;

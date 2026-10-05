@@ -109,6 +109,22 @@ public class UserAccessTests(MarqueeAppFactory factory)
     }
 
     [Fact]
+    public async Task A_username_longer_than_the_column_is_refused_rather_than_failing()
+    {
+        // Cognito allows 128 characters; the users table, 50. The browser calls Cognito directly, so
+        // the frontend cannot be relied on to stop it.
+        var username = $"long_{Guid.NewGuid():n}{Guid.NewGuid():n}"[..(User.UsernameMaxLength + 1)];
+        var tokens = await factory.Cognito.CreateUserAsync(username, Password);
+        var sub = Guid.Parse(new JsonWebToken(tokens.AccessToken).Subject);
+
+        var response = await ClientWith(tokens.AccessToken).GetAsync("/api/friends");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await WithScopeAsync(sp => sp.GetRequiredService<MarqueeDbContext>().Users.AnyAsync(u => u.Id == sub)))
+            .Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Permissions_come_from_the_current_role_not_the_token()
     {
         var tokens = await factory.Cognito.CreateUserAsync(NewUsername(), Password);
