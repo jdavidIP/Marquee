@@ -86,6 +86,14 @@ public sealed class CognitoLocal : IAsyncDisposable
         return new Tokens(tokens["AccessToken"]!.GetValue<string>(), tokens["IdToken"]!.GetValue<string>());
     }
 
+    /// <summary>A user's status (e.g. CONFIRMED) and sub, as the pool's admin API reports them.</summary>
+    public async Task<(string Status, Guid Sub)> GetUserAsync(string username)
+    {
+        var result = await CallAsync("AdminGetUser", new { UserPoolId = PoolId, Username = username });
+        var sub = result["UserAttributes"]!.AsArray().Single(a => a!["Name"]!.GetValue<string>() == "sub")!["Value"]!.GetValue<string>();
+        return (result["UserStatus"]!.GetValue<string>(), Guid.Parse(sub));
+    }
+
     /// <summary>A second app client in the same pool, for proving a token issued to it is refused.</summary>
     public async Task<string> CreateClientAsync(string name)
     {
