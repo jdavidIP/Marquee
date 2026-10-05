@@ -144,13 +144,27 @@ public class FriendshipRaceTests(MarqueeAppFactory factory)
         var backward = InScopeAsync(s => s.SendRequestAsync(addressee, requesterName, default));
         var results = await Task.WhenAll(forward, backward);
 
-        results.Count(r => r.Outcome == FriendActionOutcome.Ok).Should().Be(1,
-            "only one direction can be recorded, so only one caller may be told it was");
-        results.Count(r => r.Outcome == FriendActionOutcome.AlreadyPending).Should().Be(1);
-
         var stored = await StoredAsync(requester, addressee);
         stored.Should().NotBeNull();
-        stored!.Status.Should().Be(FriendshipStatus.Pending);
+
+        // Two orderings are legitimate (#118). If both read the rejected row before either wrote, the
+        // guarded reopen lets one win and the other is told the request is already pending. If one
+        // committed before the other read, the second sees a pending request *from the other person*
+        // and accepts it — both asked each other, so they are friends, and both answers are true.
+        // What must never happen is the bug itself: both told Ok while the row is still pending in
+        // one direction, which means one of them was told something false.
+        var oks = results.Count(r => r.Outcome == FriendActionOutcome.Ok);
+        if (oks == 2)
+        {
+            stored!.Status.Should().Be(FriendshipStatus.Accepted,
+                "two callers told Ok is only true if the second one accepted the first's request");
+        }
+        else
+        {
+            oks.Should().Be(1, "only one direction can be recorded, so only one caller may be told it was");
+            results.Count(r => r.Outcome == FriendActionOutcome.AlreadyPending).Should().Be(1);
+            stored!.Status.Should().Be(FriendshipStatus.Pending);
+        }
     }
 
     private async Task<string> UsernameAsync(Guid userId)

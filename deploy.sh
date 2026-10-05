@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Runs ON THE HOST, through SSM Run Command, from .github/workflows/deploy.yml (DEPLOYMENT.md §1c).
 #
-#   deploy.sh <tag> <registry> <artifacts-bucket> <public-base-url>
+#   deploy.sh <tag> <registry> <artifacts-bucket> <public-base-url> <cognito-issuer> <cognito-client-id>
 #
 # Points the stack at images <registry>/marquee-{api,worker}:<tag> and waits for them to go healthy.
 # Exits non-zero if they do not, so the workflow fails at the health check. The last tag that did go
 # healthy is kept in last-healthy-tag: rolling back is re-running the workflow with that tag.
 set -euo pipefail
 
-TAG=$1 REGISTRY=$2 BUCKET=$3 PUBLIC_BASE_URL=$4
+TAG=$1 REGISTRY=$2 BUCKET=$3 PUBLIC_BASE_URL=$4 COGNITO_ISSUER=$5 COGNITO_CLIENT_ID=$6
 REGION=ca-central-1
 COMPOSE="docker compose -f docker-compose.prod.yml"
 
@@ -28,6 +28,8 @@ aws s3 cp "s3://$BUCKET/$TAG/docker-compose.prod.yml" docker-compose.prod.yml --
   echo "REGISTRY=$REGISTRY" >> .env.new
   echo "IMAGE_TAG=$TAG" >> .env.new
   echo "PUBLIC_BASE_URL=$PUBLIC_BASE_URL" >> .env.new
+  echo "COGNITO_ISSUER=$COGNITO_ISSUER" >> .env.new
+  echo "COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID" >> .env.new
 )
 mv .env.new .env
 

@@ -4,6 +4,10 @@ namespace Marquee.Domain.Entities;
 
 public class User : AuditableEntity
 {
+    /// <summary>Column widths. Cognito allows longer of both, so rows it creates are checked against these.</summary>
+    public const int UsernameMaxLength = 50;
+    public const int EmailMaxLength = 256;
+
     public string Username { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;
@@ -23,8 +27,9 @@ public class User : AuditableEntity
 
     /// <summary>
     /// Null until the confirmation link is used, then set once and never cleared (issue #29). An
-    /// unconfirmed account is excluded from `totalRegisteredUsers` (CLAUDE.md §4.1/§4.2) and treated
-    /// fully as an anonymous session everywhere else — see ParticipantResolver.
+    /// unconfirmed account is excluded from `totalRegisteredUsers` (CLAUDE.md §4.1/§4.2). Rows for
+    /// Cognito accounts are created already confirmed, since Cognito only signs in confirmed accounts
+    /// (DEPLOYMENT.md § Phase 2, decision 2); null survives only on old-style accounts until #112.
     /// </summary>
     public DateTime? EmailConfirmedAt { get; set; }
 

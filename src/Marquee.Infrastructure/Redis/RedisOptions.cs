@@ -20,10 +20,11 @@ public sealed class RedisOptions
     public int FriendGraphTtlHours { get; set; } = 12;
 
     /// <summary>
-    /// How long a user's block status is cached. This is the lag between an admin blocking someone
-    /// and every API instance refusing their requests, so it is deliberately short.
+    /// How long a user's block status and role are cached. This is the lag between a change made
+    /// without invalidating the key — a role edited straight in the database, say — and every API
+    /// instance acting on it, so it is deliberately short.
     /// </summary>
-    public int BlockStatusTtlSeconds { get; set; } = 30;
+    public int AccessTtlSeconds { get; set; } = 30;
 
     /// <summary>
     /// Window the dashboard's clap rate is averaged over (Iteration 6). Short enough that a burst is

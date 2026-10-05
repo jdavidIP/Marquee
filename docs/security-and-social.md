@@ -150,28 +150,31 @@ options.AddPolicy(CanBlockUsers, p => p.RequireClaim(
     MarqueePermissions.ClaimType, MarqueePermissions.BlockUsers));
 ```
 
-Permissions are stamped into the JWT at login from a single `RolePermissions` map. The call sites
+Permissions come from a single `RolePermissions` map, applied to the request's principal by the
+per-request access check below — not read from the token (phase 2, issue #109). The call sites
 never changed — they already referenced `AuthPolicies.CanManagePremieres` — which is exactly the
 property the split was for. Adding a Moderator who can block users but not touch Premieres is now one
 line in that map; with role checks scattered across controllers it would be an edit at every call
 site, and the ones that were missed would fail *open*.
 
-### Blocking has to bite immediately, so it is not a claim
+### Blocking and permissions are read per request, not from the token
 
 A JWT is a bearer token with no server-side session behind it. Refusing a blocked user at login is
-not enough: the token they already hold keeps working until it expires — up to `Jwt:ExpiryHours`.
+not enough: the token they already hold keeps working until it expires — up to 24 hours. The same is
+true of anything stamped into it, and Cognito's access tokens (phase 2) carry no role at all.
 
-So blocking is checked on **every** authenticated request, which means it has to be cheap: a Redis
-`GET`, falling back to Postgres only on a miss, with both the positive and the negative answer cached
-for a short TTL. Caching the negative matters as much as the positive, or every request from every
+So `UserAccessMiddleware` decides on **every** authenticated request: it refuses a blocked account,
+and replaces any permission claims the token carried with the ones the account's role grants now. That
+has to be cheap: a Redis `GET` of `user:{id}:access` (blocked + role), falling back to Postgres only on
+a miss, with the ordinary answer cached as well as the blocked one — otherwise every request from every
 normal user becomes a database round trip.
 
-`Redis:BlockStatusTtlSeconds` (30s by default) is the visible lag between an admin blocking someone
-and every instance refusing them, which is why the admin endpoint *invalidates* the key rather than
-waiting for it to expire.
+`Redis:AccessTtlSeconds` (30s by default) is the lag for a change made without invalidating the key —
+a role edited straight in the database, say. The admin block endpoint *invalidates* the key, so a block
+takes effect on the user's next request.
 
-This is the deliberate asymmetry in the design: **capabilities** change rarely and ride in the token;
-**blocking** must take effect now and is checked per request.
+Until phase 2, permissions rode in the token and changed only at the next login; blocking was the one
+thing checked per request. Reading both per request removed that asymmetry.
 
 ## 5. Privacy is a different payload, not a nulled-out one
 
@@ -311,8 +314,6 @@ described in §3.
 - **Rate-limiter state is per process.** ASP.NET Core's limiter is in-memory, so running two API
   instances doubles every effective limit. Multi-instance deployment is out of scope for v1
   (CLAUDE.md §6); a distributed limiter would move these counters into Redis alongside the claps.
-- **Permission changes take effect on next login.** They ride in the JWT. Blocking is the case where
-  that lag is unacceptable, and it is handled separately (§4).
 - **`Friendship` uniqueness is directional.** The index is on `(RequesterId, AddresseeId)` per
   CLAUDE.md §3, so it does not by itself prevent A and B from opening requests to each other.
   `FriendshipService` resolves that by treating an incoming request from someone you already asked as

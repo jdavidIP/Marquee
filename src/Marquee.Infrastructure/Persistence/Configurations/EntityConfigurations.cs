@@ -10,8 +10,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     {
         b.ToTable("users");
         b.HasKey(u => u.Id);
-        b.Property(u => u.Username).HasMaxLength(50).IsRequired();
-        b.Property(u => u.Email).HasMaxLength(256).IsRequired();
+        b.Property(u => u.Username).HasMaxLength(User.UsernameMaxLength).IsRequired();
+        b.Property(u => u.Email).HasMaxLength(User.EmailMaxLength).IsRequired();
         b.Property(u => u.PasswordHash).IsRequired();
         b.Property(u => u.Bio).HasMaxLength(500);
         b.Property(u => u.AvatarUrl).HasMaxLength(2048);
