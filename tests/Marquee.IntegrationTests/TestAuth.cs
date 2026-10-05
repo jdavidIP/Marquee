@@ -7,15 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Marquee.IntegrationTests;
 
 /// <summary>
-/// Confirms a just-registered test account (issue #29) and swaps the client's bearer token for one
-/// that reflects it — registering alone no longer makes an account a full registered participant, and
-/// every existing helper that assumed otherwise needs this in the mix to keep acting as one.
+/// Confirms a just-registered test account (issue #29) and signs it in again. Confirmation still
+/// decides two things the database reads directly — whether the account counts toward
+/// `totalRegisteredUsers`, and whether it can send or receive friend requests — so helpers that need a
+/// full registered participant put this in the mix.
 ///
 /// Goes straight to the database rather than through the emailed link: what these callers need is an
-/// account in the confirmed state, not another exercise of the confirmation flow itself, which
-/// RegistrationConfirmationTests covers directly. Logging back in afterward is what actually matters
-/// here — it is the same "re-authenticate to pick up a state change" story a real client follows, and
-/// it is what makes the bearer token this method hands back carry EmailConfirmed=true.
+/// account in the confirmed state, not another exercise of the confirmation flow. The fresh sign-in is
+/// no longer load-bearing (nothing reads confirmation from the token since #109); it stays because the
+/// old login flow these tests drive goes away whole in #112.
 /// </summary>
 public static class TestAuth
 {

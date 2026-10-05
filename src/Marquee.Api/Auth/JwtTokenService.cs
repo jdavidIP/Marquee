@@ -27,10 +27,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, user.Role.ToString()),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            // Issue #29: whether this account was confirmed at issue time — see IsEmailConfirmed's
-            // doc comment for why staleness in this one direction is acceptable.
-            new(ClaimsPrincipalExtensions.EmailConfirmedClaimType, (user.EmailConfirmedAt != null).ToString())
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
         // Still stamped for the old frontend's benefit, but never trusted: UserAccessMiddleware
