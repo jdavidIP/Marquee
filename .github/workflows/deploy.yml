@@ -75,14 +75,16 @@ jobs:
       - name: Read the stack's outputs
         id: stack
         run: |
-          out() { aws cloudformation describe-stacks --stack-name MarqueeStack \
-            --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          out() { aws cloudformation describe-stacks --stack-name "$1" \
+            --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text; }
           {
-            echo "instance-id=$(out HostInstanceId)"
-            echo "artifacts-bucket=$(out ArtifactsBucket)"
-            echo "site-bucket=$(out SiteBucket)"
-            echo "distribution-id=$(out DistributionId)"
-            echo "site-url=$(out SiteUrl)"
+            echo "instance-id=$(out MarqueeStack HostInstanceId)"
+            echo "artifacts-bucket=$(out MarqueeStack ArtifactsBucket)"
+            echo "site-bucket=$(out MarqueeStack SiteBucket)"
+            echo "distribution-id=$(out MarqueeStack DistributionId)"
+            echo "site-url=$(out MarqueeStack SiteUrl)"
+            echo "cognito-issuer=$(out MarqueeAuthStack Issuer)"
+            echo "cognito-client-id=$(out MarqueeAuthStack UserPoolClientId)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign in to ECR
@@ -116,11 +118,14 @@ jobs:
           BUCKET: ${{ steps.stack.outputs.artifacts-bucket }}
           INSTANCE: ${{ steps.stack.outputs.instance-id }}
           SITE_URL: ${{ steps.stack.outputs.site-url }}
+          COGNITO_ISSUER: ${{ steps.stack.outputs.cognito-issuer }}
+          COGNITO_CLIENT_ID: ${{ steps.stack.outputs.cognito-client-id }}
         run: |
-          jq -n --arg tag "$TAG" --arg registry "$REGISTRY" --arg bucket "$BUCKET" --arg url "$SITE_URL" '{
+          jq -n --arg tag "$TAG" --arg registry "$REGISTRY" --arg bucket "$BUCKET" --arg url "$SITE_URL" \
+            --arg issuer "$COGNITO_ISSUER" --arg client "$COGNITO_CLIENT_ID" '{
             commands: [
               "aws s3 cp s3://\($bucket)/\($tag)/deploy.sh /opt/marquee/deploy.sh --only-show-errors",
-              "bash /opt/marquee/deploy.sh \($tag) \($registry) \($bucket) \($url)"
+              "bash /opt/marquee/deploy.sh \($tag) \($registry) \($bucket) \($url) \($issuer) \($client)"
             ],
             executionTimeout: ["900"]
           }' > params.json

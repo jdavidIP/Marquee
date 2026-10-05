@@ -289,6 +289,8 @@ aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'P
 echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
 echo "PUBLIC_BASE_URL=<SiteUrl>" >> .env
+echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
+echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
 chmod 600 .env
 aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
 docker compose -f docker-compose.prod.yml pull
@@ -337,7 +339,9 @@ tests but must never interrupt a deploy). Deploys share a concurrency group and 
 
 1. Assume the deploy role via **OIDC** — the repository holds no AWS credentials, only the role ARN
    as the `AWS_DEPLOY_ROLE_ARN` variable. The role trusts `main` only.
-2. Read `MarqueeStack`'s outputs live (`describe-stacks`), so no resource id is copied into settings.
+2. Read `MarqueeStack`'s and `MarqueeAuthStack`'s outputs live (`describe-stacks`), so no resource id
+   is copied into settings. The pool's issuer and client id reach the API through `deploy.sh`'s
+   arguments into `.env`.
 3. Build and push `marquee-api` / `marquee-worker` to ECR, tagged with the 7-character commit SHA.
 4. Upload `docker-compose.prod.yml` and `deploy.sh` to the artifacts bucket under that tag.
 5. **SSM Run Command** runs `deploy.sh` on the host: fetch the compose file, write `.env` from
