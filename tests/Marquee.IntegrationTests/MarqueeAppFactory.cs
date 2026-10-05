@@ -59,11 +59,15 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
     private readonly RedisContainer _redis = new RedisBuilder("redis:7").Build();
 
+    /// <summary>The user pool stand-in Cognito access tokens come from.</summary>
+    public CognitoLocal Cognito { get; } = new();
+
     public async Task InitializeAsync()
     {
-        // Both must be listening before the host is built: Program.cs migrates on startup, and the
-        // Redis multiplexer is constructed from configuration read at registration time.
-        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
+        // Postgres and Redis must be listening before the host is built: Program.cs migrates on
+        // startup, and the Redis multiplexer is constructed from configuration read at registration
+        // time. cognito-local starts alongside because its port is part of that configuration.
+        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), Cognito.StartAsync());
 
         // Settings go in as environment variables rather than through ConfigureAppConfiguration,
         // and the distinction is not cosmetic.
@@ -124,7 +128,10 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         // No collector is listening in a test run.
         yield return ("Tracing__Enabled", "false");
 
-        yield return ("Jwt__Key", "integration-test-signing-key-at-least-32-chars-long");
+        yield return ("Cognito__Issuer", Cognito.Issuer);
+        yield return ("Cognito__ClientId", CognitoLocal.ClientId);
+
+        yield return ("Jwt__Key", JwtKey);
         yield return ("Jwt__Issuer", "marquee");
         yield return ("Jwt__Audience", "marquee");
 
@@ -138,7 +145,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
-        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask(), Cognito.DisposeAsync().AsTask());
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -173,6 +180,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         });
     }
 
+    public const string JwtKey = "integration-test-signing-key-at-least-32-chars-long";
     public const string AdminUsername = "admin";
     public const string AdminPassword = "seed-me-locally-1";
 

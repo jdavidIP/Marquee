@@ -1,4 +1,3 @@
-using System.Text;
 using Marquee.Api;
 using Marquee.Api.Auth;
 using Marquee.Api.Messaging;
@@ -14,10 +13,8 @@ using Marquee.Infrastructure;
 using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Tmdb;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Trace;
 using Serilog;
 
@@ -66,7 +63,7 @@ if (builder.Environment.IsProduction())
     builder.Configuration.RequireKeys(
         "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
         "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl",
-        OriginVerification.SecretKey);
+        "Cognito:Issuer", "Cognito:ClientId", OriginVerification.SecretKey);
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
@@ -78,39 +75,7 @@ builder.Services.AddMarqueeForwardedHeaders();
 builder.Services.AddMarqueeHealthChecks(builder.Configuration);
 
 // --- Auth ---
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwt.Issuer,
-            ValidAudience = jwt.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
-        };
-
-        // WebSocket and server-sent-event connections cannot carry an Authorization header, so the
-        // SignalR client passes the token as a query string parameter on the hub URL. Accept it
-        // only for hub paths — everywhere else the header remains the only way in.
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                var accessToken = context.Request.Query["access_token"];
-                if (!string.IsNullOrEmpty(accessToken) &&
-                    context.HttpContext.Request.Path.StartsWithSegments(HubRoutes.Premieres))
-                {
-                    context.Token = accessToken;
-                }
-                return Task.CompletedTask;
-            }
-        };
-    });
-
+builder.Services.AddMarqueeAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddAuthorization(options => options.AddMarqueePolicies());
 
 // --- Web ---
