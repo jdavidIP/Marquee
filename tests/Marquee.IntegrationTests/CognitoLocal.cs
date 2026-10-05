@@ -16,7 +16,9 @@ namespace Marquee.IntegrationTests;
 ///
 /// The emulator stamps <c>iss</c> from its configured issuer domain, so the host port is chosen before
 /// start and the issuer written to match it — the API then validates these tokens exactly as it does
-/// locally, with no test-only configuration of its own.
+/// locally, with no test-only configuration of its own. (Its discovery document hard-codes
+/// localhost:9229 whatever the issuer, which is one reason the API reads keys from
+/// <c>{issuer}/.well-known/jwks.json</c> rather than from discovery.)
 /// </summary>
 public sealed class CognitoLocal : IAsyncDisposable
 {

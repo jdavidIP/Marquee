@@ -3,6 +3,8 @@ using System.Text;
 using Marquee.Api.Realtime;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Marquee.Api.Auth;
@@ -35,9 +37,14 @@ public static class AuthenticationRegistration
                     acceptLegacy && IssuerOf(ReadToken(context)) != cognito.Issuer ? LegacyScheme : CognitoScheme)
             .AddJwtBearer(CognitoScheme, options =>
             {
-                options.Authority = cognito.Issuer;
-                // cognito-local serves its discovery document over plain HTTP.
-                options.RequireHttpsMetadata = environment.IsProduction();
+                // Signing keys straight from {issuer}/.well-known/jwks.json, where Cognito documents
+                // them, rather than via the discovery document: cognito-local's discovery hard-codes
+                // localhost:9229 whatever its issuer. The manager still caches the keys and refetches
+                // when a token names one it has not seen. Plain HTTP is for cognito-local only.
+                options.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                    $"{cognito.Issuer}/.well-known/jwks.json",
+                    new JwksRetriever(),
+                    new HttpDocumentRetriever { RequireHttps = environment.IsProduction() });
                 // Kept for the first-request user-row creation, which calls GetUser with this token.
                 options.SaveToken = true;
                 options.TokenValidationParameters = new TokenValidationParameters
@@ -110,6 +117,20 @@ public static class AuthenticationRegistration
         return header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
             ? header["Bearer ".Length..].Trim()
             : HubQueryToken(context);
+    }
+
+    /// <summary>Reads a bare JWKS as the configuration JwtBearer validates signatures against.</summary>
+    private sealed class JwksRetriever : IConfigurationRetriever<OpenIdConnectConfiguration>
+    {
+        public async Task<OpenIdConnectConfiguration> GetConfigurationAsync(
+            string address, IDocumentRetriever retriever, CancellationToken cancel)
+        {
+            var keys = new JsonWebKeySet(await retriever.GetDocumentAsync(address, cancel));
+            var configuration = new OpenIdConnectConfiguration { JsonWebKeySet = keys };
+            foreach (var key in keys.GetSigningKeys())
+                configuration.SigningKeys.Add(key);
+            return configuration;
+        }
     }
 
     private static string? IssuerOf(string? token)
