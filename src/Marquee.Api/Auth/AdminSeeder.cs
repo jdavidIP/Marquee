@@ -36,6 +36,16 @@ public sealed class AdminSeeder(
         var email = (config["Admin:Email"] ?? "admin@marquee.local").ToLowerInvariant();
         var password = config["Admin:Password"] ?? "seed-me-locally-1";
 
+        // Checked before Cognito is touched: a name the users table cannot hold would otherwise leave a
+        // pool user behind and fail the insert on every start.
+        if (username.Length > User.UsernameMaxLength || email.Length > User.EmailMaxLength)
+        {
+            logger.LogError(
+                "Admin:Username or Admin:Email is longer than the users table allows ({UsernameMax} / {EmailMax}); starting without an admin.",
+                User.UsernameMaxLength, User.EmailMaxLength);
+            return;
+        }
+
         var verdict = PasswordPolicy.Evaluate(password, username, email, policyOptions.Value);
         if (!verdict.IsAcceptable)
             logger.LogWarning(
@@ -45,7 +55,7 @@ public sealed class AdminSeeder(
         Guid sub;
         try
         {
-            sub = await EnsureCognitoUserAsync(username, email, password, ct);
+            (sub, email) = await EnsureCognitoUserAsync(username, email, password, ct);
         }
         catch (Exception ex)
         {
@@ -80,13 +90,29 @@ public sealed class AdminSeeder(
         // token that login issues.
         admin.PasswordHash = hasher.Hash(admin, password);
         db.Users.Add(admin);
-        await db.SaveChangesAsync(ct);
-        logger.LogInformation("Seeded admin '{Username}' as {Sub}.", username, sub);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seeded admin '{Username}' as {Sub}.", username, sub);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Another instance starting at the same moment may have inserted it first, which is success.
+            // Anything else is logged like every other seeding failure: it must not stop the API.
+            db.ChangeTracker.Clear();
+            if (!await db.Users.AnyAsync(u => u.Id == sub, ct))
+                logger.LogError(ex, "Could not save admin '{Username}' ({Sub}); starting without it.", username, sub);
+        }
     }
 
-    private async Task<Guid> EnsureCognitoUserAsync(string username, string email, string password, CancellationToken ct)
+    /// <summary>
+    /// The admin's sub, and its email as Cognito holds it — which is what the row records, so the two
+    /// cannot drift apart when the pool's user predates a change to <c>Admin:Email</c>.
+    /// </summary>
+    private async Task<(Guid Sub, string Email)> EnsureCognitoUserAsync(
+        string username, string email, string password, CancellationToken ct)
     {
-        string sub;
+        List<AttributeType> attributes;
         UserStatusType status;
         try
         {
@@ -102,13 +128,13 @@ public sealed class AdminSeeder(
                 // No invitation email: the password is set below, and the address may not be real.
                 MessageAction = MessageActionType.SUPPRESS,
             }, ct);
-            sub = created.User.Attributes.Single(a => a.Name == "sub").Value;
+            attributes = created.User.Attributes;
             status = created.User.UserStatus;
         }
         catch (UsernameExistsException)
         {
             var existing = await cognito.AdminGetUserAsync(new AdminGetUserRequest { UserPoolId = _poolId, Username = username }, ct);
-            sub = existing.UserAttributes.Single(a => a.Name == "sub").Value;
+            attributes = existing.UserAttributes;
             status = existing.UserStatus;
         }
 
@@ -124,6 +150,7 @@ public sealed class AdminSeeder(
                 Permanent = true,
             }, ct);
 
-        return Guid.Parse(sub);
+        return (Guid.Parse(attributes.Single(a => a.Name == "sub").Value),
+            attributes.Single(a => a.Name == "email").Value.ToLowerInvariant());
     }
 }

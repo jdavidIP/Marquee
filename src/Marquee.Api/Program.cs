@@ -94,7 +94,16 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
     await db.Database.MigrateAsync();
-    await scope.ServiceProvider.GetRequiredService<AdminSeeder>().SeedAsync(CancellationToken.None);
+    // The seeder logs its own failures; this catches the ones before it can, such as an unusable
+    // Cognito:Issuer failing its construction. Starting without an admin beats not starting.
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<AdminSeeder>().SeedAsync(CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Could not seed the admin; starting without it.");
+    }
     await SeedGenresAsync(scope.ServiceProvider, app.Logger);
     await SeedCountriesAsync(scope.ServiceProvider, app.Logger);
 }

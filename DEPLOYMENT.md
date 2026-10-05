@@ -665,6 +665,11 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   to shorten it) is #111's call.
 - **Grants**: the host role has `AdminCreateUser`, `AdminGetUser`, `AdminSetUserPassword` on the pool
   ARN only; the deploy role can `DescribeStacks` on `MarqueeAuthStack` to read its outputs.
+  The seeder calls those from **inside the API container**, which reaches the instance role through
+  IMDSv2 only because the instance's metadata hop limit is 2 (one hop for the instance, one for Docker's
+  bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
+  it — so check `aws ec2 describe-instances --query '...MetadataOptions'` after any AMI change: at 1,
+  seeding fails (logged) and the API starts with no admin.
 
 Checked live 2026-10-04: `SignUp` with a 9-character password → `InvalidPasswordException` (not long
 enough); with no digit → `InvalidPasswordException` (numeric characters); an all-lowercase password

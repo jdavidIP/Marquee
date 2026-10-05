@@ -4,14 +4,16 @@ using Amazon.CognitoIdentityProvider;
 using Amazon.Runtime;
 using FluentAssertions;
 using Marquee.Api.Auth;
+using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Domain.Options;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Marquee.IntegrationTests;
 
@@ -89,21 +91,118 @@ public class SeededAdminTests(MarqueeAppFactory factory)
                 Timeout = TimeSpan.FromSeconds(2),
             });
 
+        var errors = await SeedWithAsync(admin: null, unreachable);
+
+        errors.Should().ContainSingle().Which.Should().Contain("Could not seed admin");
+        (await CountUsersAsync()).Should().Be(before);
+    }
+
+    [Fact]
+    public async Task A_start_that_died_after_creating_the_pool_user_is_finished_by_the_next()
+    {
+        // Created in the pool, never given a password, no row: what a start that crashed between
+        // AdminCreateUser and AdminSetUserPassword leaves behind. The pool's email also differs from
+        // the configured one, as it would after Admin:Email changed — the row must follow the pool.
+        var username = $"half_{Guid.NewGuid():n}"[..20];
+        await factory.Cognito.AdminCreateUserAsync(username, $"{username}@pool.example.test");
+
+        var errors = await SeedWithAsync(new()
+        {
+            ["Admin:Username"] = username,
+            ["Admin:Email"] = $"{username}@config.example.test",
+            ["Admin:Password"] = Password,
+        });
+
+        errors.Should().BeEmpty();
+        var (status, sub) = await factory.Cognito.GetUserAsync(username);
+        status.Should().Be("CONFIRMED");
+        await factory.Cognito.SignInAsync(username, Password);
+        var row = await WithScopeAsync(sp => sp.GetRequiredService<MarqueeDbContext>().Users
+            .AsNoTracking().SingleAsync(u => u.Id == sub));
+        row.Role.Should().Be(UserRole.Admin);
+        row.Email.Should().Be($"{username}@pool.example.test");
+    }
+
+    [Fact]
+    public async Task A_row_from_before_cognito_is_reported_not_overwritten()
+    {
+        var username = $"old_{Guid.NewGuid():n}"[..20];
+        var oldId = Guid.NewGuid();
         await WithScopeAsync(async sp =>
         {
+            var db = sp.GetRequiredService<MarqueeDbContext>();
+            db.Users.Add(new User { Id = oldId, Username = username, Email = $"{username}@example.test", PasswordHash = "" });
+            return await db.SaveChangesAsync();
+        });
+
+        var errors = await SeedWithAsync(new()
+        {
+            ["Admin:Username"] = username,
+            ["Admin:Email"] = $"{username}@example.test",
+            ["Admin:Password"] = Password,
+        });
+
+        errors.Should().ContainSingle().Which.Should().Contain("docker compose down -v");
+        var (_, sub) = await factory.Cognito.GetUserAsync(username);
+        (await WithScopeAsync(sp => sp.GetRequiredService<MarqueeDbContext>().Users.AnyAsync(u => u.Id == sub)))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_username_the_table_cannot_hold_is_refused_before_cognito_is_touched()
+    {
+        var username = $"long_{Guid.NewGuid():n}{Guid.NewGuid():n}"[..(User.UsernameMaxLength + 1)];
+
+        var errors = await SeedWithAsync(new()
+        {
+            ["Admin:Username"] = username,
+            ["Admin:Email"] = "long@example.test",
+            ["Admin:Password"] = Password,
+        });
+
+        errors.Should().ContainSingle().Which.Should().Contain("longer than the users table allows");
+        await factory.Invoking(f => f.Cognito.GetUserAsync(username)).Should()
+            .ThrowAsync<InvalidOperationException>("no pool user may be left behind");
+    }
+
+    private const string Password = "seeded-admin-test-1";
+
+    /// <summary>
+    /// Runs a seeder against the test pool — or <paramref name="cognito"/> — with the given Admin:*
+    /// settings in place of the factory's, and returns the errors it logged.
+    /// </summary>
+    private Task<List<string>> SeedWithAsync(
+        Dictionary<string, string?>? admin, IAmazonCognitoIdentityProvider? cognito = null) =>
+        WithScopeAsync(async sp =>
+        {
+            var config = admin is null
+                ? sp.GetRequiredService<IConfiguration>()
+                : new ConfigurationBuilder().AddInMemoryCollection(admin).Build();
+            var logger = new ErrorLog();
             var seeder = new AdminSeeder(
-                unreachable,
+                cognito ?? sp.GetRequiredService<IAmazonCognitoIdentityProvider>(),
                 sp.GetRequiredService<MarqueeDbContext>(),
                 sp.GetRequiredService<IPasswordHasherService>(),
                 sp.GetRequiredService<IOptions<CognitoOptions>>(),
                 sp.GetRequiredService<IOptions<PasswordPolicyOptions>>(),
-                sp.GetRequiredService<IConfiguration>(),
-                NullLogger<AdminSeeder>.Instance);
+                config,
+                logger);
 
             await seeder.Invoking(s => s.SeedAsync(CancellationToken.None)).Should().NotThrowAsync();
-            return true;
+            return logger.Errors;
         });
 
-        (await CountUsersAsync()).Should().Be(before);
+    private sealed class ErrorLog : ILogger<AdminSeeder>
+    {
+        public List<string> Errors { get; } = [];
+
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> format)
+        {
+            if (level >= LogLevel.Error)
+                Errors.Add(format(state, exception));
+        }
+
+        public bool IsEnabled(LogLevel level) => true;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     }
 }
