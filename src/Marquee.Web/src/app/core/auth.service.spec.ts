@@ -1,0 +1,183 @@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { AuthService } from './auth.service';
+import { CognitoError } from './cognito';
+import { authInterceptor } from './auth.interceptor';
+import { environment } from '../../environments/environment';
+import { UserDto } from './models';
+
+/**
+ * Phase 2 (#111): the browser talks to the Cognito user pool directly and to the API for who the
+ * account is. These drive both through HttpTestingController, so what is asserted is the requests
+ * actually made — operation, body, headers — not a mock's idea of them.
+ */
+describe('AuthService', () => {
+  let auth: AuthService;
+  let http: HttpTestingController;
+
+  const admin: UserDto = {
+    id: 'u-1',
+    username: 'ana',
+    email: 'ana@marquee.test',
+    bio: null,
+    isPrivate: false,
+    role: 'Admin',
+    avatarUrl: null,
+    permissions: ['premieres:manage', 'users:view'],
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()],
+    });
+    auth = TestBed.inject(AuthService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    http.verify();
+    localStorage.clear();
+  });
+
+  /** The next request to the pool, checked for the operation it names. */
+  function expectCognito(operation: string) {
+    const req = http.expectOne(environment.cognito.endpoint);
+    expect(req.request.headers.get('X-Amz-Target')).toBe(`AWSCognitoIdentityProviderService.${operation}`);
+    expect(req.request.headers.get('Content-Type')).toBe('application/x-amz-json-1.1');
+    expect(req.request.body.ClientId).toBe(environment.cognito.clientId);
+    return req;
+  }
+
+  function refuse(req: ReturnType<typeof expectCognito>, type: string): void {
+    req.flush({ __type: type, message: type }, { status: 400, statusText: 'Bad Request' });
+  }
+
+  it('signs in with the pool, then takes the account and its permissions from the API', () => {
+    let signedIn: UserDto | undefined;
+    auth.signIn('ana', 'pw-1234567890').subscribe((u) => (signedIn = u));
+
+    const initiate = expectCognito('InitiateAuth');
+    expect(initiate.request.body).toEqual(
+      jasmine.objectContaining({
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        AuthParameters: { USERNAME: 'ana', PASSWORD: 'pw-1234567890' },
+      }),
+    );
+    initiate.flush({ AuthenticationResult: { AccessToken: 'access', IdToken: 'id', RefreshToken: 'refresh' } });
+
+    // The access token — not the ID token — is what the API is sent.
+    const me = http.expectOne(`${environment.apiBase}/auth/me`);
+    expect(me.request.headers.get('Authorization')).toBe('Bearer access');
+    me.flush(admin);
+
+    expect(signedIn).toEqual(admin);
+    expect(auth.token).toBe('access');
+    expect(auth.canManagePremieres()).toBeTrue();
+    expect(auth.canBlockUsers()).toBeFalse();
+    // A 30-day credential stays out of storage: the session lasts as long as the access token.
+    expect(JSON.stringify(localStorage)).not.toContain('refresh');
+  });
+
+  it('never sends our credentials to the pool', () => {
+    localStorage.setItem('marquee.token', 'access');
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+
+    TestBed.inject(AuthService).resendCode('ana').subscribe();
+
+    const req = expectCognito('ResendConfirmationCode');
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    expect(req.request.headers.has('X-Anon-Session')).toBeFalse();
+    req.flush({});
+
+    // ...while our own API still gets them.
+    TestBed.inject(HttpClient).get(`${environment.apiBase}/friends`).subscribe();
+    expect(http.expectOne(`${environment.apiBase}/friends`).request.headers.get('Authorization')).toBe(
+      'Bearer access',
+    );
+  });
+
+  it('turns a pool refusal into a typed error', () => {
+    let error: unknown;
+    auth.signIn('ana', 'wrong').subscribe({ error: (e) => (error = e) });
+
+    refuse(expectCognito('InitiateAuth'), 'NotAuthorizedException');
+
+    expect(error).toEqual(jasmine.any(CognitoError));
+    expect((error as CognitoError).type).toBe('NotAuthorizedException');
+    expect(auth.isLoggedIn()).toBeFalse();
+  });
+
+  it('reads a namespaced error type by its last part', () => {
+    let error: CognitoError | undefined;
+    auth.resendCode('ana').subscribe({ error: (e) => (error = e) });
+
+    refuse(expectCognito('ResendConfirmationCode'), 'CognitoLocal#Unsupported');
+
+    expect(error!.type).toBe('Unsupported');
+  });
+
+  it('signs in straight after confirming the code it signed up for', () => {
+    auth.signUp('ana', 'ana@marquee.test', 'pw-1234567890').subscribe();
+    const signUp = expectCognito('SignUp');
+    expect(signUp.request.body).toEqual(
+      jasmine.objectContaining({
+        Username: 'ana',
+        Password: 'pw-1234567890',
+        UserAttributes: [{ Name: 'email', Value: 'ana@marquee.test' }],
+      }),
+    );
+    signUp.flush({ UserConfirmed: false });
+
+    let outcome: string | undefined;
+    auth.confirmSignUp('ana', '123456').subscribe((o) => (outcome = o));
+    expectCognito('ConfirmSignUp').flush({});
+
+    const initiate = expectCognito('InitiateAuth');
+    expect(initiate.request.body.AuthParameters).toEqual({ USERNAME: 'ana', PASSWORD: 'pw-1234567890' });
+    initiate.flush({ AuthenticationResult: { AccessToken: 'access' } });
+    http.expectOne(`${environment.apiBase}/auth/me`).flush(admin);
+
+    expect(outcome).toBe('signed-in');
+  });
+
+  it('finishes an unconfirmed sign-in once the code is entered', () => {
+    auth.signIn('ana', 'pw-1234567890').subscribe({ error: () => {} });
+    refuse(expectCognito('InitiateAuth'), 'UserNotConfirmedException');
+
+    auth.confirmSignUp('ana', '123456').subscribe();
+    expectCognito('ConfirmSignUp').flush({});
+
+    expectCognito('InitiateAuth').flush({ AuthenticationResult: { AccessToken: 'access' } });
+    http.expectOne(`${environment.apiBase}/auth/me`).flush(admin);
+    expect(auth.isLoggedIn()).toBeTrue();
+  });
+
+  it('leaves signing in to the person when it holds no password for that account', () => {
+    let outcome: string | undefined;
+    auth.confirmSignUp('someone-else', '123456').subscribe((o) => (outcome = o));
+    expectCognito('ConfirmSignUp').flush({});
+
+    expect(outcome).toBe('confirmed');
+    expect(auth.isLoggedIn()).toBeFalse();
+  });
+
+  it('does not stay half signed in when the API refuses the account', () => {
+    let error: unknown;
+    auth.signIn('ana', 'pw-1234567890').subscribe({ error: (e) => (error = e) });
+    expectCognito('InitiateAuth').flush({ AuthenticationResult: { AccessToken: 'access' } });
+
+    http
+      .expectOne(`${environment.apiBase}/auth/me`)
+      .flush({ error: 'This account has been blocked.' }, { status: 403, statusText: 'Forbidden' });
+
+    expect(error).toBeTruthy();
+    expect(auth.isLoggedIn()).toBeFalse();
+    expect(localStorage.getItem('marquee.token')).toBeNull();
+  });
+});

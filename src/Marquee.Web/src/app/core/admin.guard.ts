@@ -7,8 +7,8 @@ import { AuthService } from './auth.service';
  * the API enforces the same thing with a permission policy and answers 403 regardless of what the
  * SPA decides to render.
  *
- * It reads permissions out of the token without verifying its signature, which is fine for choosing
- * what to draw and fine for nothing else. Anyone can hand themselves a token that renders these
+ * It reads the permissions the API reported for this account, which is fine for choosing what to
+ * draw and fine for nothing else. Anyone can edit their local copy into one that renders these
  * screens; none of the data behind them will load.
  */
 export const adminGuard: CanActivateFn = () => {

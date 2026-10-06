@@ -4,44 +4,44 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
 import { AuthService } from '../../core/auth.service';
+import { CognitoError } from '../../core/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 /**
- * The registration half of this form gained real responsibilities with issue #27: it has to state
- * the rules before anything is typed, catch a mistyped confirmation without spending a round trip,
- * and list the rules the server refused on rather than running them into one sentence.
- *
- * What it must NOT do is decide anything. Every rule here comes from the API — the assertions below
- * are about relaying, not about validating.
+ * Sign-in and registration go to the Cognito user pool (phase 2, #111) through AuthService; this form
+ * states the rules before anything is typed, catches a mistyped confirmation without a round trip,
+ * and turns the pool's refusals into Marquee's words. What it must NOT do is decide anything about a
+ * password — the hint relays the API's rules, and the pool enforces them.
  */
 describe('LoginComponent', () => {
-  let registerSpy: jasmine.Spy;
-  let loginSpy: jasmine.Spy;
+  let signUpSpy: jasmine.Spy;
+  let signInSpy: jasmine.Spy;
   let forgotPasswordSpy: jasmine.Spy;
 
   const rules: PasswordRulesDto = {
     minLength: 12,
     maxLength: 128,
-    requireLetter: true,
+    requireLetter: false,
     requireDigit: true,
   };
 
   function make(
     options: {
       rules?: PasswordRulesDto | (() => ReturnType<typeof throwError>);
-      registerResult?: (() => ReturnType<typeof throwError>) | null;
+      signUpResult?: () => ReturnType<typeof throwError>;
+      signInResult?: () => ReturnType<typeof throwError>;
       forgotPasswordResult?: () => ReturnType<typeof throwError>;
     } = {},
   ) {
     TestBed.resetTestingModule();
 
     const rulesResult = options.rules ?? rules;
-    registerSpy = jasmine
-      .createSpy('register')
-      .and.returnValue(
-        options.registerResult ? options.registerResult() : of({ token: 't', user: {} }),
-      );
-    loginSpy = jasmine.createSpy('login').and.returnValue(of({ token: 't', user: {} }));
+    signUpSpy = jasmine
+      .createSpy('signUp')
+      .and.returnValue(options.signUpResult ? options.signUpResult() : of(undefined));
+    signInSpy = jasmine
+      .createSpy('signIn')
+      .and.returnValue(options.signInResult ? options.signInResult() : of({}));
     forgotPasswordSpy = jasmine
       .createSpy('forgotPassword')
       .and.returnValue(
@@ -57,8 +57,8 @@ describe('LoginComponent', () => {
         {
           provide: AuthService,
           useValue: {
-            register: registerSpy,
-            login: loginSpy,
+            signUp: signUpSpy,
+            signIn: signInSpy,
             forgotPassword: forgotPasswordSpy,
             passwordRules: () =>
               typeof rulesResult === 'function' ? rulesResult() : of(rulesResult),
@@ -72,15 +72,22 @@ describe('LoginComponent', () => {
     return fixture.componentInstance as unknown as Record<string, any>;
   }
 
+  function fillRegistration(c: Record<string, any>): void {
+    c['mode'].set('register');
+    c['username'] = ' ana ';
+    c['email'] = ' ana@marquee.test ';
+    c['password'] = 'correct horse battery staple 7';
+    c['confirmPassword'] = 'correct horse battery staple 7';
+  }
+
   it('states the rules it was given rather than rules of its own', () => {
     const c = make();
 
-    expect(c['passwordHint']()).toContain('12');
-    expect(c['passwordHint']()).toContain('a number');
+    expect(c['passwordHint']()).toBe('Use at least 12 characters, including a number.');
   });
 
   it('reflects a retuned policy without a code change', () => {
-    const c = make({ rules: { minLength: 16, maxLength: 128, requireLetter: true, requireDigit: false } });
+    const c = make({ rules: { minLength: 16, maxLength: 128, requireLetter: false, requireDigit: false } });
 
     expect(c['passwordHint']()).toContain('16');
     expect(c['passwordHint']()).not.toContain('a number');
@@ -90,15 +97,15 @@ describe('LoginComponent', () => {
     // requireDigit is false here, so a tick for it would tell the person to do work the server
     // never asked for.
     const c = make({
-      rules: { minLength: 12, maxLength: 128, requireLetter: true, requireDigit: false },
+      rules: { minLength: 12, maxLength: 128, requireLetter: false, requireDigit: false },
     });
     c['mode'].set('register');
     c['password'] = 'short1';
 
-    expect(c['passwordChecks']()).toEqual([false, true]);
+    expect(c['passwordChecks']()).toEqual([false]);
 
     c['password'] = 'long enough now';
-    expect(c['passwordChecks']()).toEqual([true, true]);
+    expect(c['passwordChecks']()).toEqual([true]);
   });
 
   it('still offers the form when the rules cannot be fetched', () => {
@@ -139,114 +146,79 @@ describe('LoginComponent', () => {
     expect(c['mismatched']()).toBe(false);
   });
 
-  it('sends the confirmation along with the password', () => {
+  it('signs up with the trimmed details and goes to enter the emailed code', () => {
     const c = make();
-    c['mode'].set('register');
+    fillRegistration(c);
+    const navigateSpy = spyOn(TestBed.inject(Router), 'navigate');
+
+    c['submit']();
+
+    expect(signUpSpy).toHaveBeenCalledWith('ana', 'ana@marquee.test', 'correct horse battery staple 7');
+    expect(navigateSpy).toHaveBeenCalledWith(['/confirm-email'], { queryParams: { u: 'ana' } });
+  });
+
+  it('signs in and goes to the Premiere', () => {
+    const c = make();
     c['username'] = ' ana ';
-    c['email'] = ' ana@marquee.test ';
     c['password'] = 'correct horse battery staple 7';
-    c['confirmPassword'] = 'correct horse battery staple 7';
+    const navigateSpy = spyOn(TestBed.inject(Router), 'navigate');
 
     c['submit']();
 
-    expect(registerSpy).toHaveBeenCalledWith(
-      'ana',
-      'ana@marquee.test',
-      'correct horse battery staple 7',
-      'correct horse battery staple 7',
-    );
-  });
-
-  it('shows the check-your-email panel instead of navigating straight in (issue #47)', () => {
-    const c = make();
-    c['mode'].set('register');
-    c['username'] = 'ana';
-    c['email'] = 'ana@marquee.test';
-    c['password'] = 'correct horse battery staple 7';
-    c['confirmPassword'] = 'correct horse battery staple 7';
-    const router = TestBed.inject(Router);
-    const navigateSpy = spyOn(router, 'navigate');
-
-    c['submit']();
-
-    expect(c['justRegistered']()).toBe(true);
-    expect(c['busy']()).toBe(false);
-    // Confirming is not a gate — nothing here should have sent the browser anywhere on its own.
-    expect(navigateSpy).not.toHaveBeenCalled();
-  });
-
-  it('continue() leaves the panel for the app itself', () => {
-    const c = make();
-    const router = TestBed.inject(Router);
-    const navigateSpy = spyOn(router, 'navigate');
-
-    c['continue']();
-
+    expect(signInSpy).toHaveBeenCalledWith('ana', 'correct horse battery staple 7');
     expect(navigateSpy).toHaveBeenCalledWith(['/premiere']);
   });
 
-  it('lists every rule the server refused on', () => {
+  it('sends an unconfirmed sign-in to the code page rather than calling it a failure', () => {
     const c = make({
-      registerResult: () =>
-        throwError(
-          () =>
-            new HttpErrorResponse({
-              status: 400,
-              error: {
-                error: 'Use at least 12 characters. Include at least one number.',
-                problems: [
-                  { rule: 'TooShort', message: 'Use at least 12 characters.' },
-                  { rule: 'NoDigit', message: 'Include at least one number.' },
-                ],
-              },
-            }),
-        ),
+      signInResult: () =>
+        throwError(() => new CognitoError('UserNotConfirmedException', 'User is not confirmed.')),
     });
-    c['mode'].set('register');
+    c['username'] = 'ana';
+    c['password'] = 'correct horse battery staple 7';
+    const navigateSpy = spyOn(TestBed.inject(Router), 'navigate');
 
     c['submit']();
 
-    expect(c['problems']().map((p: { rule: string }) => p.rule)).toEqual(['TooShort', 'NoDigit']);
+    expect(navigateSpy).toHaveBeenCalledWith(['/confirm-email'], { queryParams: { u: 'ana' } });
+    expect(c['error']()).toBeNull();
   });
 
-  it('falls back to the single line for a failure that itemises nothing', () => {
+  it("says a wrong password in Marquee's words, not the pool's", () => {
     const c = make({
-      registerResult: () =>
-        throwError(
-          () =>
-            new HttpErrorResponse({
-              status: 409,
-              error: { error: 'Username or email is already taken.' },
-            }),
-        ),
+      signInResult: () =>
+        throwError(() => new CognitoError('NotAuthorizedException', 'User not authorized')),
     });
-    c['mode'].set('register');
 
     c['submit']();
 
-    expect(c['problems']()).toEqual([]);
-    expect(c['error']()).toBe('Username or email is already taken.');
+    expect(c['error']()).toBe('Incorrect username or password.');
+    expect(c['busy']()).toBe(false);
+  });
+
+  it('relays a taken username from sign-up', () => {
+    const c = make({
+      signUpResult: () =>
+        throwError(() => new CognitoError('UsernameExistsException', 'User already exists')),
+    });
+    fillRegistration(c);
+
+    c['submit']();
+
+    expect(c['error']()).toBe('That username is already taken.');
   });
 
   it('clears a previous refusal when switching between signing in and registering', () => {
     const c = make({
-      registerResult: () =>
-        throwError(
-          () =>
-            new HttpErrorResponse({
-              status: 400,
-              error: { error: 'too short', problems: [{ rule: 'TooShort', message: 'too short' }] },
-            }),
-        ),
+      signUpResult: () =>
+        throwError(() => new CognitoError('InvalidPasswordException', 'Password not long enough')),
     });
-    c['mode'].set('register');
-    c['confirmPassword'] = 'something';
+    fillRegistration(c);
     c['submit']();
-    expect(c['problems']().length).toBe(1);
+    expect(c['error']()).toBe('Use at least 10 characters, including a number.');
 
     c['toggle']();
 
-    expect(c['problems']()).toEqual([]);
     expect(c['error']()).toBeNull();
     // A confirmation only means anything beside the password it was typed against; carrying it
     // across would let a stale value satisfy the check on the way back.

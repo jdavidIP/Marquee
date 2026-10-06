@@ -2,9 +2,9 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { apiError, passwordProblems } from '../../core/http-error';
-import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
-import { initialsOf } from '../../core/avatar';
+import { apiError } from '../../core/http-error';
+import { CognitoError, authError } from '../../core/cognito';
+import { PasswordRulesDto } from '../../core/models';
 
 @Component({
   selector: 'app-login',
@@ -30,18 +30,6 @@ export class LoginComponent {
   protected forgotEmail = '';
 
   /**
-   * Shown in place of the form after a successful registration, instead of navigating straight to
-   * /premiere (issue #47) — registration creates an unconfirmed account, and leaving with no mention
-   * of that was the gap #47's own text called out. The account already works meanwhile (an
-   * unconfirmed user claps as an anonymous participant — issue #29), so this never blocks entry,
-   * it only makes sure the person knows there is a link waiting in their inbox.
-   */
-  protected readonly justRegistered = signal(false);
-
-  /** The rules the server refused on, itemised — the same content as error(), listed instead. */
-  protected readonly problems = signal<PasswordProblemDto[]>([]);
-
-  /**
    * Null until the API answers, and it may stay null: this only drives a hint and the browser's own
    * minlength, so the form still works unaided if the call fails. The server is the authority
    * either way, which is why nothing here is a second copy of the rules.
@@ -58,16 +46,15 @@ export class LoginComponent {
     const r = this.rules();
     if (!r) return null;
 
-    const parts = [`at least ${r.minLength} characters`];
-    if (r.requireLetter) parts.push('a letter');
-    if (r.requireDigit) parts.push('a number');
-
-    return `Use ${parts.join(', ')}. Avoid your username and anything widely used.`;
+    // Only what the user pool enforces (DEPLOYMENT.md § Phase 2, password policy) — a hint for a
+    // rule nobody checks would be noise.
+    return r.requireDigit
+      ? `Use at least ${r.minLength} characters, including a number.`
+      : `Use at least ${r.minLength} characters.`;
   });
 
   /** The pass card's header row — same object the profile badge becomes once it is issued. */
   protected readonly cardKicker = computed(() => {
-    if (this.justRegistered()) return 'Pass issued · unconfirmed';
     if (this.mode() === 'forgot') return 'Lost pass · replacement';
     return this.mode() === 'login' ? 'Admit one · returning' : 'New pass · application';
   });
@@ -76,9 +63,7 @@ export class LoginComponent {
    * "No. 04291" for login is flavour, not a real serial — there is no account to derive one from
    * before signing in succeeds. Every other mode has genuinely no serial yet.
    */
-  protected readonly cardSerial = computed(() =>
-    this.justRegistered() ? 'No. 04292' : this.mode() === 'login' ? 'No. 04291' : 'No. — —',
-  );
+  protected readonly cardSerial = computed(() => (this.mode() === 'login' ? 'No. 04291' : 'No. — —'));
 
   protected readonly modeTitle = computed(() => {
     if (this.mode() === 'forgot') return 'Reset your password';
@@ -159,11 +144,6 @@ export class LoginComponent {
     this.reveal.update((v) => !v);
   }
 
-  /** Stands in for the badge portrait on the "check your email" panel — same monogram source. */
-  protected doneMark(): string {
-    return initialsOf(this.username || 'YO');
-  }
-
   /**
    * One tick per rule the server actually enforces — never the fixed four of the design handoff,
    * which invented case-mixing and symbol requirements that PasswordRulesDto doesn't have. A tick
@@ -174,7 +154,6 @@ export class LoginComponent {
     if (!r) return [];
 
     const checks = [this.password.length >= r.minLength];
-    if (r.requireLetter) checks.push(/[A-Za-z]/.test(this.password));
     if (r.requireDigit) checks.push(/[0-9]/.test(this.password));
     return checks;
   }
@@ -191,39 +170,36 @@ export class LoginComponent {
   submit(): void {
     this.clearErrors();
     this.busy.set(true);
+    const username = this.username.trim();
 
     const onError = (err: unknown): void => {
       this.busy.set(false);
-      this.problems.set(passwordProblems(err));
-      this.error.set(apiError(err, 'Something went wrong. Please try again.'));
+      // Signing in before confirming is not a failure to report but a step still to take: the code
+      // page finishes it, and signs in from there (AuthService keeps the credentials for that).
+      if (err instanceof CognitoError && err.type === 'UserNotConfirmedException') {
+        this.goConfirm(username);
+        return;
+      }
+      this.error.set(authError(err, 'Something went wrong. Please try again.'));
     };
 
     if (this.mode() === 'login') {
       this.auth
-        .login(this.username.trim(), this.password)
+        .signIn(username, this.password)
         .subscribe({ next: () => this.router.navigate(['/premiere']), error: onError });
     } else {
+      // Cognito emails a code; the account cannot sign in until it is entered (decision 3).
       this.auth
-        .register(this.username.trim(), this.email.trim(), this.password, this.confirmPassword)
-        .subscribe({
-          // Straight to /premiere would say nothing about the confirmation email just sent — this
-          // panel is that message, not an extra gate (see justRegistered's doc comment).
-          next: () => {
-            this.busy.set(false);
-            this.justRegistered.set(true);
-          },
-          error: onError,
-        });
+        .signUp(username, this.email.trim(), this.password)
+        .subscribe({ next: () => this.goConfirm(username), error: onError });
     }
   }
 
-  /** Leaves the "check your email" panel for the app itself — the account already works meanwhile. */
-  continue(): void {
-    this.router.navigate(['/premiere']);
+  private goConfirm(username: string): void {
+    this.router.navigate(['/confirm-email'], { queryParams: { u: username } });
   }
 
   private clearErrors(): void {
     this.error.set(null);
-    this.problems.set([]);
   }
 }

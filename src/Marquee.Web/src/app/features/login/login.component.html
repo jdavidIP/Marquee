@@ -36,24 +36,7 @@
       </div>
 
       <div class="pass__body">
-        @if (justRegistered()) {
-          <div class="pass__title-block">
-            <span class="pass__title">Check your email</span>
-            <span class="pass__sub pass__sub--ok">
-              We sent a confirmation link to {{ email }}. You can start exploring right away —
-              confirming unlocks full participation in a Premiere.
-            </span>
-          </div>
-
-          <div class="done">
-            <span class="done__mark">{{ doneMark() }}</span>
-            <span class="done__text">
-              Your pass is made out but not stamped. Two claps until you confirm, six after.
-            </span>
-          </div>
-
-          <button class="pass__submit" type="button" (click)="continue()">Continue to Marquee</button>
-        } @else if (mode() === 'forgot' && resetRequested()) {
+        @if (mode() === 'forgot' && resetRequested()) {
           <div class="pass__title-block">
             <span class="pass__title">Check your email</span>
             <span class="pass__sub pass__sub--ok">{{ resetMessage() }}</span>
@@ -178,23 +161,7 @@
               }
             }
 
-            @if (problems().length) {
-              <div class="problems">
-                <span class="problems__title">
-                  {{
-                    problems().length === 1
-                      ? 'One thing to fix'
-                      : problems().length + ' things to fix'
-                  }}
-                </span>
-                @for (problem of problems(); track problem.rule) {
-                  <div class="problems__row">
-                    <span class="problems__bullet">·</span>
-                    <span class="problems__text">{{ problem.message }}</span>
-                  </div>
-                }
-              </div>
-            } @else if (error()) {
+            @if (error()) {
               <div class="error-box"><span>{{ error() }}</span></div>
             }
 

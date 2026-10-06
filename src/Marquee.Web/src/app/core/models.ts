@@ -7,11 +7,8 @@ export interface UserDto {
   role: string;
   /** Null for anyone who has not set a picture — a monogram of the username stands in. */
   avatarUrl: string | null;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: UserDto;
+  /** What the account may do, from its role now — the API authorises against the same list. */
+  permissions: string[];
 }
 
 /**
