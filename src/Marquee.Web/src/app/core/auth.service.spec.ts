@@ -1,4 +1,5 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AuthService } from './auth.service';
@@ -30,7 +31,11 @@ describe('AuthService', () => {
   beforeEach(() => {
     localStorage.clear();
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+      ],
     });
     auth = TestBed.inject(AuthService);
     http = TestBed.inject(HttpTestingController);
@@ -84,7 +89,11 @@ describe('AuthService', () => {
     localStorage.setItem('marquee.token', 'access');
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
 
@@ -228,6 +237,52 @@ describe('AuthService', () => {
       expiresAtUtc: new Date(Date.now() + 3_600_000).toISOString(),
     });
   });
+
+  it('signs a refused account out, says why, and goes to sign-in', () => {
+    signedIn();
+    const navigate = spyOn(TestBed.inject(Router), 'navigate');
+
+    TestBed.inject(HttpClient).get(`${environment.apiBase}/friends`).subscribe({ error: () => {} });
+    http
+      .expectOne(`${environment.apiBase}/friends`)
+      .flush(
+        { error: 'This account has been blocked.', code: 'account_blocked' },
+        { status: 403, statusText: 'Forbidden' },
+      );
+
+    expect(auth.isLoggedIn()).toBeFalse();
+    expect(auth.notice()).toBe('This account has been blocked.');
+    expect(navigate).toHaveBeenCalledWith(['/login']);
+    http.expectOne(`${environment.apiBase}/sessions/anonymous`).flush({
+      sessionId: 's',
+      token: 'anon',
+      expiresAtUtc: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  it('stays signed in on an ordinary 403 for a permission the account lacks', () => {
+    signedIn();
+
+    TestBed.inject(HttpClient).get(`${environment.apiBase}/admin/users`).subscribe({ error: () => {} });
+    http
+      .expectOne(`${environment.apiBase}/admin/users`)
+      .flush({ error: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
+
+    expect(auth.isLoggedIn()).toBeTrue();
+    expect(auth.notice()).toBeNull();
+  });
+
+  it('gives up on a hung API after five seconds and keeps the session', fakeAsync(() => {
+    signedIn();
+    let done = false;
+
+    auth.refreshUser().subscribe(() => (done = true));
+    http.expectOne(`${environment.apiBase}/auth/me`);
+    tick(5000);
+
+    expect(done).toBeTrue();
+    expect(auth.isLoggedIn()).toBeTrue();
+  }));
 
   it('keeps the session through a failure that is not about the token', () => {
     signedIn();

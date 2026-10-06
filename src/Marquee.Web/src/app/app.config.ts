@@ -34,6 +34,10 @@ export const appConfig: ApplicationConfig = {
       const sessions = inject(AnonymousSessionService);
       if (auth.isLoggedIn()) {
         await firstValueFrom(auth.refreshUser());
+        // Refused outright (blocked): open on sign-in, where the reason is shown. Rewriting the address
+        // here, before the router's first navigation reads it, is what makes that first screen /login —
+        // a router.navigate from an initializer would be overtaken by that first navigation.
+        if (auth.notice()) history.replaceState(null, '', '/login');
       }
       if (!auth.isLoggedIn()) {
         await sessions.ensure();

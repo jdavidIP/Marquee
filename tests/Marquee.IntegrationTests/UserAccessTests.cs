@@ -178,8 +178,13 @@ public class UserAccessTests(MarqueeAppFactory factory)
         var admin = ClientWith(await factory.AdminTokenAsync());
         (await admin.PostAsJsonAsync($"/api/admin/users/{sub}/block", new { reason = "test" })).EnsureSuccessStatusCode();
 
-        (await client.GetAsync("/api/friends")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var refused = await client.GetAsync("/api/friends");
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // The code is what the frontend signs out on — an ordinary permission 403 carries none.
+        (await refused.Content.ReadFromJsonAsync<Refusal>())!.Code.Should().Be("account_blocked");
     }
+
+    private sealed record Refusal(string Error, string Code);
 
     private sealed record LoginBody(string Token);
 }

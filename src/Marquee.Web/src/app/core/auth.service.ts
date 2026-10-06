@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, catchError, map, of, switchMap, tap, throwError } from 'rxjs';
+import { Observable, catchError, map, of, switchMap, tap, throwError, timeout } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { PasswordRulesDto, UserDto } from './models';
 import { CognitoClient, CognitoError } from './cognito';
@@ -21,6 +21,13 @@ export class AuthService {
   private readonly _user = signal<UserDto | null>(readStoredUser());
 
   readonly user = this._user.asReadonly();
+
+  /**
+   * Why the last session ended, when it ended for a reason the person should hear — the account was
+   * blocked, say. The sign-in page shows it; signing in again clears it.
+   */
+  private readonly _notice = signal<string | null>(null);
+  readonly notice = this._notice.asReadonly();
   readonly isLoggedIn = computed(() => this._token() !== null);
 
   /**
@@ -116,7 +123,9 @@ export class AuthService {
     return this.cognito.call('ConfirmSignUp', { Username: username, ConfirmationCode: code }).pipe(
       // Confirming an account that is already confirmed — a double submit, or the page reopened
       // afterwards — is NotAuthorizedException from the real pool. The account is in the state the
-      // person wanted, so carry on as if this call had done it.
+      // person wanted, so carry on as if this call had done it. (A disabled pool user would raise the
+      // same, but Marquee never disables one — blocking lives in its own database — and signing in
+      // still has to get past Cognito either way.)
       catchError((err) =>
         err instanceof CognitoError && err.type === 'NotAuthorizedException'
           ? of(undefined)
@@ -140,6 +149,9 @@ export class AuthService {
    */
   refreshUser(): Observable<void> {
     return this.http.get<UserDto>(`${environment.apiBase}/auth/me`).pipe(
+      // Startup waits on this, so a hung API must not hold the first screen hostage: past five
+      // seconds it counts as "not a 401" — the session is kept and the app renders.
+      timeout(5000),
       tap((user) => this.storeUser(user)),
       map(() => undefined),
       catchError((err: HttpErrorResponse) => {
@@ -180,6 +192,17 @@ export class AuthService {
         Password: newPassword,
       })
       .pipe(map(() => undefined));
+  }
+
+  /** Signs out and says why, for the sign-in page to show. */
+  endSession(reason: string): void {
+    this.logout();
+    this._notice.set(reason);
+  }
+
+  /** Called when the person acts on the notice — signing in again, say. */
+  clearNotice(): void {
+    this._notice.set(null);
   }
 
   logout(): void {

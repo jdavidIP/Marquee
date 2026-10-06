@@ -154,8 +154,8 @@
             }
           }
 
-          @if (error()) {
-            <div class="error-box"><span>{{ error() }}</span></div>
+          @if (error() ?? auth.notice(); as message) {
+            <div class="error-box"><span>{{ message }}</span></div>
           }
 
           <button

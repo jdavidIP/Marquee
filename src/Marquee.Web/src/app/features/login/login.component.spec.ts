@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
@@ -17,6 +18,8 @@ describe('LoginComponent', () => {
   let signUpSpy: jasmine.Spy;
   let signInSpy: jasmine.Spy;
   let forgotPasswordSpy: jasmine.Spy;
+  let clearNoticeSpy: jasmine.Spy;
+  const notice = signal<string | null>(null);
 
   const rules: PasswordRulesDto = {
     minLength: 12,
@@ -34,6 +37,8 @@ describe('LoginComponent', () => {
     } = {},
   ) {
     TestBed.resetTestingModule();
+    notice.set(null);
+    clearNoticeSpy = jasmine.createSpy('clearNotice').and.callFake(() => notice.set(null));
 
     const rulesResult = options.rules ?? rules;
     signUpSpy = jasmine
@@ -60,6 +65,8 @@ describe('LoginComponent', () => {
             signUp: signUpSpy,
             signIn: signInSpy,
             forgotPassword: forgotPasswordSpy,
+            notice,
+            clearNotice: clearNoticeSpy,
             passwordRules: () =>
               typeof rulesResult === 'function' ? rulesResult() : of(rulesResult),
           },
@@ -206,6 +213,18 @@ describe('LoginComponent', () => {
     c['submit']();
 
     expect(c['error']()).toBe('That username is already taken.');
+  });
+
+  it('shows why the last session ended, and drops it once the person signs in again', () => {
+    const c = make();
+    notice.set('This account has been blocked.');
+    c['username'] = 'ana';
+    c['password'] = 'correct horse battery staple 7';
+
+    c['submit']();
+
+    expect(clearNoticeSpy).toHaveBeenCalled();
+    expect(notice()).toBeNull();
   });
 
   it('says why a username cannot look like an email, before any request', () => {

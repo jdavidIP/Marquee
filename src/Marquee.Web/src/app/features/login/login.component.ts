@@ -12,7 +12,7 @@ import { PasswordRulesDto } from '../../core/models';
   styleUrl: './login.component.css',
 })
 export class LoginComponent {
-  private readonly auth = inject(AuthService);
+  protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -170,6 +170,7 @@ export class LoginComponent {
 
   submit(): void {
     this.clearErrors();
+    this.auth.clearNotice();
     this.busy.set(true);
     const username = this.username.trim();
 
