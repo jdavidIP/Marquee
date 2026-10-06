@@ -24,7 +24,7 @@ public class UserAccessTests(MarqueeAppFactory factory)
 {
     private const string Password = "access-tests-password-1";
 
-    private sealed record Me(Guid Id, string Username, string Email, string Role, bool EmailConfirmed, List<string> Permissions);
+    private sealed record Me(Guid Id, string Username, string Email, string Role, List<string> Permissions);
 
     private static string NewUsername() => $"ua_{Guid.NewGuid():n}"[..20];
 
@@ -67,7 +67,6 @@ public class UserAccessTests(MarqueeAppFactory factory)
         me.Username.Should().Be(username);
         me.Email.Should().Be($"{username}@example.test", "it comes from GetUser — access tokens carry no email");
         me.Role.Should().Be(nameof(UserRole.User));
-        me.EmailConfirmed.Should().BeTrue("Cognito only issues tokens to confirmed accounts");
         me.Permissions.Should().BeEmpty();
     }
 

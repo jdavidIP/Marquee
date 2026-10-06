@@ -22,7 +22,6 @@ public sealed record UserDto(
     string? Bio,
     bool IsPrivate,
     string Role,
-    bool EmailConfirmed,
     /// <summary>Null for anyone who has not set a picture — the client draws a monogram instead.</summary>
     string? AvatarUrl,
     /// <summary>
@@ -33,6 +32,6 @@ public sealed record UserDto(
     IReadOnlyList<string> Permissions)
 {
     public static UserDto From(User u) =>
-        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString(), u.EmailConfirmedAt != null, u.AvatarUrl,
+        new(u.Id, u.Username, u.Email, u.Bio, u.IsPrivate, u.Role.ToString(), u.AvatarUrl,
             RolePermissions.For(u.Role));
 }

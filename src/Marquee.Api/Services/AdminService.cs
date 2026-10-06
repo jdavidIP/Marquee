@@ -116,7 +116,6 @@ public sealed class AdminService(
                 u.Role.ToString(),
                 u.IsBlocked,
                 u.IsPrivate,
-                u.EmailConfirmedAt != null,
                 u.CreatedAt,
                 u.LibraryEntries.Count))
             .ToListAsync(ct);

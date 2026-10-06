@@ -46,14 +46,12 @@ public sealed class EmailNotificationDispatcher(IOptions<NotificationOptions> op
         await client.SendMailAsync(message, ct);
     }
 
-    // Unrecognised kind: no amount of retrying fixes a message this dispatcher does not understand,
-    // so it dead-letters immediately rather than burning the retry budget (PermanentMessageException).
-    private static string Subject(string kind) => kind switch
-    {
-        nameof(NotificationKind.EmailConfirmation) => "Confirm your Marquee account",
-        nameof(NotificationKind.PasswordReset) => "Reset your Marquee password",
-        _ => throw new PermanentMessageException($"Unrecognised notification kind '{kind}'."),
-    };
+    // No kinds are defined yet: sign-up confirmation and password reset emails are the user pool's.
+    // A new kind adds its subject line here. Until then a message is one this dispatcher does not
+    // understand, and no amount of retrying fixes that, so it dead-letters immediately rather than
+    // burning the retry budget (PermanentMessageException).
+    private static string Subject(string kind) =>
+        throw new PermanentMessageException($"Unrecognised notification kind '{kind}'.");
 
     private static string Body(SendNotification notification) =>
         $"Hi {notification.RecipientDisplayName},\n\n" +
