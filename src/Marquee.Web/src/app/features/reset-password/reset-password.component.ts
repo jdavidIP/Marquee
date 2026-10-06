@@ -2,15 +2,15 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { apiError, passwordProblems } from '../../core/http-error';
-import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
+import { authError } from '../../core/cognito';
+import { PasswordRulesDto } from '../../core/models';
 
-type ResetStatus = 'form' | 'succeeded' | 'invalid';
+type ResetStatus = 'form' | 'succeeded';
 
 /**
- * What the emailed reset-password link opens (issue #50). Unlike ConfirmEmailComponent this can
- * never resolve itself on load — setting a password needs a form — so the token is only read once,
- * up front, and held for the eventual submit rather than acted on immediately.
+ * Where a password is reset with the emailed code (DEPLOYMENT.md § Phase 2, decision 3) — reached from
+ * "Forgot your password?" with the username or email in `?u=`, which stays editable so the page also
+ * works opened by hand. Reset codes last an hour.
  */
 @Component({
   selector: 'app-reset-password',
@@ -22,33 +22,30 @@ export class ResetPasswordComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
 
-  private readonly token = this.route.snapshot.queryParamMap.get('token');
-
-  protected readonly status = signal<ResetStatus>(this.token ? 'form' : 'invalid');
+  protected readonly status = signal<ResetStatus>('form');
   protected readonly busy = signal(false);
-  protected readonly error = signal<string | null>(
-    this.token ? null : 'This reset link is missing its token.',
-  );
-  protected readonly problems = signal<PasswordProblemDto[]>([]);
+  protected readonly error = signal<string | null>(null);
+  /** Confirmation that a new code went out — shown in place of an error, never alongside one. */
+  protected readonly notice = signal<string | null>(null);
 
   /** Same "fetch once, degrade gracefully if it fails" reasoning as LoginComponent's copy. */
   protected readonly rules = signal<PasswordRulesDto | null>(null);
 
+  protected username = this.route.snapshot.queryParamMap.get('u') ?? '';
+  protected code = '';
   protected newPassword = '';
   protected confirmPassword = '';
 
   /** "Show"/"Hide" is a word here, not an eye icon — same convention as LoginComponent's. */
   protected readonly reveal = signal(false);
 
+  /** Same wording as LoginComponent's: only what the user pool enforces. */
   protected readonly passwordHint = computed(() => {
     const r = this.rules();
     if (!r) return null;
-
-    const parts = [`at least ${r.minLength} characters`];
-    if (r.requireLetter) parts.push('a letter');
-    if (r.requireDigit) parts.push('a number');
-
-    return `Use ${parts.join(', ')}. Avoid your username and anything widely used.`;
+    return r.requireDigit
+      ? `Use at least ${r.minLength} characters, including a number.`
+      : `Use at least ${r.minLength} characters.`;
   });
 
   constructor() {
@@ -66,35 +63,47 @@ export class ResetPasswordComponent {
     this.reveal.update((v) => !v);
   }
 
-  /** Same reasoning as LoginComponent's: one tick per rule the server actually enforces. */
+  /** Same reasoning as LoginComponent's: one tick per rule the pool actually enforces. */
   protected passwordChecks(): boolean[] {
     const r = this.rules();
     if (!r) return [];
 
     const checks = [this.newPassword.length >= r.minLength];
-    if (r.requireLetter) checks.push(/[A-Za-z]/.test(this.newPassword));
     if (r.requireDigit) checks.push(/[0-9]/.test(this.newPassword));
     return checks;
   }
 
   submit(): void {
-    // The form is not rendered without a token (status would be 'invalid'), so this only guards
-    // against a stray call — the real gate is the template.
-    if (!this.token) return;
-
     this.error.set(null);
-    this.problems.set([]);
+    this.notice.set(null);
     this.busy.set(true);
 
-    this.auth.resetPassword(this.token, this.newPassword, this.confirmPassword).subscribe({
+    this.auth.resetPassword(this.username.trim(), this.code.trim(), this.newPassword).subscribe({
       next: () => {
         this.busy.set(false);
         this.status.set('succeeded');
       },
       error: (err) => {
         this.busy.set(false);
-        this.problems.set(passwordProblems(err));
-        this.error.set(apiError(err, 'This reset link is invalid, expired, or already used.'));
+        this.error.set(authError(err, 'Could not reset your password. Please try again.'));
+      },
+    });
+  }
+
+  /** A reset code lasts an hour; asking again is the same request that sent the first. */
+  resend(): void {
+    this.error.set(null);
+    this.notice.set(null);
+    this.busy.set(true);
+
+    this.auth.forgotPassword(this.username.trim()).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.notice.set('A new code is on its way. Check your email.');
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(authError(err, 'Could not send a new code. Please try again.'));
       },
     });
   }

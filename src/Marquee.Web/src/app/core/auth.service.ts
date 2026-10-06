@@ -73,6 +73,11 @@ export class AuthService {
         catchError((err) => {
           if (err instanceof CognitoError && err.type === 'UserNotConfirmedException')
             this.pending = { username, password };
+          // At sign-in a refused password can only be a wrong one. The real pool says so
+          // (NotAuthorizedException); cognito-local says InvalidPasswordException, which elsewhere
+          // means "breaks the policy" — so it is read as what it means here (DEPLOYMENT.md §2b).
+          if (err instanceof CognitoError && err.type === 'InvalidPasswordException')
+            return throwError(() => new CognitoError('NotAuthorizedException', err.message));
           return throwError(() => err);
         }),
         // The access token, not the ID token: it is the API's credential (decision 9). Stored before
@@ -133,27 +138,23 @@ export class AuthService {
   }
 
   /**
-   * Always the same response shape whether or not the address is registered (issue #31) — the
-   * caller shows whatever message comes back without branching on it, which is what actually keeps
-   * that guarantee visible in the UI rather than just in the API contract.
+   * Emails a code to reset the password. Takes the username or the email (the pool accepts either).
+   * Succeeds whether or not the account exists — the pool hides which (issue #31's guarantee, now
+   * kept by Cognito's user-existence protection) — so the caller moves on to the code page either way.
    */
-  forgotPassword(email: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${environment.apiBase}/auth/forgot-password`, {
-      email,
-    });
+  forgotPassword(usernameOrEmail: string): Observable<void> {
+    return this.cognito.call('ForgotPassword', { Username: usernameOrEmail }).pipe(map(() => undefined));
   }
 
-  /** No sign-in as a side effect, same reasoning as confirmEmail — just a message, nothing to store. */
-  resetPassword(
-    token: string,
-    newPassword: string,
-    confirmPassword: string,
-  ): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${environment.apiBase}/auth/reset-password`, {
-      token,
-      newPassword,
-      confirmPassword,
-    });
+  /** Sets a new password with the emailed code. No sign-in as a side effect: the person signs in after. */
+  resetPassword(usernameOrEmail: string, code: string, newPassword: string): Observable<void> {
+    return this.cognito
+      .call('ConfirmForgotPassword', {
+        Username: usernameOrEmail,
+        ConfirmationCode: code,
+        Password: newPassword,
+      })
+      .pipe(map(() => undefined));
   }
 
   logout(): void {

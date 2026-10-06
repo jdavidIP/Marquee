@@ -113,6 +113,17 @@ describe('AuthService', () => {
     expect(auth.isLoggedIn()).toBeFalse();
   });
 
+  it('reads a password refused at sign-in as a wrong password, whatever the pool calls it', () => {
+    // cognito-local answers a wrong password with InvalidPasswordException, which would otherwise
+    // be shown as "breaks the password policy".
+    let error: CognitoError | undefined;
+    auth.signIn('ana', 'wrong-password-1').subscribe({ error: (e) => (error = e) });
+
+    refuse(expectCognito('InitiateAuth'), 'InvalidPasswordException');
+
+    expect(error!.type).toBe('NotAuthorizedException');
+  });
+
   it('reads a namespaced error type by its last part', () => {
     let error: CognitoError | undefined;
     auth.resendCode('ana').subscribe({ error: (e) => (error = e) });

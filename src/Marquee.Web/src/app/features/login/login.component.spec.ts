@@ -47,7 +47,7 @@ describe('LoginComponent', () => {
       .and.returnValue(
         options.forgotPasswordResult
           ? options.forgotPasswordResult()
-          : of({ message: 'If that address is registered, a reset link has been sent.' }),
+          : of(undefined),
       );
 
     TestBed.configureTestingModule({
@@ -225,43 +225,42 @@ describe('LoginComponent', () => {
     expect(c['confirmPassword']).toBe('');
   });
 
-  it('shows the server\'s own message after requesting a reset (issue #50)', () => {
+  it('requests a reset code and goes to enter it, whether or not the account exists', () => {
+    // The pool answers the same either way (issue #31), so there is nothing to branch on.
     const c = make();
     c['openForgotPassword']();
-    c['forgotEmail'] = ' ana@marquee.test ';
+    c['forgotName'] = ' ana ';
+    const navigateSpy = spyOn(TestBed.inject(Router), 'navigate');
 
     c['requestReset']();
 
-    expect(forgotPasswordSpy).toHaveBeenCalledWith(' ana@marquee.test '.trim());
-    expect(c['resetRequested']()).toBe(true);
-    expect(c['resetMessage']()).toBe('If that address is registered, a reset link has been sent.');
+    expect(forgotPasswordSpy).toHaveBeenCalledWith('ana');
+    expect(navigateSpy).toHaveBeenCalledWith(['/reset-password'], { queryParams: { u: 'ana' } });
   });
 
-  it('backToSignIn() clears the request state', () => {
+  it('backToSignIn() clears the request', () => {
     const c = make();
     c['openForgotPassword']();
-    c['forgotEmail'] = 'ana@marquee.test';
-    c['requestReset']();
-    expect(c['resetRequested']()).toBe(true);
+    c['forgotName'] = 'ana';
 
     c['backToSignIn']();
 
     expect(c['mode']()).toBe('login');
-    expect(c['resetRequested']()).toBe(false);
-    expect(c['resetMessage']()).toBeNull();
-    expect(c['forgotEmail']).toBe('');
+    expect(c['forgotName']).toBe('');
   });
 
-  it('surfaces a failed reset request the same way as any other API error', () => {
+  it('says so when the pool throttles reset requests', () => {
     const c = make({
-      forgotPasswordResult: () => throwError(() => new HttpErrorResponse({ status: 429 })),
+      forgotPasswordResult: () =>
+        throwError(() => new CognitoError('LimitExceededException', 'Attempt limit exceeded')),
     });
     c['openForgotPassword']();
-    c['forgotEmail'] = 'ana@marquee.test';
+    c['forgotName'] = 'ana';
+    const navigateSpy = spyOn(TestBed.inject(Router), 'navigate');
 
     c['requestReset']();
 
-    expect(c['resetRequested']()).toBe(false);
-    expect(c['error']()).toBeTruthy();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(c['error']()).toBe('Too many attempts. Wait a few minutes and try again.');
   });
 });

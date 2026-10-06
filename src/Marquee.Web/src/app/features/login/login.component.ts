@@ -2,7 +2,6 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { apiError } from '../../core/http-error';
 import { CognitoError, authError } from '../../core/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
@@ -24,10 +23,7 @@ export class LoginComponent {
   /** "Show"/"Hide" is a word here, not an eye icon (design handoff). */
   protected readonly reveal = signal(false);
 
-  /** Whether the forgot-password request has been sent — shows the server's own response text instead of the form. */
-  protected readonly resetRequested = signal(false);
-  protected readonly resetMessage = signal<string | null>(null);
-  protected forgotEmail = '';
+  protected forgotName = '';
 
   /**
    * Null until the API answers, and it may stay null: this only drives a hint and the browser's own
@@ -71,12 +67,12 @@ export class LoginComponent {
   });
 
   protected readonly modeSub = computed(() => {
-    if (this.mode() === 'forgot') return "Enter the email on your account and we'll send a link to reset it.";
+    if (this.mode() === 'forgot') return "Enter your username or email and we'll send a code to reset it.";
     return 'Four times a day a Premiere appears. Clap together to open it.';
   });
 
   protected readonly submitLabel = computed(() => {
-    if (this.mode() === 'forgot') return 'Send reset link';
+    if (this.mode() === 'forgot') return 'Send reset code';
     return this.mode() === 'login' ? 'Sign in' : 'Register';
   });
 
@@ -112,30 +108,27 @@ export class LoginComponent {
 
   backToSignIn(): void {
     this.mode.set('login');
-    this.resetRequested.set(false);
-    this.resetMessage.set(null);
-    this.forgotEmail = '';
+    this.forgotName = '';
     this.clearErrors();
   }
 
   /**
-   * Always shows the server's own response message (issue #31: identical wording whether or not the
-   * address exists). Nothing here branches on the outcome — there is only one outcome from the
-   * caller's point of view, by design.
+   * Moves on to the code page whether or not the account exists: the pool answers the same either
+   * way (issue #31), so there is nothing here to branch on.
    */
   requestReset(): void {
     this.clearErrors();
     this.busy.set(true);
+    const name = this.forgotName.trim();
 
-    this.auth.forgotPassword(this.forgotEmail.trim()).subscribe({
-      next: (r) => {
+    this.auth.forgotPassword(name).subscribe({
+      next: () => {
         this.busy.set(false);
-        this.resetRequested.set(true);
-        this.resetMessage.set(r.message);
+        this.router.navigate(['/reset-password'], { queryParams: { u: name } });
       },
       error: (err) => {
         this.busy.set(false);
-        this.error.set(apiError(err, 'Something went wrong. Please try again.'));
+        this.error.set(authError(err, 'Something went wrong. Please try again.'));
       },
     });
   }

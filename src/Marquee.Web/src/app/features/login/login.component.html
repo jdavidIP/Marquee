@@ -36,157 +36,144 @@
       </div>
 
       <div class="pass__body">
-        @if (mode() === 'forgot' && resetRequested()) {
-          <div class="pass__title-block">
-            <span class="pass__title">Check your email</span>
-            <span class="pass__sub pass__sub--ok">{{ resetMessage() }}</span>
-          </div>
+        <div class="pass__title-block">
+          <span class="pass__title">{{ modeTitle() }}</span>
+          <span class="pass__sub">{{ modeSub() }}</span>
+        </div>
 
-          <div class="pass__switch pass__switch--alone">
-            <span>Remembered it?</span>
-            <button type="button" (click)="backToSignIn()">Back to sign in</button>
-          </div>
-        } @else {
-          <div class="pass__title-block">
-            <span class="pass__title">{{ modeTitle() }}</span>
-            <span class="pass__sub">{{ modeSub() }}</span>
-          </div>
+        <form
+          class="pass__form"
+          (ngSubmit)="mode() === 'forgot' ? requestReset() : submit()"
+          #f="ngForm"
+        >
+          @if (mode() === 'forgot') {
+            <label class="field">
+              <span class="field__label">Username or email</span>
+              <input
+                class="field__input"
+                name="forgotName"
+                [(ngModel)]="forgotName"
+                required
+                autocomplete="username"
+                [disabled]="busy()"
+              />
+            </label>
+          } @else {
+            <label class="field">
+              <span class="field__label">{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
+              <input
+                class="field__input"
+                name="username"
+                [(ngModel)]="username"
+                required
+                autocomplete="username"
+                [disabled]="busy()"
+              />
+            </label>
 
-          <form
-            class="pass__form"
-            (ngSubmit)="mode() === 'forgot' ? requestReset() : submit()"
-            #f="ngForm"
-          >
-            @if (mode() === 'forgot') {
+            @if (mode() === 'register') {
               <label class="field">
                 <span class="field__label">Email</span>
                 <input
                   class="field__input"
-                  name="forgotEmail"
+                  name="email"
                   type="email"
-                  [(ngModel)]="forgotEmail"
+                  [(ngModel)]="email"
                   required
                   autocomplete="email"
                   [disabled]="busy()"
                 />
               </label>
-            } @else {
-              <label class="field">
-                <span class="field__label">{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
-                <input
-                  class="field__input"
-                  name="username"
-                  [(ngModel)]="username"
-                  required
-                  autocomplete="username"
-                  [disabled]="busy()"
-                />
-              </label>
+            }
 
-              @if (mode() === 'register') {
-                <label class="field">
-                  <span class="field__label">Email</span>
-                  <input
-                    class="field__input"
-                    name="email"
-                    type="email"
-                    [(ngModel)]="email"
-                    required
-                    autocomplete="email"
-                    [disabled]="busy()"
-                  />
-                </label>
-              }
-
-              <label class="field">
-                <div class="field__row">
-                  <span class="field__label">Password</span>
-                  <button class="reveal" type="button" (click)="toggleReveal()">
-                    {{ reveal() ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-                <input
-                  class="field__input"
-                  name="password"
-                  [type]="reveal() ? 'text' : 'password'"
-                  [(ngModel)]="password"
-                  required
-                  [attr.minlength]="mode() === 'register' ? rules()?.minLength : null"
-                  autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}"
-                  [disabled]="busy()"
-                />
-              </label>
-
-              @if (mode() === 'login') {
-                <button class="link" type="button" (click)="openForgotPassword()">
-                  Forgot your password?
+            <label class="field">
+              <div class="field__row">
+                <span class="field__label">Password</span>
+                <button class="reveal" type="button" (click)="toggleReveal()">
+                  {{ reveal() ? 'Hide' : 'Show' }}
                 </button>
-              }
+              </div>
+              <input
+                class="field__input"
+                name="password"
+                [type]="reveal() ? 'text' : 'password'"
+                [(ngModel)]="password"
+                required
+                [attr.minlength]="mode() === 'register' ? rules()?.minLength : null"
+                autocomplete="{{ mode() === 'login' ? 'current-password' : 'new-password' }}"
+                [disabled]="busy()"
+              />
+            </label>
 
-              @if (mode() === 'register') {
-                @if (rules()) {
-                  <div class="strength">
-                    <div class="strength__ticks">
-                      @for (met of passwordChecks(); track $index) {
-                        <span
-                          class="strength__tick"
-                          [class.strength__tick--partial]="password && met"
-                          [class.strength__tick--full]="password && met && !passwordChecks().includes(false)"
-                        ></span>
-                      }
-                    </div>
-                    @if (passwordHint(); as hint) {
-                      <span class="strength__hint">{{ hint }}</span>
+            @if (mode() === 'login') {
+              <button class="link" type="button" (click)="openForgotPassword()">
+                Forgot your password?
+              </button>
+            }
+
+            @if (mode() === 'register') {
+              @if (rules()) {
+                <div class="strength">
+                  <div class="strength__ticks">
+                    @for (met of passwordChecks(); track $index) {
+                      <span
+                        class="strength__tick"
+                        [class.strength__tick--partial]="password && met"
+                        [class.strength__tick--full]="password && met && !passwordChecks().includes(false)"
+                      ></span>
                     }
                   </div>
-                }
+                  @if (passwordHint(); as hint) {
+                    <span class="strength__hint">{{ hint }}</span>
+                  }
+                </div>
+              }
 
-                <label class="field">
-                  <span class="field__label">Confirm password</span>
-                  <input
-                    class="field__input"
-                    [class.field__input--error]="mismatched()"
-                    name="confirmPassword"
-                    [type]="reveal() ? 'text' : 'password'"
-                    [(ngModel)]="confirmPassword"
-                    required
-                    autocomplete="new-password"
-                    [disabled]="busy()"
-                  />
-                </label>
+              <label class="field">
+                <span class="field__label">Confirm password</span>
+                <input
+                  class="field__input"
+                  [class.field__input--error]="mismatched()"
+                  name="confirmPassword"
+                  [type]="reveal() ? 'text' : 'password'"
+                  [(ngModel)]="confirmPassword"
+                  required
+                  autocomplete="new-password"
+                  [disabled]="busy()"
+                />
+              </label>
 
-                @if (mismatched()) {
-                  <span class="field__error">The two passwords do not match.</span>
-                }
+              @if (mismatched()) {
+                <span class="field__error">The two passwords do not match.</span>
               }
             }
-
-            @if (error()) {
-              <div class="error-box"><span>{{ error() }}</span></div>
-            }
-
-            <button
-              class="pass__submit"
-              type="submit"
-              [disabled]="busy() || f.invalid || mismatched()"
-            >
-              {{ busy() ? 'Please wait…' : submitLabel() }}
-            </button>
-          </form>
-
-          @if (mode() === 'forgot') {
-            <div class="pass__switch">
-              <span>Remembered it?</span>
-              <button type="button" (click)="backToSignIn()">Back to sign in</button>
-            </div>
-          } @else {
-            <div class="pass__switch">
-              <span>{{ mode() === 'login' ? 'Need an account?' : 'Already have an account?' }}</span>
-              <button type="button" (click)="toggle()">
-                {{ mode() === 'login' ? 'Register' : 'Sign in' }}
-              </button>
-            </div>
           }
+
+          @if (error()) {
+            <div class="error-box"><span>{{ error() }}</span></div>
+          }
+
+          <button
+            class="pass__submit"
+            type="submit"
+            [disabled]="busy() || f.invalid || mismatched()"
+          >
+            {{ busy() ? 'Please wait…' : submitLabel() }}
+          </button>
+        </form>
+
+        @if (mode() === 'forgot') {
+          <div class="pass__switch">
+            <span>Remembered it?</span>
+            <button type="button" (click)="backToSignIn()">Back to sign in</button>
+          </div>
+        } @else {
+          <div class="pass__switch">
+            <span>{{ mode() === 'login' ? 'Need an account?' : 'Already have an account?' }}</span>
+            <button type="button" (click)="toggle()">
+              {{ mode() === 'login' ? 'Register' : 'Sign in' }}
+            </button>
+          </div>
         }
       </div>
 
