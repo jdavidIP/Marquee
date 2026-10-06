@@ -19,4 +19,10 @@ public sealed class CognitoOptions
     /// <c>client_id</c> instead: a token the pool issued to any other client is refused.
     /// </summary>
     public string ClientId { get; set; } = "";
+
+    // Both derive from the issuer rather than being configured beside it, so they cannot disagree
+    // with it. Its origin is the cognito-idp endpoint, for the real service and cognito-local alike,
+    // and its path is the pool id.
+    public string ServiceUrl => new Uri(Issuer).GetLeftPart(UriPartial.Authority);
+    public string UserPoolId => new Uri(Issuer).AbsolutePath.Trim('/');
 }

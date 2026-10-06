@@ -89,9 +89,8 @@ public sealed class CognitoUserProvisioner(
 
     private async Task<string> GetEmailAsync(string accessToken, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(options.Value.Issuer).GetLeftPart(UriPartial.Authority))
+        using var request = new HttpRequestMessage(HttpMethod.Post, options.Value.ServiceUrl)
         {
-            // The issuer's origin is the cognito-idp endpoint, for the real service and cognito-local alike.
             // A dictionary, not an anonymous object: JsonContent camel-cases property names, and
             // Cognito's are case-sensitive PascalCase.
             Content = JsonContent.Create(new Dictionary<string, string> { ["AccessToken"] = accessToken },

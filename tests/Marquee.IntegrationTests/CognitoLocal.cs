@@ -86,6 +86,31 @@ public sealed class CognitoLocal : IAsyncDisposable
         return new Tokens(tokens["AccessToken"]!.GetValue<string>(), tokens["IdToken"]!.GetValue<string>());
     }
 
+    /// <summary>
+    /// Creates a user through the admin API and stops there — no password of its own, so it sits in
+    /// FORCE_CHANGE_PASSWORD, as a seeder start that died after creating it would have left it.
+    /// </summary>
+    public Task AdminCreateUserAsync(string username, string email) =>
+        CallAsync("AdminCreateUser", new
+        {
+            UserPoolId = PoolId,
+            Username = username,
+            MessageAction = "SUPPRESS",
+            UserAttributes = new[]
+            {
+                new { Name = "email", Value = email },
+                new { Name = "email_verified", Value = "true" },
+            },
+        });
+
+    /// <summary>A user's status (e.g. CONFIRMED) and sub, as the pool's admin API reports them.</summary>
+    public async Task<(string Status, Guid Sub)> GetUserAsync(string username)
+    {
+        var result = await CallAsync("AdminGetUser", new { UserPoolId = PoolId, Username = username });
+        var sub = result["UserAttributes"]!.AsArray().Single(a => a!["Name"]!.GetValue<string>() == "sub")!["Value"]!.GetValue<string>();
+        return (result["UserStatus"]!.GetValue<string>(), Guid.Parse(sub));
+    }
+
     /// <summary>A second app client in the same pool, for proving a token issued to it is refused.</summary>
     public async Task<string> CreateClientAsync(string name)
     {

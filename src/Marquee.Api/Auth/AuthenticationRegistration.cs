@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Text;
+using Amazon.CognitoIdentityProvider;
+using Amazon.Runtime;
 using Marquee.Api.Realtime;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -72,6 +74,23 @@ public static class AuthenticationRegistration
                     },
                 };
             });
+
+        // The pool's admin API, for the startup seeder (#110). Production signs with the EC2 instance
+        // role, from the SDK's default credential chain; cognito-local checks no signature, so anywhere
+        // else gets placeholder credentials rather than whatever happens to be on the developer's machine.
+        services.AddSingleton<IAmazonCognitoIdentityProvider>(_ =>
+        {
+            var clientConfig = new AmazonCognitoIdentityProviderConfig
+            {
+                ServiceURL = cognito.ServiceUrl,
+                // The region is the pool id's prefix: ca-central-1_xxxx (cognito-local: local_xxxx).
+                AuthenticationRegion = cognito.UserPoolId.Split('_')[0],
+            };
+            return environment.IsProduction()
+                ? new AmazonCognitoIdentityProviderClient(clientConfig)
+                : new AmazonCognitoIdentityProviderClient(new BasicAWSCredentials("local", "local"), clientConfig);
+        });
+        services.AddScoped<AdminSeeder>();
 
         if (acceptLegacy)
         {
