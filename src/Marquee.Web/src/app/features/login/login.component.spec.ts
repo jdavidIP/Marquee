@@ -227,6 +227,15 @@ describe('LoginComponent', () => {
     expect(notice()).toBeNull();
   });
 
+  it('drops the notice when the sign-in page is left, so it is not shown again later', () => {
+    make();
+    notice.set('This account has been blocked.');
+
+    TestBed.resetTestingModule(); // destroys the component
+
+    expect(clearNoticeSpy).toHaveBeenCalled();
+  });
+
   it('says why a username cannot look like an email, before any request', () => {
     // The pool signs in by username or email, so it refuses a username that is one.
     const c = make();

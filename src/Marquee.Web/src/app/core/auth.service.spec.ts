@@ -260,6 +260,14 @@ describe('AuthService', () => {
     });
   });
 
+  it('drops the reason the last session ended once someone signs in again', () => {
+    auth.endSession('This account has been blocked.');
+
+    signedIn();
+
+    expect(auth.notice()).toBeNull();
+  });
+
   it('stays signed in on an ordinary 403 for a permission the account lacks', () => {
     signedIn();
 

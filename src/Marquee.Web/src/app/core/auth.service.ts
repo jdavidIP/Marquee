@@ -92,7 +92,11 @@ export class AuthService {
         // is deliberately not kept: a session lasts as long as this token, as it always has.
         tap((r) => this.storeToken(r.AuthenticationResult.AccessToken)),
         switchMap(() => this.http.get<UserDto>(`${environment.apiBase}/auth/me`)),
-        tap((user) => this.storeUser(user)),
+        tap((user) => {
+          this.storeUser(user);
+          // Whatever ended the last session no longer describes this one.
+          this.clearNotice();
+        }),
         catchError((err) => {
           // Signed in with the pool but the API refused or failed: no half-signed-in state.
           if (!(err instanceof CognitoError)) this.logout();

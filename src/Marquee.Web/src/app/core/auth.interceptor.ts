@@ -6,6 +6,9 @@ import { AnonymousSessionService } from './anonymous-session.service';
 import { environment } from '../../environments/environment';
 import { catchError, throwError } from 'rxjs';
 
+/** The codes UserAccessMiddleware attaches to a 403 that refuses the account, not one action. */
+const ACCOUNT_REFUSED = ['account_blocked', 'account_unavailable'];
+
 /**
  * Identifies the caller on every API request: the JWT when signed in, otherwise the anonymous
  * session token (Iteration 5).
@@ -17,9 +20,6 @@ import { catchError, throwError } from 'rxjs';
  * Only on requests to Marquee's own API. The user pool is called from the browser too (CognitoClient),
  * and neither credential is any of its business — nor does its CORS policy allow the headers.
  */
-/** The codes UserAccessMiddleware attaches to a 403 that refuses the account, not one action. */
-const ACCOUNT_REFUSED = ['account_blocked', 'account_unavailable'];
-
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   if (!req.url.startsWith(environment.apiBase)) return next(req);
 

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
@@ -77,6 +77,9 @@ export class LoginComponent {
   });
 
   constructor() {
+    // Why the last session ended is said once, here — not again on a later, unrelated visit.
+    inject(DestroyRef).onDestroy(() => this.auth.clearNotice());
+
     // ?mode=register opens on the register form, so the shell's "Create account" lands on the form
     // it names rather than on sign-in with a toggle still to find. Read once from the snapshot: the
     // route is never navigated to with a different mode while this component is alive.
