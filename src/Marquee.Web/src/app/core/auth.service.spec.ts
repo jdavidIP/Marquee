@@ -169,6 +169,21 @@ describe('AuthService', () => {
     expect(auth.isLoggedIn()).toBeTrue();
   });
 
+  it('treats confirming an already-confirmed account as done, and still signs in', () => {
+    // A double submit, or the code page reopened after confirming: the real pool answers
+    // NotAuthorizedException ("Current status is CONFIRMED").
+    auth.signUp('ana', 'ana@marquee.test', 'pw-1234567890').subscribe();
+    expectCognito('SignUp').flush({ UserConfirmed: false });
+
+    let outcome: string | undefined;
+    auth.confirmSignUp('ana', '123456').subscribe((o) => (outcome = o));
+    refuse(expectCognito('ConfirmSignUp'), 'NotAuthorizedException');
+
+    expectCognito('InitiateAuth').flush({ AuthenticationResult: { AccessToken: 'access' } });
+    http.expectOne(`${environment.apiBase}/auth/me`).flush(admin);
+    expect(outcome).toBe('signed-in');
+  });
+
   it('leaves signing in to the person when it holds no password for that account', () => {
     let outcome: string | undefined;
     auth.confirmSignUp('someone-else', '123456').subscribe((o) => (outcome = o));
@@ -176,6 +191,53 @@ describe('AuthService', () => {
 
     expect(outcome).toBe('confirmed');
     expect(auth.isLoggedIn()).toBeFalse();
+  });
+
+  /** Signs in as `admin` (via the pool and /me), leaving no request outstanding. */
+  function signedIn(): void {
+    auth.signIn('ana', 'pw-1234567890').subscribe();
+    expectCognito('InitiateAuth').flush({ AuthenticationResult: { AccessToken: 'access' } });
+    http.expectOne(`${environment.apiBase}/auth/me`).flush(admin);
+  }
+
+  it('refreshes the account, so a permission changed since sign-in shows up', () => {
+    signedIn();
+    expect(auth.canManagePremieres()).toBeTrue();
+
+    auth.refreshUser().subscribe();
+    http.expectOne(`${environment.apiBase}/auth/me`).flush({ ...admin, permissions: [] });
+
+    expect(auth.canManagePremieres()).toBeFalse();
+    expect(auth.isLoggedIn()).toBeTrue();
+  });
+
+  it('signs out, and becomes a visitor, when the API stops accepting the token', () => {
+    // An expired 24h access token, or one from before the move to Cognito.
+    signedIn();
+
+    TestBed.inject(HttpClient).get(`${environment.apiBase}/friends`).subscribe({ error: () => {} });
+    http
+      .expectOne(`${environment.apiBase}/friends`)
+      .flush(null, { status: 401, statusText: 'Unauthorized' });
+
+    expect(auth.isLoggedIn()).toBeFalse();
+    // A visitor session, so clapping still works.
+    http.expectOne(`${environment.apiBase}/sessions/anonymous`).flush({
+      sessionId: 's',
+      token: 'anon',
+      expiresAtUtc: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+  });
+
+  it('keeps the session through a failure that is not about the token', () => {
+    signedIn();
+
+    auth.refreshUser().subscribe();
+    http
+      .expectOne(`${environment.apiBase}/auth/me`)
+      .flush(null, { status: 503, statusText: 'Service Unavailable' });
+
+    expect(auth.isLoggedIn()).toBeTrue();
   });
 
   it('does not stay half signed in when the API refuses the account', () => {

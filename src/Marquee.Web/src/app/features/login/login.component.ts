@@ -151,6 +151,14 @@ export class LoginComponent {
     return checks;
   }
 
+  /**
+   * The pool signs in by username or email, so a username that looks like an email would be
+   * ambiguous — Cognito refuses it. Said now, with the reason, rather than as a vague refusal later.
+   */
+  protected usernameLooksLikeEmail(): boolean {
+    return this.mode() === 'register' && this.username.includes('@');
+  }
+
   /** Both typed and different — worth saying now rather than spending a round trip on it. */
   protected mismatched(): boolean {
     return (

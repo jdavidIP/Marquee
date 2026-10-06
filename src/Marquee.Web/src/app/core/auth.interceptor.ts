@@ -1,8 +1,9 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { AuthService } from './auth.service';
 import { AnonymousSessionService } from './anonymous-session.service';
 import { environment } from '../../environments/environment';
+import { catchError, throwError } from 'rxjs';
 
 /**
  * Identifies the caller on every API request: the JWT when signed in, otherwise the anonymous
@@ -18,12 +19,25 @@ import { environment } from '../../environments/environment';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   if (!req.url.startsWith(environment.apiBase)) return next(req);
 
-  const token = inject(AuthService).token;
+  const auth = inject(AuthService);
+  const sessions = inject(AnonymousSessionService);
+  const token = auth.token;
   if (token) {
-    return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));
+    // A 401 to a request that carried our token means the API no longer accepts it — it expired, or
+    // predates the move to Cognito. Signing out locally turns "looks signed in, can do nothing" into
+    // an ordinary visitor, with a visitor session so clapping still works.
+    return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })).pipe(
+      catchError((err: HttpErrorResponse) => {
+        if (err.status === 401 && auth.token === token) {
+          auth.logout();
+          void sessions.ensure();
+        }
+        return throwError(() => err);
+      }),
+    );
   }
 
-  const anonToken = inject(AnonymousSessionService).token;
+  const anonToken = sessions.token;
   if (anonToken) {
     return next(req.clone({ setHeaders: { 'X-Anon-Session': anonToken } }));
   }

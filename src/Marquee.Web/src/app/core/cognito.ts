@@ -72,6 +72,12 @@ export function authError(err: unknown, fallback: string): string {
       return 'That code is not right. Check it and try again.';
     case 'ExpiredCodeException':
       return 'That code has expired. Send a new one.';
+    case 'CodeDeliveryFailureException':
+      return 'We could not send the email. Check the address and try again.';
+    // The pool's catch-all for input it will not take — an email-shaped username, a malformed
+    // address, an account with no verified email to send a code to.
+    case 'InvalidParameterException':
+      return 'Some of those details were not accepted. Check them and try again.';
     case 'LimitExceededException':
     case 'TooManyRequestsException':
     case 'TooManyFailedAttemptsException':

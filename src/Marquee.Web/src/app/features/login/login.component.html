@@ -63,6 +63,7 @@
               <span class="field__label">{{ mode() === 'login' ? 'Username or email' : 'Username' }}</span>
               <input
                 class="field__input"
+                [class.field__input--error]="usernameLooksLikeEmail()"
                 name="username"
                 [(ngModel)]="username"
                 required
@@ -70,6 +71,10 @@
                 [disabled]="busy()"
               />
             </label>
+
+            @if (usernameLooksLikeEmail()) {
+              <span class="field__error">A username can't contain @ — your email goes in its own field.</span>
+            }
 
             @if (mode() === 'register') {
               <label class="field">
@@ -156,7 +161,7 @@
           <button
             class="pass__submit"
             type="submit"
-            [disabled]="busy() || f.invalid || mismatched()"
+            [disabled]="busy() || f.invalid || mismatched() || usernameLooksLikeEmail()"
           >
             {{ busy() ? 'Please wait…' : submitLabel() }}
           </button>

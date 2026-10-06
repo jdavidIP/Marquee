@@ -208,6 +208,30 @@ describe('LoginComponent', () => {
     expect(c['error']()).toBe('That username is already taken.');
   });
 
+  it('says why a username cannot look like an email, before any request', () => {
+    // The pool signs in by username or email, so it refuses a username that is one.
+    const c = make();
+    fillRegistration(c);
+    c['username'] = 'ana@marquee.test';
+
+    expect(c['usernameLooksLikeEmail']()).toBe(true);
+
+    c['mode'].set('login');
+    expect(c['usernameLooksLikeEmail']()).toBe(false);
+  });
+
+  it('turns the pool\'s catch-all refusal into something readable', () => {
+    const c = make({
+      signUpResult: () =>
+        throwError(() => new CognitoError('InvalidParameterException', 'Invalid email address format.')),
+    });
+    fillRegistration(c);
+
+    c['submit']();
+
+    expect(c['error']()).toBe('Some of those details were not accepted. Check them and try again.');
+  });
+
   it('clears a previous refusal when switching between signing in and registering', () => {
     const c = make({
       signUpResult: () =>

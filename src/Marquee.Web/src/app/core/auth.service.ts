@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, map, of, switchMap, tap, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { PasswordRulesDto, UserDto } from './models';
@@ -114,12 +114,37 @@ export class AuthService {
    */
   confirmSignUp(username: string, code: string): Observable<'signed-in' | 'confirmed'> {
     return this.cognito.call('ConfirmSignUp', { Username: username, ConfirmationCode: code }).pipe(
+      // Confirming an account that is already confirmed — a double submit, or the page reopened
+      // afterwards — is NotAuthorizedException from the real pool. The account is in the state the
+      // person wanted, so carry on as if this call had done it.
+      catchError((err) =>
+        err instanceof CognitoError && err.type === 'NotAuthorizedException'
+          ? of(undefined)
+          : throwError(() => err),
+      ),
       switchMap(() => {
         const pending = this.pending?.username === username ? this.pending : null;
         this.pending = null;
         return pending
           ? this.signIn(pending.username, pending.password).pipe(map(() => 'signed-in' as const))
           : of('confirmed' as const);
+      }),
+    );
+  }
+
+  /**
+   * Re-reads the signed-in account from the API, so permissions changed since sign-in show up, and
+   * signs out locally if the API no longer accepts the token — it expired (sessions last as long as
+   * the 24h access token), or predates the move to Cognito. Any other failure keeps the session: a
+   * network blip is not a reason to sign someone out.
+   */
+  refreshUser(): Observable<void> {
+    return this.http.get<UserDto>(`${environment.apiBase}/auth/me`).pipe(
+      tap((user) => this.storeUser(user)),
+      map(() => undefined),
+      catchError((err: HttpErrorResponse) => {
+        if (err.status === 401) this.logout();
+        return of(undefined);
       }),
     );
   }
