@@ -195,12 +195,12 @@ Redis runs no Lua — a test on either would assert that the parts with no concu
 ### A fixture bug worth recording
 
 `Program.cs` reads some configuration **inline** while composing the app — the Postgres connection
-string, and `Jwt:Key` for the bearer validation parameters. Those reads happen *before*
+string, and `Cognito:Issuer` for the bearer validation parameters. Those reads happen *before*
 `WebApplicationFactory` applies its `ConfigureAppConfiguration` delegates, so overrides supplied that
 way reached anything bound lazily through `IOptions` but not those two.
 
-The visible symptom was tokens rejected with *"the signature key was not found"*: `JwtTokenService`
-signed with the test key from `IOptions`, while the validator had already captured the key from
+The visible symptom was tokens rejected with *"the signature key was not found"*: a token
+was signed with the test key from `IOptions`, while the validator had already captured the key from
 `appsettings.Development.json`.
 
 The dangerous half was silent. The connection string fell back the same way, so the suite ran against

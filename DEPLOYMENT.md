@@ -110,7 +110,7 @@ changes how accounts work, and doing that before real users exist avoids a user 
      Session Manager port forwarding — same for the RabbitMQ management UI.
 3. **Production configuration without an `appsettings.Production.json`.** Every tunable's in-code
    default already is its production value (the Development file mostly restates them), so there is
-   nothing to copy. Secrets and endpoints come from environment variables (`Jwt__Key`,
+   nothing to copy. Secrets and endpoints come from environment variables (`AnonymousSession__SigningKey`,
    `ConnectionStrings__Postgres`, …), and in Production the API and Worker refuse to start if any
    key whose default is a local-dev value is missing (`RequireKeys`) — notably `Tmdb:ApiKey` (else the
    offline stub) and `Admin:Password` (else the repository's dev password on the seeded admin).
@@ -232,10 +232,13 @@ and another created — a sign the wrong value was passed.
   below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
   there, so a value containing either would be silently corrupted.
   - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
-  - `Jwt__Key` — random, **at least 32 characters** (the API checks this at startup and refuses to
-    start below it).
+  - `AnonymousSession__SigningKey` — random, **at least 32 characters** (the API checks this at startup
+    and refuses to start below it). Signs the visitors' anonymous session tokens; rotating it ends every
+    current session (they last 3 hours). Replaces `Jwt__Key`, which signed the API's own user tokens
+    until #112 removed them: create this parameter before cutover, and delete `/marquee/prod/Jwt__Key`
+    once it is live.
   - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
-  - `Admin__Password` — at least 10 characters with a digit (the app's own password policy); this is
+  - `Admin__Password` — at least 10 characters with a digit (the user pool's password policy); this is
     the seeded admin's sign-in password, so keep it somewhere you can find it again.
   - `OriginVerify__Secret` — random (`openssl rand -hex 32`). **A plain `String`, not a
     `SecureString`**: CloudFormation can only resolve a `String` into the CloudFront header, and the
@@ -492,15 +495,15 @@ entry say which zone they are in.
 Postgres). Must land before real users sign up: existing password hashes cannot be imported into
 Cognito, so switching later would need a User Migration Lambda. The decisions below were settled on
 2026-10-04; the replacement CLAUDE.md wording is written out under *Domain rule changes* and is
-swapped in by the phase 2 build, not before — until then CLAUDE.md describes what is built.
+applied to CLAUDE.md in #112.
 
 What changes:
 
-- **Cognito User Pool** (CDK) for sign-up, sign-in, confirmation and password reset. The existing
-  `PasswordHasherService`, confirmation-token and reset-token services are replaced by the pool.
+- **Cognito User Pool** (CDK) for sign-up, sign-in, confirmation and password reset. The API's own
+  password hasher, token minting and confirmation/reset-token services were deleted in #112.
 - **The API validates Cognito access tokens** — `JwtBearer` pointed at the pool as authority (decision
-  9). Integration tests keep minting their own tokens through a test issuer accepted only outside
-  Production.
+  9). Integration tests sign in through a cognito-local Testcontainer; the API has no test-only token
+  path.
 - **The frontend keeps its own screens** (the pass-card login, #64/#67) and calls Cognito's API
   directly (decision 6). Cognito's hosted Managed Login is not used — it would discard the redesign.
 - **Email uses Cognito's built-in sender** — no domain or SES needed, capped at a small daily quota
@@ -606,7 +609,7 @@ or decision 5's seeding fails — nothing at startup checks it today beyond pres
 routing every auth call through the API with a client-secret app client to keep #27 server-side — it
 reverses decision 6 to protect only an account owner from their own choice.
 
-### Domain rule changes (applied to CLAUDE.md by the phase 2 build)
+### Domain rule changes (applied to CLAUDE.md in #112)
 
 - **§3 User:** `PasswordHash` is removed; `Id` is the Cognito `sub`; `EmailConfirmedAt` is set when the
   row is created (rows only exist for confirmed users).

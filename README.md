@@ -32,7 +32,7 @@ src/
   Marquee.Domain/          Entities, enums, and the pure §4 formulas (threshold, cap, emblem, schedule)
   Marquee.Infrastructure/  EF Core + Postgres, Redis clap counters, TMDB client, message contracts,
                            MassTransit/RabbitMQ wiring, DI
-  Marquee.Api/             ASP.NET Core Web API — JWT auth, premieres, clap, library,
+  Marquee.Api/             ASP.NET Core Web API — Cognito token auth, premieres, clap, library,
                            SignalR hub + broadcast loop, Quartz scheduler jobs, outbox publisher
   Marquee.Worker/          Queue consumer — the open-time fan-out (contributions, emblems, library)
   Marquee.Web/             Angular 20 SPA (standalone components + signals)
@@ -280,9 +280,7 @@ earns its place alongside the trace id.
 
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/register` | – | Create account, returns JWT |
 | GET | `/api/auth/password-rules` | – | What a password must satisfy, so the form can say so up front |
-| POST | `/api/auth/login` | – | Log in, returns JWT |
 | GET | `/api/auth/me` | user | Current user, with the permissions the UI renders from |
 | POST | `/api/sessions/anonymous` | – | Issue a short-lived anonymous session so a visitor can clap |
 | POST | `/api/premieres` | `CanManagePremieres` | Create + activate a Premiere on demand |
