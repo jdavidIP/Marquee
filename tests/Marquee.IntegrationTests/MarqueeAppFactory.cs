@@ -10,7 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 
@@ -232,29 +231,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     /// <summary>RabbitMQ's AMQP port, which a test run must never be pointed at.</summary>
     private const ushort DefaultBrokerPort = 5672;
 
-    /// <summary>Logs in as the seeded admin and returns a bearer token.</summary>
+    /// <summary>
+    /// Signs the seeded admin in through the pool and returns its access token. The seeder runs when
+    /// the host starts, so the host is started first: without it the pool has no admin to sign in.
+    /// </summary>
     public async Task<string> AdminTokenAsync()
     {
-        var client = CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
-        {
-            usernameOrEmail = AdminUsername,
-            password = AdminPassword,
-        });
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"Admin login failed with {(int)response.StatusCode}. Body: {body}");
-        }
-
-        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        if (string.IsNullOrWhiteSpace(payload?.Token))
-            throw new InvalidOperationException("Admin login returned no token.");
-
-        return payload.Token;
+        _ = Services;
+        return (await Cognito.SignInAsync(AdminUsername, AdminPassword)).AccessToken;
     }
-
-    private sealed record LoginResponse(string Token);
 }

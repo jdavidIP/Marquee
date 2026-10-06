@@ -18,31 +18,11 @@ namespace Marquee.IntegrationTests;
 public class UserFriendsVisibilityTests(MarqueeAppFactory factory)
 {
     private sealed record FriendBody(Guid UserId, string Username, string? Bio, bool IsPrivate, DateTime FriendsSince);
-    private sealed record AuthResponse(string Token, object User);
 
     private async Task<(HttpClient Client, string Username)> NewUserAsync(string tag)
     {
-        var client = factory.CreateClient();
-        var username = $"uf_{tag}_{Guid.NewGuid():n}"[..24];
-
-        var response = await client.PostAsJsonAsync("/api/auth/register",
-            new
-            {
-                username,
-                email = $"{username}@marquee.test",
-                password = TestPasswords.Valid,
-                confirmPassword = TestPasswords.Valid,
-            });
-        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
-
-        // These tests send and accept friend requests, which issue #29 now refuses between
-        // unconfirmed accounts.
-        await TestAuth.ConfirmAsync(factory, client, username, TestPasswords.Valid);
-
-        return (client, username);
+        var u = await TestAuth.NewUserAsync(factory, $"uf_{tag}");
+        return (u.Client, u.Username);
     }
 
     private static Task<HttpResponseMessage> MakePrivateAsync(HttpClient client) =>

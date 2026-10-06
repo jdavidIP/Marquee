@@ -31,8 +31,6 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
         List<EntryBody> Items, int Total, int Page, int PageSize, int PlatinumCount, int PremieresAttended);
     private sealed record GenreBody(int TmdbId, string Name);
     private sealed record FiltersBody(List<GenreBody> Genres, int? MinYear, int? MaxYear);
-    private sealed record AuthBody(string Token, UserBody User);
-    private sealed record UserBody(Guid Id);
 
     /// <summary>One film to plant in a library, described the way a test wants to talk about it.</summary>
     private sealed record Film(
@@ -46,22 +44,8 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
 
     private async Task<(HttpClient Client, Guid UserId)> NewUserAsync()
     {
-        var client = factory.CreateClient();
-        var username = $"lib_{Guid.NewGuid():n}"[..20];
-
-        var response = await client.PostAsJsonAsync("/api/auth/register",
-            new
-            {
-                username,
-                email = $"{username}@marquee.test",
-                password = TestPasswords.Valid,
-                confirmPassword = TestPasswords.Valid,
-            });
-        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-
-        var body = await response.Content.ReadFromJsonAsync<AuthBody>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
-        return (client, body.User.Id);
+        var u = await TestAuth.NewUserAsync(factory, "lib");
+        return (u.Client, u.UserId);
     }
 
     /// <summary>
