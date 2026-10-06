@@ -1,10 +1,9 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { apiError, passwordProblems } from '../../core/http-error';
-import { PasswordProblemDto, PasswordRulesDto } from '../../core/models';
-import { initialsOf } from '../../core/avatar';
+import { CognitoError, authError } from '../../core/cognito';
+import { PasswordRulesDto } from '../../core/models';
 
 @Component({
   selector: 'app-login',
@@ -13,7 +12,7 @@ import { initialsOf } from '../../core/avatar';
   styleUrl: './login.component.css',
 })
 export class LoginComponent {
-  private readonly auth = inject(AuthService);
+  protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -24,22 +23,7 @@ export class LoginComponent {
   /** "Show"/"Hide" is a word here, not an eye icon (design handoff). */
   protected readonly reveal = signal(false);
 
-  /** Whether the forgot-password request has been sent — shows the server's own response text instead of the form. */
-  protected readonly resetRequested = signal(false);
-  protected readonly resetMessage = signal<string | null>(null);
-  protected forgotEmail = '';
-
-  /**
-   * Shown in place of the form after a successful registration, instead of navigating straight to
-   * /premiere (issue #47) — registration creates an unconfirmed account, and leaving with no mention
-   * of that was the gap #47's own text called out. The account already works meanwhile (an
-   * unconfirmed user claps as an anonymous participant — issue #29), so this never blocks entry,
-   * it only makes sure the person knows there is a link waiting in their inbox.
-   */
-  protected readonly justRegistered = signal(false);
-
-  /** The rules the server refused on, itemised — the same content as error(), listed instead. */
-  protected readonly problems = signal<PasswordProblemDto[]>([]);
+  protected forgotName = '';
 
   /**
    * Null until the API answers, and it may stay null: this only drives a hint and the browser's own
@@ -58,16 +42,15 @@ export class LoginComponent {
     const r = this.rules();
     if (!r) return null;
 
-    const parts = [`at least ${r.minLength} characters`];
-    if (r.requireLetter) parts.push('a letter');
-    if (r.requireDigit) parts.push('a number');
-
-    return `Use ${parts.join(', ')}. Avoid your username and anything widely used.`;
+    // Only what the user pool enforces (DEPLOYMENT.md § Phase 2, password policy) — a hint for a
+    // rule nobody checks would be noise.
+    return r.requireDigit
+      ? `Use at least ${r.minLength} characters, including a number.`
+      : `Use at least ${r.minLength} characters.`;
   });
 
   /** The pass card's header row — same object the profile badge becomes once it is issued. */
   protected readonly cardKicker = computed(() => {
-    if (this.justRegistered()) return 'Pass issued · unconfirmed';
     if (this.mode() === 'forgot') return 'Lost pass · replacement';
     return this.mode() === 'login' ? 'Admit one · returning' : 'New pass · application';
   });
@@ -76,9 +59,7 @@ export class LoginComponent {
    * "No. 04291" for login is flavour, not a real serial — there is no account to derive one from
    * before signing in succeeds. Every other mode has genuinely no serial yet.
    */
-  protected readonly cardSerial = computed(() =>
-    this.justRegistered() ? 'No. 04292' : this.mode() === 'login' ? 'No. 04291' : 'No. — —',
-  );
+  protected readonly cardSerial = computed(() => (this.mode() === 'login' ? 'No. 04291' : 'No. — —'));
 
   protected readonly modeTitle = computed(() => {
     if (this.mode() === 'forgot') return 'Reset your password';
@@ -86,16 +67,19 @@ export class LoginComponent {
   });
 
   protected readonly modeSub = computed(() => {
-    if (this.mode() === 'forgot') return "Enter the email on your account and we'll send a link to reset it.";
+    if (this.mode() === 'forgot') return "Enter your username or email and we'll send a code to reset it.";
     return 'Four times a day a Premiere appears. Clap together to open it.';
   });
 
   protected readonly submitLabel = computed(() => {
-    if (this.mode() === 'forgot') return 'Send reset link';
+    if (this.mode() === 'forgot') return 'Send reset code';
     return this.mode() === 'login' ? 'Sign in' : 'Register';
   });
 
   constructor() {
+    // Why the last session ended is said once, here — not again on a later, unrelated visit.
+    inject(DestroyRef).onDestroy(() => this.auth.clearNotice());
+
     // ?mode=register opens on the register form, so the shell's "Create account" lands on the form
     // it names rather than on sign-in with a toggle still to find. Read once from the snapshot: the
     // route is never navigated to with a different mode while this component is alive.
@@ -127,41 +111,33 @@ export class LoginComponent {
 
   backToSignIn(): void {
     this.mode.set('login');
-    this.resetRequested.set(false);
-    this.resetMessage.set(null);
-    this.forgotEmail = '';
+    this.forgotName = '';
     this.clearErrors();
   }
 
   /**
-   * Always shows the server's own response message (issue #31: identical wording whether or not the
-   * address exists). Nothing here branches on the outcome — there is only one outcome from the
-   * caller's point of view, by design.
+   * Moves on to the code page whether or not the account exists: the pool answers the same either
+   * way (issue #31), so there is nothing here to branch on.
    */
   requestReset(): void {
     this.clearErrors();
     this.busy.set(true);
+    const name = this.forgotName.trim();
 
-    this.auth.forgotPassword(this.forgotEmail.trim()).subscribe({
-      next: (r) => {
+    this.auth.forgotPassword(name).subscribe({
+      next: () => {
         this.busy.set(false);
-        this.resetRequested.set(true);
-        this.resetMessage.set(r.message);
+        this.router.navigate(['/reset-password'], { queryParams: { u: name } });
       },
       error: (err) => {
         this.busy.set(false);
-        this.error.set(apiError(err, 'Something went wrong. Please try again.'));
+        this.error.set(authError(err, 'Something went wrong. Please try again.'));
       },
     });
   }
 
   protected toggleReveal(): void {
     this.reveal.update((v) => !v);
-  }
-
-  /** Stands in for the badge portrait on the "check your email" panel — same monogram source. */
-  protected doneMark(): string {
-    return initialsOf(this.username || 'YO');
   }
 
   /**
@@ -174,9 +150,16 @@ export class LoginComponent {
     if (!r) return [];
 
     const checks = [this.password.length >= r.minLength];
-    if (r.requireLetter) checks.push(/[A-Za-z]/.test(this.password));
     if (r.requireDigit) checks.push(/[0-9]/.test(this.password));
     return checks;
+  }
+
+  /**
+   * The pool signs in by username or email, so a username that looks like an email would be
+   * ambiguous — Cognito refuses it. Said now, with the reason, rather than as a vague refusal later.
+   */
+  protected usernameLooksLikeEmail(): boolean {
+    return this.mode() === 'register' && this.username.includes('@');
   }
 
   /** Both typed and different — worth saying now rather than spending a round trip on it. */
@@ -190,40 +173,38 @@ export class LoginComponent {
 
   submit(): void {
     this.clearErrors();
+    this.auth.clearNotice();
     this.busy.set(true);
+    const username = this.username.trim();
 
     const onError = (err: unknown): void => {
       this.busy.set(false);
-      this.problems.set(passwordProblems(err));
-      this.error.set(apiError(err, 'Something went wrong. Please try again.'));
+      // Signing in before confirming is not a failure to report but a step still to take: the code
+      // page finishes it, and signs in from there (AuthService keeps the credentials for that).
+      if (err instanceof CognitoError && err.type === 'UserNotConfirmedException') {
+        this.goConfirm(username);
+        return;
+      }
+      this.error.set(authError(err, 'Something went wrong. Please try again.'));
     };
 
     if (this.mode() === 'login') {
       this.auth
-        .login(this.username.trim(), this.password)
+        .signIn(username, this.password)
         .subscribe({ next: () => this.router.navigate(['/premiere']), error: onError });
     } else {
+      // Cognito emails a code; the account cannot sign in until it is entered (decision 3).
       this.auth
-        .register(this.username.trim(), this.email.trim(), this.password, this.confirmPassword)
-        .subscribe({
-          // Straight to /premiere would say nothing about the confirmation email just sent — this
-          // panel is that message, not an extra gate (see justRegistered's doc comment).
-          next: () => {
-            this.busy.set(false);
-            this.justRegistered.set(true);
-          },
-          error: onError,
-        });
+        .signUp(username, this.email.trim(), this.password)
+        .subscribe({ next: () => this.goConfirm(username), error: onError });
     }
   }
 
-  /** Leaves the "check your email" panel for the app itself — the account already works meanwhile. */
-  continue(): void {
-    this.router.navigate(['/premiere']);
+  private goConfirm(username: string): void {
+    this.router.navigate(['/confirm-email'], { queryParams: { u: username } });
   }
 
   private clearErrors(): void {
     this.error.set(null);
-    this.problems.set([]);
   }
 }

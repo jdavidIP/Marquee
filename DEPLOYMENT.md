@@ -709,6 +709,13 @@ on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSign
   locally "resend" is a no-op the UI must survive, not a path to exercise.
 - **`email_verified` stays `false`** after confirmation, unlike the real pool's auto-verification.
 - `InitiateAuth` responses carry no `ExpiresIn`; read expiry from the token's `exp`.
+- **A wrong password at sign-in is `InvalidPasswordException`**, not the real pool's
+  `NotAuthorizedException`. The frontend reads any password refused at sign-in as a wrong one (#111).
+- **Confirming an already-confirmed account is `ExpiredCodeException`**, where the real pool says
+  `NotAuthorizedException` — which the frontend treats as "already confirmed, carry on" (#111). Locally
+  the person sees "code expired" instead; harmless, and only reachable by confirming twice.
+- **Accepts an email-shaped username.** The real pool refuses one (`InvalidParameterException`), since
+  email is a sign-in alias; the register form stops it before any request either way (#111).
 
 ---
 

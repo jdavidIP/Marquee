@@ -9,10 +9,56 @@
 
     <div class="pass__body">
       @switch (status()) {
-        @case ('checking') {
+        @case ('form') {
           <div class="pass__title-block">
-            <span class="pass__title">Confirming your email…</span>
-            <span class="pass__sub">Just a moment.</span>
+            <span class="pass__title">Confirm your email</span>
+            <span class="pass__sub">
+              We emailed you a code. Enter it to stamp your pass.
+            </span>
+          </div>
+
+          <form class="pass__form" (ngSubmit)="submit()" #f="ngForm">
+            <label class="field">
+              <span class="field__label">Username</span>
+              <input
+                class="field__input"
+                name="username"
+                [(ngModel)]="username"
+                required
+                autocomplete="username"
+                [disabled]="busy()"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Code</span>
+              <input
+                class="field__input field__input--code"
+                name="code"
+                [(ngModel)]="code"
+                required
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                [disabled]="busy()"
+              />
+            </label>
+
+            @if (error()) {
+              <div class="error-box"><span>{{ error() }}</span></div>
+            } @else if (notice()) {
+              <span class="pass__sub pass__sub--ok">{{ notice() }}</span>
+            }
+
+            <button class="pass__submit" type="submit" [disabled]="busy() || f.invalid">
+              {{ busy() ? 'Please wait…' : 'Confirm' }}
+            </button>
+          </form>
+
+          <div class="pass__switch">
+            <span>No code?</span>
+            <button type="button" (click)="resend()" [disabled]="busy() || !username.trim()">
+              Send a new code
+            </button>
           </div>
         }
         @case ('confirmed') {
@@ -21,15 +67,6 @@
             <span class="pass__sub pass__sub--ok">Your account is confirmed. Sign in to continue.</span>
           </div>
           <a class="pass__submit" routerLink="/login">Sign in</a>
-        }
-        @case ('failed') {
-          <div class="pass__title-block">
-            <span class="pass__title">Confirmation failed</span>
-          </div>
-          <div class="error-box"><span>{{ error() }}</span></div>
-          <div class="pass__switch pass__switch--alone">
-            <a routerLink="/login">Back to sign in</a>
-          </div>
         }
       }
     </div>

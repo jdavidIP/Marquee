@@ -50,7 +50,7 @@ public sealed class UserAccessMiddleware(RequestDelegate next, ILogger<UserAcces
                 access = await provisioner.ProvisionAsync(context, userId, context.RequestAborted);
                 if (access is null)
                 {
-                    await RefuseAsync(context, "This account could not be set up. Contact support.");
+                    await RefuseAsync(context, "This account could not be set up. Contact support.", "account_unavailable");
                     return;
                 }
             }
@@ -64,7 +64,7 @@ public sealed class UserAccessMiddleware(RequestDelegate next, ILogger<UserAcces
         if (access.IsBlocked)
         {
             logger.LogWarning("Rejected request from blocked user {UserId} to {Path}.", userId, context.Request.Path);
-            await RefuseAsync(context, "This account has been blocked.");
+            await RefuseAsync(context, "This account has been blocked.", "account_blocked");
             return;
         }
 
@@ -76,11 +76,15 @@ public sealed class UserAccessMiddleware(RequestDelegate next, ILogger<UserAcces
         await next(context);
     }
 
-    private static async Task RefuseAsync(HttpContext context, string error)
+    /// <summary>
+    /// <paramref name="code"/> is what a client branches on: it tells "this account cannot be used at
+    /// all" apart from an ordinary 403 for a permission the account lacks, without matching message text.
+    /// </summary>
+    private static async Task RefuseAsync(HttpContext context, string error, string code)
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new { error }), context.RequestAborted);
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { error, code }), context.RequestAborted);
     }
 }
 

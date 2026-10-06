@@ -12,4 +12,10 @@ export const environment = {
   // "who is here" is a personal, per-viewer answer, and the hub only ever broadcasts shared,
   // impersonal counts (see RealtimeDtos.cs).
   lobbyPollIntervalMs: 4000,
+  // Sign-up, sign-in and password reset go straight to the user pool (DEPLOYMENT.md § Phase 2,
+  // decision 6). Locally that is cognito-local from docker-compose.yml, where every code is 123456.
+  cognito: {
+    endpoint: 'http://localhost:9229',
+    clientId: 'marquee-local-web',
+  },
 };
