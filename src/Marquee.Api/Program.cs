@@ -15,7 +15,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 
 // A bootstrap logger, replaced by the configured one as soon as the host is built. Without it, any
-// failure before that point — bad connection string, unreadable config, a missing Jwt:Key — would be
+// failure before that point — bad connection string, unreadable config, a missing AnonymousSession:SigningKey — would be
 // written by whatever default logger happened to exist, or not at all. Startup is exactly when you
 // most need the log to work.
 Log.Logger = new LoggerConfiguration()
@@ -51,14 +51,14 @@ builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.ApiServ
     }));
 
 // --- Options ---
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
-if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
-    throw new InvalidOperationException("Jwt:Key must be configured and at least 32 characters.");
+var anonymousSigningKey = builder.Configuration[$"{AnonymousSessionOptions.SectionName}:{nameof(AnonymousSessionOptions.SigningKey)}"];
+if (string.IsNullOrWhiteSpace(anonymousSigningKey) || anonymousSigningKey.Length < AnonymousSessionOptions.MinSigningKeyLength)
+    throw new InvalidOperationException(
+        $"AnonymousSession:SigningKey must be configured and at least {AnonymousSessionOptions.MinSigningKeyLength} characters.");
 if (builder.Environment.IsProduction())
     builder.Configuration.RequireKeys(
         "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
-        "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl",
+        "Tmdb:ApiKey", "Admin:Password",
         "Cognito:Issuer", "Cognito:ClientId", OriginVerification.SecretKey);
 
 // --- Infrastructure + API services ---

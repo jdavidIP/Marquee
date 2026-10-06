@@ -131,7 +131,7 @@ public class SeededAdminTests(MarqueeAppFactory factory)
         await WithScopeAsync(async sp =>
         {
             var db = sp.GetRequiredService<MarqueeDbContext>();
-            db.Users.Add(new User { Id = oldId, Username = username, Email = $"{username}@example.test", PasswordHash = "" });
+            db.Users.Add(new User { Id = oldId, Username = username, Email = $"{username}@example.test" });
             return await db.SaveChangesAsync();
         });
 
@@ -182,9 +182,7 @@ public class SeededAdminTests(MarqueeAppFactory factory)
             var seeder = new AdminSeeder(
                 cognito ?? sp.GetRequiredService<IAmazonCognitoIdentityProvider>(),
                 sp.GetRequiredService<MarqueeDbContext>(),
-                sp.GetRequiredService<IPasswordHasherService>(),
                 sp.GetRequiredService<IOptions<CognitoOptions>>(),
-                sp.GetRequiredService<IOptions<PasswordPolicyOptions>>(),
                 config,
                 logger);
 

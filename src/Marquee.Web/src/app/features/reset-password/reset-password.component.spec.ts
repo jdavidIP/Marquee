@@ -12,8 +12,6 @@ describe('ResetPasswordComponent', () => {
 
   const rules: PasswordRulesDto = {
     minLength: 10,
-    maxLength: 128,
-    requireLetter: false,
     requireDigit: true,
   };
 

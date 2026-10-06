@@ -19,6 +19,7 @@ namespace Marquee.IntegrationTests;
 public class TokenAuthenticationTests(MarqueeAppFactory factory)
 {
     private const string Password = "token-tests-password-1";
+    private const string AttackerKey = "a-key-the-pool-has-never-heard-of-32-chars";
 
     private static string NewUsername() => $"cg_{Guid.NewGuid():n}"[..20];
 
@@ -59,10 +60,9 @@ public class TokenAuthenticationTests(MarqueeAppFactory factory)
     }
 
     [Fact]
-    public async Task A_token_claiming_the_pools_issuer_but_signed_with_the_legacy_key_is_refused()
+    public async Task A_token_claiming_the_pools_issuer_but_signed_with_another_key_is_refused()
     {
-        // The scheme is chosen from the token's unvalidated iss. Claiming the pool's issuer must only
-        // route a token to validation against the pool's keys, never past it.
+        // A claimed issuer proves nothing: the signature has to verify against the pool's keys.
         var forged = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
             issuer: factory.Cognito.Issuer,
             claims:
@@ -73,7 +73,7 @@ public class TokenAuthenticationTests(MarqueeAppFactory factory)
             ],
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(MarqueeAppFactory.JwtKey)),
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AttackerKey)),
                 SecurityAlgorithms.HmacSha256)));
 
         (await GetFriendsAsync(forged)).Should().Be(HttpStatusCode.Unauthorized);

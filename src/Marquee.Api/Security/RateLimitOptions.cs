@@ -8,9 +8,6 @@ public static class RateLimitPolicies
 
     /// <summary>Issuing anonymous sessions. Partitioned by IP, because the caller has no identity yet.</summary>
     public const string SessionIssue = "session-issue";
-
-    /// <summary>Login and registration — partitioned by IP, to blunt credential stuffing.</summary>
-    public const string Auth = "auth";
 }
 
 /// <summary>
@@ -56,6 +53,4 @@ public sealed class RateLimitOptions
 
     /// <summary>Anonymous sessions per IP per window — the Sybil brake on anonymous participation.</summary>
     public RateLimitRule SessionIssue { get; set; } = new() { PermitLimit = 10, WindowSeconds = 300 };
-
-    public RateLimitRule Auth { get; set; } = new() { PermitLimit = 20, WindowSeconds = 300 };
 }

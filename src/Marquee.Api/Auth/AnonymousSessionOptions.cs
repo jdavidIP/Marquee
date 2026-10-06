@@ -12,10 +12,13 @@ public sealed class AnonymousSessionOptions
     /// </summary>
     public int LifetimeMinutes { get; set; } = 180;
 
+    /// <summary>The shortest key the API will start with — HMAC-SHA256's block-size worth of entropy is not the aim; unguessability is.</summary>
+    public const int MinSigningKeyLength = 32;
+
     /// <summary>
-    /// Optional dedicated signing key. When empty, one is derived from <c>Jwt:Key</c> with domain
-    /// separation (see <see cref="AnonymousSessionService"/>) so anonymous participation needs no
-    /// extra secret to configure, while still never signing with the same key as user tokens.
+    /// The secret visitors' session tokens are signed with. Required: it is the one thing that stops a
+    /// visitor minting their own session ids. Rotating it ends every current session, which only costs
+    /// a visitor their place in the current Premiere's cap — sessions last <see cref="LifetimeMinutes"/>.
     /// </summary>
     public string SigningKey { get; set; } = "";
 

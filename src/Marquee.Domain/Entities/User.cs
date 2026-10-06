@@ -10,7 +10,6 @@ public class User : AuditableEntity
 
     public string Username { get; set; } = null!;
     public string Email { get; set; } = null!;
-    public string PasswordHash { get; set; } = null!;
     public string? Bio { get; set; }
 
     /// <summary>
@@ -26,10 +25,10 @@ public class User : AuditableEntity
     public UserRole Role { get; set; } = UserRole.User;
 
     /// <summary>
-    /// Null until the confirmation link is used, then set once and never cleared (issue #29). An
-    /// unconfirmed account is excluded from `totalRegisteredUsers` (CLAUDE.md §4.1/§4.2). Rows for
-    /// Cognito accounts are created already confirmed, since Cognito only signs in confirmed accounts
-    /// (DEPLOYMENT.md § Phase 2, decision 2); null survives only on old-style accounts until #112.
+    /// Set when the row is created, and rows only exist for confirmed accounts: the user pool refuses
+    /// to sign in an account that has not confirmed its email, and the row is created by an account's
+    /// first signed-in request (DEPLOYMENT.md § Phase 2, decision 2). Null is therefore not a state a
+    /// row can be in today.
     /// </summary>
     public DateTime? EmailConfirmedAt { get; set; }
 

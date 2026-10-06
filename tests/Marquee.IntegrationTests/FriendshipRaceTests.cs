@@ -35,12 +35,9 @@ public class FriendshipRaceTests(MarqueeAppFactory factory)
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
 
         // Unique per call: the collection shares one database, and Username/Email are unique.
-        // Confirmed at creation (issue #29): these tests race friendship state transitions, not the
-        // confirmation gate, and SendRequestAsync now refuses an unconfirmed party outright.
         var tag = Guid.NewGuid().ToString("n")[..12];
-        var confirmedAt = DateTime.UtcNow;
-        var requester = new User { Username = $"req_{tag}", Email = $"req_{tag}@marquee.test", PasswordHash = "x", EmailConfirmedAt = confirmedAt };
-        var addressee = new User { Username = $"add_{tag}", Email = $"add_{tag}@marquee.test", PasswordHash = "x", EmailConfirmedAt = confirmedAt };
+        var requester = new User { Username = $"req_{tag}", Email = $"req_{tag}@marquee.test" };
+        var addressee = new User { Username = $"add_{tag}", Email = $"add_{tag}@marquee.test" };
 
         db.Users.AddRange(requester, addressee);
         db.Friendships.Add(new Friendship

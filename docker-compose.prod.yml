@@ -24,9 +24,6 @@ x-app: &app
     Messaging__Host: rabbitmq
     Messaging__Username: marquee
     Messaging__Password: ${RABBITMQ_PASSWORD:?}
-    # Where emailed confirmation/reset links point: the public URL of the site (CloudFront).
-    EmailConfirmation__BaseUrl: ${PUBLIC_BASE_URL:?}
-    PasswordReset__BaseUrl: ${PUBLIC_BASE_URL:?}
     # The user pool the API accepts access tokens from: MarqueeAuthStack's outputs, read live by the
     # deploy workflow (DEPLOYMENT.md §2a). Not secrets — the client id ships in the frontend anyway.
     Cognito__Issuer: ${COGNITO_ISSUER:?}
