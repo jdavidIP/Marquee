@@ -174,6 +174,8 @@ and another created — a sign the wrong value was passed.
     throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
     the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
+    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a, and the
+    Cutover checklist): re-check it after any AMI change or instance replacement.
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
   - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
     than OOM-killing a container.
@@ -632,6 +634,49 @@ reverses decision 6 to protect only an account owner from their own choice.
   visitor with an anonymous session: anonymous cap, no emblems, no library entries, no friendships.
   Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the
   first sign-in a registered one."*
+
+### Cutover checklist (#113)
+
+The one merge of `feat/phase2-cognito` into `main`. In this order; each item that breaks prod if missed
+says why. Rolling back past the migration is a snapshot restore, not a tag redeploy (Rollback, 1c).
+
+**Before the merge**
+
+1. SSM `/marquee/prod/AnonymousSession__SigningKey` exists, at least 32 letters and digits — without it
+   the API refuses to start, before migrating. (Created 2026-10-07.) **Leave `Jwt__Key` where it is.**
+2. `Admin__Password` meets the pool's policy (at least 10 characters, a digit). If it does not, seeding
+   fails *quietly*: the deploy still goes green and the API has no admin.
+3. The host's metadata hop limit is 2 — the API container reaches its role credentials only through it
+   (2a):
+   `aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'`
+4. No Premiere is `Active` and none is `Scheduled` within about 30 minutes (times are UTC): one that
+   opened after step 6 would write contributions for users that no longer exist. In Session Manager on
+   the host (`sudo -i`, then `cd /opt/marquee`):
+   `docker compose -f docker-compose.prod.yml exec -T postgres psql -U marquee -d marquee -c "select \"Status\", \"ScheduledFor\" from premieres where \"Status\" in ('Active','Scheduled') order by \"ScheduledFor\" limit 6;"`
+5. **Snapshot the data volume now** (the daily 08:00 UTC one can be a day old): EC2 → Volumes → the
+   data volume → Actions → Create snapshot, description `pre-cutover #113`; wait for *Completed*.
+6. **Reset the user-linked data** (destructive; old rows have random GUIDs that never match a Cognito
+   `sub`, and a leftover admin row stops the new admin being seeded). Same session, same directory:
+   - count first: `... psql ... -c "select (select count(*) from users) users, (select count(*) from contributions) contributions, (select count(*) from library_entries) library, (select count(*) from friendships) friendships;"`
+   - `... psql ... -c "truncate table users cascade;"` — cascades to contributions, library entries,
+     friendships and reset tokens; Premieres and Movies are kept (the film cooldown reads them).
+   - `docker compose -f docker-compose.prod.yml exec -T redis sh -c "redis-cli --scan --pattern 'user:*' | xargs -r redis-cli del"`
+   - re-run the count; every number should be 0. Record the before and after on #113.
+7. Merge the PR; watch CI, then the Deploy workflow (the first run of the five-argument `deploy.sh`).
+
+**After the deploy**
+
+8. CloudWatch log group `/marquee/prod`: the API logged `Seeded admin 'admin'`, and not "starting without
+   it" (a hop limit of 1, a password the pool refused, or a leftover row). Sign in as `admin` on the site.
+   If seeding failed, fix the cause and redeploy; the seeder retries on every start.
+9. Run *Verification against the real pool*, below, and record the dates. It sends sign-up emails
+   against Cognito's 50-a-day-per-account quota.
+10. Once stable: delete `/marquee/prod/Jwt__Key`; remove `feat/phase2-cognito` from the `pull_request`
+    branches in `.github/workflows/ci.yml` and delete the branch; file any cognito-local fidelity gap
+    found; close #113.
+
+For a few minutes after step 7 the frontend lags the backend: a browser with the old cached page calls
+the new API, gets a 401 or 404 on its old session, and falls back to a visitor session by itself.
 
 ### Verification against the real pool (once, after the first prod deploy)
 
