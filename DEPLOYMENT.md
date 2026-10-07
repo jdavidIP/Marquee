@@ -291,7 +291,6 @@ aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'P
   --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
 echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
-echo "PUBLIC_BASE_URL=<SiteUrl>" >> .env
 echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
 echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
 chmod 600 .env
@@ -373,6 +372,11 @@ A tag stays deployable only while its pieces exist: ECR keeps the **last 10 imag
 the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
 is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
 the bucket) cannot be redeployed this way; use 1b-ops.
+
+**The phase 2 cutover (#113) cannot be rolled back this way.** Its migration (`RemovePasswordAuth`) drops
+`users.PasswordHash`, which every earlier image still requires, and those images also need the old
+`Jwt__Key`. A failed cutover is undone by restoring the data volume's snapshot (taken first, #113 step 1)
+and then redeploying the old tag. Rolling back between tags built after the cutover works as above.
 
 A failed deploy prints only container states to the Actions log, never log lines — the repository is
 public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
