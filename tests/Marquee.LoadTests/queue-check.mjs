@@ -30,6 +30,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createUser, signIn } from './cognito.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -68,20 +69,9 @@ async function post(path, body, token) {
   try { return [res.status, JSON.parse(text)]; } catch { return [res.status, text]; }
 }
 
-async function login(usernameOrEmail, password) {
-  const [status, body] = await post('/auth/login', { usernameOrEmail, password });
-  if (status !== 200) throw new Error(`login ${usernameOrEmail} failed: ${status} ${JSON.stringify(body)}`);
-  return body.token;
-}
-
 async function registerOne(i) {
   const username = `q_${RUN}_${i}`;
-  const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
-  });
-  if (status === 200 || status === 201) return { username, token: body.token };
-  if (status === 409) return { username, token: await login(username, PASSWORD) };
-  throw new Error(`register ${username} failed: ${status} ${JSON.stringify(body)}`);
+  return { username, token: await createUser(username, PASSWORD, API) };
 }
 
 // ------------------------------------------------------------ Postgres helpers
@@ -185,7 +175,7 @@ async function killWorker() {
 // ------------------------------------------------------------------- scenarios
 
 async function openAPremiere(labelPrefix) {
-  const adminToken = await login(ADMIN_USER, ADMIN_PASS);
+  const adminToken = await signIn(ADMIN_USER, ADMIN_PASS);
   const [status, premiere] = await post('/premieres', {}, adminToken);
   if (status !== 200 && status !== 201)
     throw new Error(`create premiere failed: ${status} ${JSON.stringify(premiere)}`);
