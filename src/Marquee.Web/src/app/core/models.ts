@@ -7,29 +7,17 @@ export interface UserDto {
   role: string;
   /** Null for anyone who has not set a picture — a monogram of the username stands in. */
   avatarUrl: string | null;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: UserDto;
+  /** What the account may do, from its role now — the API authorises against the same list. */
+  permissions: string[];
 }
 
 /**
- * What the server will accept in a password (issue #27), read from GET /api/auth/password-rules
- * rather than restated here. The thresholds live in the API's options, so a copy in the client
- * would start lying the moment one was retuned.
+ * What the user pool will accept in a password, read from GET /api/auth/password-rules rather than
+ * restated here, so the hint has one place to change.
  */
 export interface PasswordRulesDto {
   minLength: number;
-  maxLength: number;
-  requireLetter: boolean;
   requireDigit: boolean;
-}
-
-/** One rejected password rule, so the form can list the reasons instead of running them together. */
-export interface PasswordProblemDto {
-  rule: string;
-  message: string;
 }
 
 export interface MovieDto {

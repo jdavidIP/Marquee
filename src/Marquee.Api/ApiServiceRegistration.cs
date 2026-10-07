@@ -12,7 +12,6 @@ public static class ApiServiceRegistration
     public static IServiceCollection AddMarqueeApiServices(
         this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPremiereService, PremiereService>();
         services.AddScoped<IPremiereFactory, PremiereFactory>();
         services.AddScoped<IMovieCatalog, MovieCatalog>();
@@ -20,11 +19,13 @@ public static class ApiServiceRegistration
         services.AddScoped<IPremiereScheduleService, PremiereScheduleService>();
         services.AddScoped<ILibraryService, LibraryService>();
         services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
-        services.AddScoped<IJwtTokenService, JwtTokenService>();
-        services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
+        services.Configure<CognitoOptions>(configuration.GetSection(CognitoOptions.SectionName));
+        // Short, because it runs inside a user's first request; the default is 100 seconds. A timeout
+        // fails that request and creates nothing, so the next one simply tries again.
+        services.AddHttpClient<CognitoUserProvisioner>(http => http.Timeout = TimeSpan.FromSeconds(5));
 
         // Registered here rather than alongside MarqueeRulesOptions in Infrastructure: the Worker
-        // shares that registration and has no auth surface to judge a password for.
+        // shares that registration and has no auth surface to describe a password for.
         services.Configure<PasswordPolicyOptions>(
             configuration.GetSection(PasswordPolicyOptions.SectionName));
 
@@ -34,15 +35,6 @@ public static class ApiServiceRegistration
         services.Configure<ClapGuardOptions>(configuration.GetSection(ClapGuardOptions.SectionName));
         services.AddSingleton<IAnonymousSessionService, AnonymousSessionService>();
 
-        // --- Email confirmation (issue #29) ---
-        services.Configure<EmailConfirmationOptions>(
-            configuration.GetSection(EmailConfirmationOptions.SectionName));
-        services.AddSingleton<IEmailConfirmationTokenService, EmailConfirmationTokenService>();
-
-        // --- Password recovery (issue #31) ---
-        services.Configure<PasswordResetOptions>(
-            configuration.GetSection(PasswordResetOptions.SectionName));
-        services.AddSingleton<IPasswordResetTokenService, PasswordResetTokenService>();
         // Scoped: it caches its answer in HttpContext.Items, so its lifetime is the request's.
         services.AddScoped<IParticipantResolver, ParticipantResolver>();
         services.AddScoped<IFriendshipService, FriendshipService>();

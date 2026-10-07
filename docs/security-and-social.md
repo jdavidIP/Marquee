@@ -88,8 +88,9 @@ themselves: a session id that happened to look like a user id must never land in
 Windows are **sliding**, not fixed. A fixed window lets a caller spend a full budget at the end of
 one window and again at the start of the next — a burst of twice the intended limit at the boundary.
 
-Two endpoints partition by IP instead, because the caller has no identity yet and these are the
-endpoints an attacker would use to *acquire* one: anonymous-session issuance, and login/register.
+One endpoint partitions by IP instead, because the caller has no identity yet and it is the endpoint
+an attacker would use to *acquire* one: anonymous-session issuance. Sign-up and sign-in go straight to
+the user pool, which applies its own limits.
 
 ## 3. Anonymous participation
 
@@ -116,15 +117,7 @@ determined bot can still collect tokens one at a time, within the IP limit. Maki
 hard — proof of work, device attestation, a CAPTCHA — is out of scope for v1, and pretending
 otherwise would be worse than naming it.
 
-The signing key is **derived** from `Jwt:Key` rather than being it:
-
-```csharp
-HMACSHA256.HashData(jwtKeyBytes, "marquee-anonymous-session-v1")
-```
-
-Domain separation. Signing two different kinds of credential with one secret means a weakness in
-either can forge the other. Deriving a subkey costs nothing and keeps them independent, while still
-requiring no new secret to configure.
+The signing key is its own secret, `AnonymousSession:SigningKey` — required, at least 32 characters, checked at startup. Nothing else is signed with it: the API mints no other tokens (user tokens are the user pool's), so there is no second credential for a weakness in this one to forge. Rotating it ends every current session, which costs a visitor their place in the current Premiere's cap and nothing else.
 
 Signature comparison is fixed-time (`CryptographicOperations.FixedTimeEquals`) — a byte-by-byte
 early exit would leak how much of a forged signature was correct, which is enough to reconstruct one
@@ -150,28 +143,31 @@ options.AddPolicy(CanBlockUsers, p => p.RequireClaim(
     MarqueePermissions.ClaimType, MarqueePermissions.BlockUsers));
 ```
 
-Permissions are stamped into the JWT at login from a single `RolePermissions` map. The call sites
+Permissions come from a single `RolePermissions` map, applied to the request's principal by the
+per-request access check below — not read from the token (phase 2, issue #109). The call sites
 never changed — they already referenced `AuthPolicies.CanManagePremieres` — which is exactly the
 property the split was for. Adding a Moderator who can block users but not touch Premieres is now one
 line in that map; with role checks scattered across controllers it would be an edit at every call
 site, and the ones that were missed would fail *open*.
 
-### Blocking has to bite immediately, so it is not a claim
+### Blocking and permissions are read per request, not from the token
 
 A JWT is a bearer token with no server-side session behind it. Refusing a blocked user at login is
-not enough: the token they already hold keeps working until it expires — up to `Jwt:ExpiryHours`.
+not enough: the token they already hold keeps working until it expires — up to 24 hours. The same is
+true of anything stamped into it, and Cognito's access tokens (phase 2) carry no role at all.
 
-So blocking is checked on **every** authenticated request, which means it has to be cheap: a Redis
-`GET`, falling back to Postgres only on a miss, with both the positive and the negative answer cached
-for a short TTL. Caching the negative matters as much as the positive, or every request from every
+So `UserAccessMiddleware` decides on **every** authenticated request: it refuses a blocked account,
+and replaces any permission claims the token carried with the ones the account's role grants now. That
+has to be cheap: a Redis `GET` of `user:{id}:access` (blocked + role), falling back to Postgres only on
+a miss, with the ordinary answer cached as well as the blocked one — otherwise every request from every
 normal user becomes a database round trip.
 
-`Redis:BlockStatusTtlSeconds` (30s by default) is the visible lag between an admin blocking someone
-and every instance refusing them, which is why the admin endpoint *invalidates* the key rather than
-waiting for it to expire.
+`Redis:AccessTtlSeconds` (30s by default) is the lag for a change made without invalidating the key —
+a role edited straight in the database, say. The admin block endpoint *invalidates* the key, so a block
+takes effect on the user's next request.
 
-This is the deliberate asymmetry in the design: **capabilities** change rarely and ride in the token;
-**blocking** must take effect now and is checked per request.
+Until phase 2, permissions rode in the token and changed only at the next login; blocking was the one
+thing checked per request. Reading both per request removed that asymmetry.
 
 ## 5. Privacy is a different payload, not a nulled-out one
 
@@ -311,8 +307,6 @@ described in §3.
 - **Rate-limiter state is per process.** ASP.NET Core's limiter is in-memory, so running two API
   instances doubles every effective limit. Multi-instance deployment is out of scope for v1
   (CLAUDE.md §6); a distributed limiter would move these counters into Redis alongside the claps.
-- **Permission changes take effect on next login.** They ride in the JWT. Blocking is the case where
-  that lag is unacceptable, and it is handled separately (§4).
 - **`Friendship` uniqueness is directional.** The index is on `(RequesterId, AddresseeId)` per
   CLAUDE.md §3, so it does not by itself prevent A and B from opening requests to each other.
   `FriendshipService` resolves that by treating an incoming request from someone you already asked as

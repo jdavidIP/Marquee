@@ -1,30 +1,32 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
 import { ResetPasswordComponent } from './reset-password.component';
 import { AuthService } from '../../core/auth.service';
+import { CognitoError } from '../../core/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 describe('ResetPasswordComponent', () => {
   let resetSpy: jasmine.Spy;
+  let forgotSpy: jasmine.Spy;
 
   const rules: PasswordRulesDto = {
-    minLength: 12,
-    maxLength: 128,
-    requireLetter: true,
+    minLength: 10,
     requireDigit: true,
   };
 
   function make(
-    token: string | null,
-    resetResult?: () => Observable<{ message: string }>,
+    u: string | null,
+    options: { reset?: () => Observable<void>; forgot?: () => Observable<void> } = {},
   ) {
     TestBed.resetTestingModule();
 
     resetSpy = jasmine
       .createSpy('resetPassword')
-      .and.returnValue(resetResult ? resetResult() : of({ message: 'Password reset.' }));
+      .and.returnValue(options.reset ? options.reset() : of(undefined));
+    forgotSpy = jasmine
+      .createSpy('forgotPassword')
+      .and.returnValue(options.forgot ? options.forgot() : of(undefined));
 
     TestBed.configureTestingModule({
       imports: [ResetPasswordComponent],
@@ -32,11 +34,15 @@ describe('ResetPasswordComponent', () => {
         provideRouter([]),
         {
           provide: AuthService,
-          useValue: { resetPassword: resetSpy, passwordRules: () => of(rules) },
+          useValue: {
+            resetPassword: resetSpy,
+            forgotPassword: forgotSpy,
+            passwordRules: () => of(rules),
+          },
         },
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { queryParamMap: convertToParamMap(token ? { token } : {}) } },
+          useValue: { snapshot: { queryParamMap: convertToParamMap(u ? { u } : {}) } },
         },
       ],
     });
@@ -46,89 +52,67 @@ describe('ResetPasswordComponent', () => {
     return fixture.componentInstance as unknown as Record<string, any>;
   }
 
-  it('shows the form with no token spent yet, given a token in the URL', () => {
-    const c = make('a-valid-token');
-
-    expect(c['status']()).toBe('form');
-    expect(resetSpy).not.toHaveBeenCalled();
+  it('starts from the account it was sent with, and works opened by hand', () => {
+    expect(make('ana')['username']).toBe('ana');
+    expect(make(null)['username']).toBe('');
   });
 
-  it('fails immediately with no token in the URL, without a form to submit', () => {
-    const c = make(null);
-
-    expect(c['status']()).toBe('invalid');
-  });
-
-  it('states the rules it was given, same as the registration form', () => {
-    const c = make('a-valid-token');
-
-    expect(c['passwordHint']()).toContain('12');
-    expect(c['passwordHint']()).toContain('a number');
-  });
-
-  it('catches a mistyped confirmation without asking the server', () => {
-    const c = make('a-valid-token');
-    c['newPassword'] = 'correct horse battery staple 7';
-    c['confirmPassword'] = 'correct horse battery staple';
-
-    expect(c['mismatched']()).toBe(true);
-
-    c['confirmPassword'] = 'correct horse battery staple 7';
-    expect(c['mismatched']()).toBe(false);
-  });
-
-  it('submits the token alongside the new password and reports success', () => {
-    const c = make('a-valid-token');
-    c['newPassword'] = 'correct horse battery staple 7';
-    c['confirmPassword'] = 'correct horse battery staple 7';
+  it('resets with the code and the new password, then offers sign-in', () => {
+    const c = make('ana');
+    c['code'] = ' 123456 ';
+    c['newPassword'] = 'a new password 7';
 
     c['submit']();
 
-    expect(resetSpy).toHaveBeenCalledWith(
-      'a-valid-token',
-      'correct horse battery staple 7',
-      'correct horse battery staple 7',
-    );
+    expect(resetSpy).toHaveBeenCalledWith('ana', '123456', 'a new password 7');
     expect(c['status']()).toBe('succeeded');
   });
 
-  it('lists every rule the server refused the new password on', () => {
-    const c = make('a-valid-token', () =>
-      throwError(
-        () =>
-          new HttpErrorResponse({
-            status: 400,
-            error: {
-              error: 'Use at least 12 characters.',
-              problems: [{ rule: 'TooShort', message: 'Use at least 12 characters.' }],
-            },
-          }),
-      ),
-    );
-    c['newPassword'] = 'weak';
-    c['confirmPassword'] = 'weak';
+  it('says an expired code in plain words and keeps the form', () => {
+    const c = make('ana', {
+      reset: () => throwError(() => new CognitoError('ExpiredCodeException', 'Invalid code provided')),
+    });
 
     c['submit']();
 
     expect(c['status']()).toBe('form');
-    expect(c['problems']().map((p: { rule: string }) => p.rule)).toEqual(['TooShort']);
+    expect(c['error']()).toBe('That code has expired. Send a new one.');
+    expect(c['busy']()).toBe(false);
   });
 
-  it("relays the server's failure message for a dead token", () => {
-    const c = make('a-used-token', () =>
-      throwError(
-        () =>
-          new HttpErrorResponse({
-            status: 400,
-            error: { error: 'This reset link is invalid, expired, or already used.' },
-          }),
-      ),
-    );
-    c['newPassword'] = 'correct horse battery staple 7';
-    c['confirmPassword'] = 'correct horse battery staple 7';
+  it('relays a password the pool refuses', () => {
+    const c = make('ana', {
+      reset: () =>
+        throwError(() => new CognitoError('InvalidPasswordException', 'Password not long enough')),
+    });
 
     c['submit']();
 
-    expect(c['error']()).toBe('This reset link is invalid, expired, or already used.');
+    expect(c['error']()).toBe('Use at least 10 characters, including a number.');
+  });
+
+  it('sends a new code by asking again', () => {
+    const c = make('ana');
+
+    c['resend']();
+
+    expect(forgotSpy).toHaveBeenCalledWith('ana');
+    expect(c['notice']()).toContain('new code');
+  });
+
+  it('hints only the rules the pool enforces', () => {
+    const c = make('ana');
+    c['newPassword'] = 'no digits here';
+
+    expect(c['passwordHint']()).toBe('Use at least 10 characters, including a number.');
+    expect(c['passwordChecks']()).toEqual([true, false]);
+  });
+
+  it('catches a mistyped confirmation without asking the pool', () => {
+    const c = make('ana');
+    c['newPassword'] = 'a new password 7';
+    c['confirmPassword'] = 'a new password';
+
+    expect(c['mismatched']()).toBe(true);
   });
 });

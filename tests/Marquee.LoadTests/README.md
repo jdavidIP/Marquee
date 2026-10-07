@@ -57,8 +57,10 @@ node security-check.mjs
 OPEN_PREMIERE=1 node security-check.mjs   # also open the Premiere and check the anonymous fan-out
 
 # Iteration 6 — the realistic Premiere rush (k6 via Docker, no local install needed)
-docker run --rm -i -e API_BASE=http://host.docker.internal:5080/api \
-  grafana/k6 run - < premiere-rush.js
+docker run --rm -i -v "$PWD:/scripts" -w /scripts \
+  -e API_BASE=http://host.docker.internal:5080/api \
+  -e COGNITO_URL=http://host.docker.internal:9229 \
+  grafana/k6 run premiere-rush.js
 ```
 
 ### Running `premiere-rush.js`
@@ -117,15 +119,21 @@ The crash check deliberately kills `Marquee.Worker` and then waits (up to 120s) 
 reappear, so run it with something supervising the worker — a `dotnet watch`, a restart loop, or just
 restart it by hand when the script prompts.
 
-Environment overrides: `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS` (all scripts), plus `HUB_URL`
+Environment overrides: `API_BASE`, `USERS`, `ADMIN_USER`, `ADMIN_PASS`, `COGNITO_URL` (all scripts), plus `HUB_URL`
 and `SCOPE_ID` for the realtime check, `RABBIT_API` / `RABBIT_USER` / `RABBIT_PASS` /
 `PG_CONTAINER` / `RABBIT_CONTAINER` for the queue check, and `PG_CONTAINER` / `HUB_URL` /
 `PREMIERE_ID` / `OPEN_PREMIERE` for the security check.
 
-> The security check creates a dozen or so accounts, and `/api/auth/register` is IP-rate-limited
-> (credential-stuffing brake). It backs off and retries on a 429, and the Development config raises
-> the limit to 100 per 5 minutes for exactly this reason — the shipped default of 20 is the
-> production-shaped value.
+> **Accounts come from the user pool, not the API.** The API has no sign-up or sign-in endpoints of
+> its own any more (#112), so every script creates its users against the pool's own API —
+> `cognito.mjs` (Node) and `cognito.k6.js` (k6) — and presents the access token it issues. That means
+> the local stack has to include `cognito` (`docker compose up -d`), and the scripts only work against
+> it: cognito-local accepts the fixed code `123456` and sends no email, whereas the real pool emails
+> every sign-up and allows 50 emails a day per AWS account. `COGNITO_URL` (default
+> `http://localhost:9229`) and `COGNITO_CLIENT_ID` (`marquee-local-web`) override where they point;
+> the Docker `k6 run` above sets `COGNITO_URL=http://host.docker.internal:9229`, and mounts this folder rather than piping the script in on stdin, because k6 cannot resolve the `cognito.k6.js` import from stdin. Each account also
+> makes its first authenticated request during setup, which is when the API creates its user row, so
+> that one-off cost is not part of what the script measures.
 
 ```bash
 USERS=500 API_BASE=http://localhost:5080/api node clap-storm.mjs

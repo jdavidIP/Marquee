@@ -17,6 +17,7 @@
 //         USERS (60), ADMIN_USER (admin), ADMIN_PASS (seed-me-locally-1), SKIP_AUTOOPEN (unset)
 
 import { SignalRClient } from './signalr-client.mjs';
+import { createUser, signIn } from './cognito.mjs';
 
 const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const HUB = process.env.HUB_URL ?? 'http://localhost:5080/hubs/premieres';
@@ -44,20 +45,8 @@ async function post(path, body, token) {
   try { return [res.status, JSON.parse(text)]; } catch { return [res.status, text]; }
 }
 
-async function login(usernameOrEmail, password) {
-  const [status, body] = await post('/auth/login', { usernameOrEmail, password });
-  if (status !== 200) throw new Error(`login ${usernameOrEmail} failed: ${status} ${JSON.stringify(body)}`);
-  return body.token;
-}
-
-async function registerOne(i) {
-  const username = `rt_${RUN}_${i}`;
-  const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
-  });
-  if (status === 200 || status === 201) return body.token;
-  if (status === 409) return login(username, PASSWORD);
-  throw new Error(`register ${username} failed: ${status} ${JSON.stringify(body)}`);
+function registerOne(i) {
+  return createUser(`rt_${RUN}_${i}`, PASSWORD, API);
 }
 
 async function pooled(items, size, fn) {
@@ -96,7 +85,7 @@ async function main() {
   console.log(`Marquee realtime check — API ${API}, hub ${HUB}, users ${USERS}, run ${RUN}`);
   line();
 
-  const adminToken = await login(ADMIN_USER, ADMIN_PASS);
+  const adminToken = await signIn(ADMIN_USER, ADMIN_PASS);
   process.stdout.write(`Registering ${USERS} users... `);
   const tokens = await pooled([...Array(USERS).keys()], 25, (i) => registerOne(i));
   console.log('done.');

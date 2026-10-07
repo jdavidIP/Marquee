@@ -39,26 +39,14 @@ public interface IAnonymousSessionService
 
 public sealed class AnonymousSessionService : IAnonymousSessionService
 {
-    /// <summary>
-    /// Domain-separation label for the derived key. Signing anonymous sessions with the raw JWT key
-    /// would mean one secret authenticating two different kinds of credential; deriving a subkey
-    /// keeps them cryptographically independent, so a weakness in one cannot forge the other.
-    /// </summary>
-    private const string DerivationLabel = "marquee-anonymous-session-v1";
-
     private readonly byte[] _key;
     private readonly TimeSpan _lifetime;
 
-    public AnonymousSessionService(IOptions<AnonymousSessionOptions> options, IOptions<JwtOptions> jwtOptions)
+    public AnonymousSessionService(IOptions<AnonymousSessionOptions> options)
     {
         var config = options.Value;
         _lifetime = TimeSpan.FromMinutes(config.LifetimeMinutes);
-
-        _key = string.IsNullOrWhiteSpace(config.SigningKey)
-            ? HMACSHA256.HashData(
-                Encoding.UTF8.GetBytes(jwtOptions.Value.Key),
-                Encoding.UTF8.GetBytes(DerivationLabel))
-            : Encoding.UTF8.GetBytes(config.SigningKey);
+        _key = Encoding.UTF8.GetBytes(config.SigningKey);
     }
 
     public AnonymousSession Issue()

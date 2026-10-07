@@ -20,6 +20,8 @@
 // After the run, verify the authoritative numbers in Postgres with the queries the script prints
 // (see docs/concurrency-findings.md for the recorded results).
 
+import { createUser, signIn } from './cognito.mjs';
+
 const API = process.env.API_BASE ?? 'http://localhost:5080/api';
 const USERS = parseInt(process.env.USERS ?? '300', 10);
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
@@ -39,20 +41,8 @@ async function post(path, body, token) {
   return parse(res);
 }
 
-async function login(usernameOrEmail, password) {
-  const [status, body] = await post('/auth/login', { usernameOrEmail, password });
-  if (status !== 200) throw new Error(`login ${usernameOrEmail} failed: ${status} ${JSON.stringify(body)}`);
-  return body.token;
-}
-
-async function registerOne(i) {
-  const username = `storm_${RUN}_${i}`;
-  const [status, body] = await post('/auth/register', {
-    username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD,
-  });
-  if (status === 200 || status === 201) return body.token;
-  if (status === 409) return login(username, PASSWORD); // idempotent re-run
-  throw new Error(`register ${username} failed: ${status} ${JSON.stringify(body)}`);
+function registerOne(i) {
+  return createUser(`storm_${RUN}_${i}`, PASSWORD, API);
 }
 
 // Fire many concurrent claps from a SINGLE participant — stresses the per-participant cap under
@@ -135,7 +125,7 @@ async function main() {
   console.log(`Marquee clap storm — API ${API}, users ${USERS}, run id ${RUN}`);
   line();
 
-  const adminToken = await login(ADMIN_USER, ADMIN_PASS);
+  const adminToken = await signIn(ADMIN_USER, ADMIN_PASS);
   process.stdout.write(`Registering ${USERS} users... `);
   const tokens = await pooled([...Array(USERS).keys()], 50, i => registerOne(i));
   console.log('done.');

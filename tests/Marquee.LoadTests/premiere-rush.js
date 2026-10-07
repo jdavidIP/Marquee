@@ -25,6 +25,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 import exec from 'k6/execution';
+import { signIn } from './cognito.k6.js';
 
 const API = __ENV.API_BASE || 'http://host.docker.internal:5080/api';
 const ADMIN_USER = __ENV.ADMIN_USER || 'admin';
@@ -84,16 +85,7 @@ export const options = {
 };
 
 export function setup() {
-  const login = http.post(
-    `${API}/auth/login`,
-    JSON.stringify({ usernameOrEmail: ADMIN_USER, password: ADMIN_PASS }),
-    { headers: { 'Content-Type': 'application/json' } },
-  );
-
-  if (login.status !== 200) {
-    throw new Error(`Admin login failed: ${login.status} ${login.body}`);
-  }
-  const token = login.json('token');
+  const token = signIn(ADMIN_USER, ADMIN_PASS);
 
   // A window long enough that the scheduler's auto-open cannot fire mid-run and be mistaken for a
   // threshold open — the run must be the only thing that opens this Premiere.

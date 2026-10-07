@@ -23,8 +23,6 @@ namespace Marquee.IntegrationTests;
 [Collection(IntegrationCollection.Name)]
 public class TodayScheduleTests(MarqueeAppFactory factory)
 {
-    private sealed record AuthResponse(string Token, UserBody User);
-    private sealed record UserBody(Guid Id);
 
     private sealed record Slot(
         Guid Id, DateTime ScheduledFor, string Status, MovieBody? Movie, int? TotalClaps,
@@ -34,24 +32,8 @@ public class TodayScheduleTests(MarqueeAppFactory factory)
 
     private async Task<(HttpClient Client, Guid UserId)> NewUserAsync(string tag)
     {
-        var client = factory.CreateClient();
-        var username = $"u_{tag}_{Guid.NewGuid():n}"[..24];
-
-        var response = await client.PostAsJsonAsync("/api/auth/register",
-            new
-            {
-                username,
-                email = $"{username}@marquee.test",
-                password = TestPasswords.Valid,
-                confirmPassword = TestPasswords.Valid,
-            });
-        response.EnsureSuccessStatusCode();
-
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
-        await TestAuth.ConfirmAsync(factory, client, username, TestPasswords.Valid);
-
-        return (client, body.User.Id);
+        var u = await TestAuth.NewUserAsync(factory, $"u_{tag}");
+        return (u.Client, u.UserId);
     }
 
     /// <summary>A Movie row, cheap to build repeatedly — only Title is asserted on in these tests.</summary>

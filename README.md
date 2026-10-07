@@ -32,7 +32,7 @@ src/
   Marquee.Domain/          Entities, enums, and the pure §4 formulas (threshold, cap, emblem, schedule)
   Marquee.Infrastructure/  EF Core + Postgres, Redis clap counters, TMDB client, message contracts,
                            MassTransit/RabbitMQ wiring, DI
-  Marquee.Api/             ASP.NET Core Web API — JWT auth, premieres, clap, library,
+  Marquee.Api/             ASP.NET Core Web API — Cognito token auth, premieres, clap, library,
                            SignalR hub + broadcast loop, Quartz scheduler jobs, outbox publisher
   Marquee.Worker/          Queue consumer — the open-time fan-out (contributions, emblems, library)
   Marquee.Web/             Angular 20 SPA (standalone components + signals)
@@ -92,13 +92,32 @@ those rows and is idempotent, so a restart simply picks up on the next tick.
 
 ## Running it
 
-**1. Start Postgres + Redis + RabbitMQ + Jaeger**
+**1. Start Postgres + Redis + RabbitMQ + Jaeger + cognito-local**
 
 ```bash
 docker compose up -d
 # RabbitMQ management UI: http://localhost:15672  (marquee / marquee)
 # Jaeger (traces):        http://localhost:16686
+# cognito-local:          http://localhost:9229  (pool local_marquee, client marquee-local-web)
 ```
+
+`cognito-local` stands in for the Cognito user pool: the frontend signs up, confirms, signs in and
+resets passwords against it, and the API validates its tokens and seeds the admin into it. It sends no
+email: **every confirmation and password-reset code is `123456`**,
+and each one is also printed in its log (`docker logs marquee-cognito`). It has no "resend code" and
+enforces no password policy — see DEPLOYMENT.md §2b for every difference from the real pool. To try it
+by hand with the AWS CLI, any credentials work:
+
+```bash
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws cognito-idp sign-up \
+  --endpoint-url http://localhost:9229 --region ca-central-1 --client-id marquee-local-web \
+  --username alice --password abcdefghij1 --user-attributes Name=email,Value=alice@example.test
+```
+
+Users persist in the `marquee-cognitodata` volume. To reset them — or to pick up an edit to the seeded
+pool or client in `docker/cognito-local/db`, which an existing volume never sees — stop the service and
+run `docker volume rm marquee_marquee-cognitodata` (`docker compose down -v` also works, but resets
+every volume).
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
 
@@ -109,8 +128,10 @@ dotnet run
 ```
 
 The seeded admin (dev only) is `admin` / `seed-me-locally-1` — override via the `Admin:*` config
-keys. Seeding runs only when no admin exists, so a database created before the password policy
-(#27) landed keeps whatever it was seeded with; drop the `users` row, or the database, to re-seed.
+keys. On every start the API creates it in cognito-local (if missing) and gives its `users` row the
+Cognito `sub` as its id; an existing admin's password is never reset. A database from before phase 2
+holds an older admin row under a different id: the API logs a reset instruction and starts without an
+admin until you run `docker compose down -v`.
 
 **3. Run the worker** — without it, Premieres still open but nobody's library is filled
 
@@ -259,10 +280,8 @@ earns its place alongside the trace id.
 
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/register` | – | Create account, returns JWT |
 | GET | `/api/auth/password-rules` | – | What a password must satisfy, so the form can say so up front |
-| POST | `/api/auth/login` | – | Log in, returns JWT |
-| GET | `/api/auth/me` | user | Current user |
+| GET | `/api/auth/me` | user | Current user, with the permissions the UI renders from |
 | POST | `/api/sessions/anonymous` | – | Issue a short-lived anonymous session so a visitor can clap |
 | POST | `/api/premieres` | `CanManagePremieres` | Create + activate a Premiere on demand |
 | GET | `/api/premieres/active` | optional | The live Premiere (movie hidden until open) |
@@ -291,11 +310,12 @@ earns its place alongside the trace id.
 
 ### Security model in one paragraph
 
-Authorisation is **permission-based**: endpoints require a capability (`premieres:manage`,
-`users:view`, `users:block`) carried as a JWT claim, mapped from the role at login, so permissions
-can diverge from roles without touching call sites. Blocking is the exception that cannot ride in a
-token — it is checked on every authenticated request against a short-TTL Redis cache, because a JWT
-issued before the block stays valid otherwise. Clapping is guarded by four independent mechanisms in
+Sign-in is **Cognito's**: the API accepts the user pool's access tokens (checked for our app client)
+and nothing else in production. Authorisation is **permission-based**: endpoints require a capability
+(`premieres:manage`, `users:view`, `users:block`) mapped from the account's role, so permissions can
+diverge from roles without touching call sites. Neither permissions nor block status ride in the token —
+both are read on every authenticated request through a short-TTL Redis cache, because a token issued
+before a change stays valid otherwise. Clapping is guarded by four independent mechanisms in
 a specific order (rate limiter → block check → idempotency → debounce → cap), and a profile a
 stranger is not entitled to see returns a genuinely smaller payload rather than one with nulls. Full
 reasoning in [`docs/security-and-social.md`](./docs/security-and-social.md).

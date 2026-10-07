@@ -22,10 +22,10 @@ public class RequiredConfigurationTests
         var config = Config(new() { ["Tmdb:ApiKey"] = "k", ["Admin:Password"] = "  " });
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            config.RequireKeys("Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl"));
+            config.RequireKeys("Tmdb:ApiKey", "Admin:Password", "Cognito:Issuer"));
 
         Assert.Contains("Admin:Password (env Admin__Password)", ex.Message);
-        Assert.Contains("EmailConfirmation:BaseUrl (env EmailConfirmation__BaseUrl)", ex.Message);
+        Assert.Contains("Cognito:Issuer (env Cognito__Issuer)", ex.Message);
         Assert.DoesNotContain("Tmdb", ex.Message);
     }
 }

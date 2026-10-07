@@ -10,34 +10,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     {
         b.ToTable("users");
         b.HasKey(u => u.Id);
-        b.Property(u => u.Username).HasMaxLength(50).IsRequired();
-        b.Property(u => u.Email).HasMaxLength(256).IsRequired();
-        b.Property(u => u.PasswordHash).IsRequired();
+        b.Property(u => u.Username).HasMaxLength(User.UsernameMaxLength).IsRequired();
+        b.Property(u => u.Email).HasMaxLength(User.EmailMaxLength).IsRequired();
         b.Property(u => u.Bio).HasMaxLength(500);
         b.Property(u => u.AvatarUrl).HasMaxLength(2048);
         b.HasIndex(u => u.Username).IsUnique();
         b.HasIndex(u => u.Email).IsUnique();
-    }
-}
-
-public class PasswordResetTokenConfiguration : IEntityTypeConfiguration<PasswordResetToken>
-{
-    public void Configure(EntityTypeBuilder<PasswordResetToken> b)
-    {
-        b.ToTable("password_reset_tokens");
-        b.HasKey(t => t.Id);
-        // Hex-encoded SHA-256, always exactly 64 characters.
-        b.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
-        b.HasOne(t => t.User)
-            .WithMany()
-            .HasForeignKey(t => t.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        // The lookup the reset endpoint runs on every attempt.
-        b.HasIndex(t => t.TokenHash).IsUnique();
-
-        // "Every other outstanding token for this account" — what invalidate-on-use reads.
-        b.HasIndex(t => new { t.UserId, t.UsedAt });
     }
 }
 

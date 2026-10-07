@@ -3,6 +3,7 @@ using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
 using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.CloudWatch.Actions;
+using Amazon.CDK.AWS.Cognito;
 using Amazon.CDK.AWS.DLM;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.ECR;
@@ -60,7 +61,7 @@ public class MarqueeStack : Stack
         }
         """;
 
-    public MarqueeStack(Construct scope, string id, string alertEmail, IStackProps props)
+    public MarqueeStack(Construct scope, string id, string alertEmail, IUserPool userPool, IStackProps props)
         : base(scope, id, props)
     {
         // Public subnet only: a NAT gateway would cost ~$32/month idle for nothing the host needs.
@@ -118,6 +119,9 @@ public class MarqueeStack : Stack
             Actions = new[] { "ssm:GetParametersByPath" },
             Resources = new[] { ParameterArn(ParameterPath), ParameterArn($"{ParameterPath}/*") },
         }));
+        // The admin seeder creates the admin in Cognito before its Postgres row (DEPLOYMENT.md § Phase 2,
+        // decision 5). Nothing else on the host calls Cognito's admin API.
+        userPool.Grant(hostRole, "cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser", "cognito-idp:AdminSetUserPassword");
 
         var data = new Amazon.CDK.AWS.EC2.Volume(this, "Data", new VolumeProps
         {

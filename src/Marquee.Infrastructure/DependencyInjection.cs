@@ -44,7 +44,7 @@ public static class DependencyInjection
         // counters: they hold no per-request state, only a multiplexed Redis connection. ---
         services.AddSingleton<IClapGuards, RedisClapGuards>();
         services.AddSingleton<IFriendGraphCache, RedisFriendGraphCache>();
-        services.AddSingleton<IUserBlockCache, RedisUserBlockCache>();
+        services.AddSingleton<IUserAccessCache, RedisUserAccessCache>();
         services.AddSingleton<IClapRateTracker, RedisClapRateTracker>();
 
         var tmdbOpts = configuration.GetSection(TmdbOptions.SectionName).Get<TmdbOptions>() ?? new TmdbOptions();

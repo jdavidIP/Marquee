@@ -65,14 +65,14 @@ public sealed record PremiereRevealReady(
     DateTime OpenedAt);
 
 /// <summary>
-/// Published by application code that needs to tell a user something outside the app — confirm this
-/// address, reset this password (CLAUDE.md §6's INotificationDispatcher). Carries the notification
+/// Published by application code that needs to tell a user something outside the app (CLAUDE.md §6's
+/// INotificationDispatcher). Nothing publishes it yet: the emails that used to — confirm this address,
+/// reset this password — are the user pool's now. Carries the notification
 /// already resolved to its final content, so nothing downstream needs to know why it was sent.
 ///
 /// Kind travels as a string, the same reasoning as <see cref="PremiereOpened"/>.Status: a message
 /// already sitting in the outbox or the queue during a deploy must still deserialise if a new kind is
-/// added later. Publishers should set it from <see cref="Notifications.NotificationKind"/> via
-/// <c>nameof(...)</c> rather than a hand-typed literal.
+/// added later. The dispatcher maps a kind to its content.
 ///
 /// Consumed by SendNotificationConsumer in Marquee.Worker, which hands it to whichever
 /// INotificationDispatcher is configured — never sent synchronously from the request path.

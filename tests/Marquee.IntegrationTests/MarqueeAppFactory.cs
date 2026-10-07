@@ -10,7 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 
@@ -59,23 +58,27 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
     private readonly RedisContainer _redis = new RedisBuilder("redis:7").Build();
 
+    /// <summary>The user pool stand-in Cognito access tokens come from.</summary>
+    public CognitoLocal Cognito { get; } = new();
+
     public async Task InitializeAsync()
     {
-        // Both must be listening before the host is built: Program.cs migrates on startup, and the
-        // Redis multiplexer is constructed from configuration read at registration time.
-        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
+        // Postgres and Redis must be listening before the host is built: Program.cs migrates on
+        // startup, and the Redis multiplexer is constructed from configuration read at registration
+        // time. cognito-local starts alongside because its port is part of that configuration.
+        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), Cognito.StartAsync());
 
         // Settings go in as environment variables rather than through ConfigureAppConfiguration,
         // and the distinction is not cosmetic.
         //
         // Program.cs reads several values *inline* while composing the app -- the Postgres connection
-        // string in AddMarqueeInfrastructure, and Jwt:Key for the bearer validation parameters.
+        // string in AddMarqueeInfrastructure, and Cognito:Issuer for the bearer validation parameters.
         // Those reads execute before WebApplicationFactory's ConfigureAppConfiguration delegates are
         // applied, so overrides supplied that way arrive too late for them while still reaching
         // anything bound lazily through IOptions.
         //
         // That split is silent and produces absurd symptoms. It first showed up here as tokens that
-        // failed validation with "the signature key was not found": JwtTokenService signed with the
+        // failed validation with "the signature key was not found": the token was signed with the
         // test key it got from IOptions, while the validator had already captured the key from
         // appsettings.Development.json. The same split had the tests quietly running against the
         // developer's local Postgres instead of the container, which was the more dangerous half --
@@ -124,9 +127,10 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         // No collector is listening in a test run.
         yield return ("Tracing__Enabled", "false");
 
-        yield return ("Jwt__Key", "integration-test-signing-key-at-least-32-chars-long");
-        yield return ("Jwt__Issuer", "marquee");
-        yield return ("Jwt__Audience", "marquee");
+        yield return ("Cognito__Issuer", Cognito.Issuer);
+        yield return ("Cognito__ClientId", CognitoLocal.ClientId);
+
+        yield return ("AnonymousSession__SigningKey", "integration-test-anonymous-signing-key-32-chars");
 
         // Empty key selects the offline stub, so tests never reach the network.
         yield return ("Tmdb__ApiKey", "");
@@ -138,7 +142,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
-        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask(), Cognito.DisposeAsync().AsTask());
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -224,29 +228,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     /// <summary>RabbitMQ's AMQP port, which a test run must never be pointed at.</summary>
     private const ushort DefaultBrokerPort = 5672;
 
-    /// <summary>Logs in as the seeded admin and returns a bearer token.</summary>
+    /// <summary>
+    /// Signs the seeded admin in through the pool and returns its access token. The seeder runs when
+    /// the host starts, so the host is started first: without it the pool has no admin to sign in.
+    /// </summary>
     public async Task<string> AdminTokenAsync()
     {
-        var client = CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
-        {
-            usernameOrEmail = AdminUsername,
-            password = AdminPassword,
-        });
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"Admin login failed with {(int)response.StatusCode}. Body: {body}");
-        }
-
-        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        if (string.IsNullOrWhiteSpace(payload?.Token))
-            throw new InvalidOperationException("Admin login returned no token.");
-
-        return payload.Token;
+        _ = Services;
+        return (await Cognito.SignInAsync(AdminUsername, AdminPassword)).AccessToken;
     }
-
-    private sealed record LoginResponse(string Token);
 }

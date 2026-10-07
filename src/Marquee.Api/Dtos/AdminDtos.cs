@@ -11,7 +11,6 @@ public sealed record AdminUserDto(
     string Role,
     bool IsBlocked,
     bool IsPrivate,
-    bool EmailConfirmed,
     DateTime CreatedAt,
     int MoviesCollected);
 

@@ -69,7 +69,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # Stand-in for the Cognito user pool (DEPLOYMENT.md § Phase 2, decision 8): offline, no AWS
+  # credentials, and every confirmation/reset code is CODE rather than an email. The pool and client are
+  # seeded with fixed ids (docker/cognito-local/db) so local config can name them; users land in the
+  # volume, and cp -n never overwrites them — which also means an edited seed only takes effect after
+  # `docker volume rm marquee_marquee-cognitodata`. config.json is copied rather than mounted because the
+  # emulator rewrites it on start. Fidelity gaps against the real pool are listed in DEPLOYMENT.md §2b.
+  # Pinned by digest: the project publishes no version tags.
+  cognito:
+    image: jagregory/cognito-local@sha256:a5ad30d01da5016a38535a717f6e1642d1b37f886a7b17e90b67f6e5ad134831
+    container_name: marquee-cognito
+    entrypoint: ["sh", "-c", "cp /seed/config.json /app/.cognito/ && cp -n /seed/db/*.json /app/.cognito/db/ && exec node /app/start.js"]
+    environment:
+      CODE: "123456"
+    ports:
+      - "9229:9229"    # cognito-idp endpoint, issuer http://localhost:9229/local_marquee
+    volumes:
+      - marquee-cognitodata:/app/.cognito/db
+      - ./docker/cognito-local:/seed:ro
+    healthcheck:
+      # 127.0.0.1, not localhost: inside the image localhost resolves to ::1, and it listens on IPv4 only.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9229/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   marquee-pgdata:
   marquee-redisdata:
   marquee-rabbitdata:
+  marquee-cognitodata:

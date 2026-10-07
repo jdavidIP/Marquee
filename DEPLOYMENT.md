@@ -110,7 +110,7 @@ changes how accounts work, and doing that before real users exist avoids a user 
      Session Manager port forwarding — same for the RabbitMQ management UI.
 3. **Production configuration without an `appsettings.Production.json`.** Every tunable's in-code
    default already is its production value (the Development file mostly restates them), so there is
-   nothing to copy. Secrets and endpoints come from environment variables (`Jwt__Key`,
+   nothing to copy. Secrets and endpoints come from environment variables (`AnonymousSession__SigningKey`,
    `ConnectionStrings__Postgres`, …), and in Production the API and Worker refuse to start if any
    key whose default is a local-dev value is missing (`RequireKeys`) — notably `Tmdb:ApiKey` (else the
    offline stub) and `Admin:Password` (else the repository's dev password on the seeded admin).
@@ -174,6 +174,8 @@ and another created — a sign the wrong value was passed.
     throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
     the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
+    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a, and the
+    Cutover checklist): re-check it after any AMI change or instance replacement.
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
   - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
     than OOM-killing a container.
@@ -232,10 +234,13 @@ and another created — a sign the wrong value was passed.
   below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
   there, so a value containing either would be silently corrupted.
   - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
-  - `Jwt__Key` — random, **at least 32 characters** (the API checks this at startup and refuses to
-    start below it).
+  - `AnonymousSession__SigningKey` — random, **at least 32 characters** (the API checks this at startup
+    and refuses to start below it). Signs the visitors' anonymous session tokens; rotating it ends every
+    current session (they last 3 hours). Replaces `Jwt__Key`, which signed the API's own user tokens
+    until #112 removed them: create this parameter before cutover, and keep `/marquee/prod/Jwt__Key`
+    until the cutover is confirmed stable — a rollback to the old images needs it (see Rollback, 1c).
   - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
-  - `Admin__Password` — at least 10 characters with a digit (the app's own password policy); this is
+  - `Admin__Password` — at least 10 characters with a digit (the user pool's password policy); this is
     the seeded admin's sign-in password, so keep it somewhere you can find it again.
   - `OriginVerify__Secret` — random (`openssl rand -hex 32`). **A plain `String`, not a
     `SecureString`**: CloudFormation can only resolve a `String` into the CloudFront header, and the
@@ -288,7 +293,8 @@ aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'P
   --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
 echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
-echo "PUBLIC_BASE_URL=<SiteUrl>" >> .env
+echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
+echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
 chmod 600 .env
 aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
 docker compose -f docker-compose.prod.yml pull
@@ -337,7 +343,9 @@ tests but must never interrupt a deploy). Deploys share a concurrency group and 
 
 1. Assume the deploy role via **OIDC** — the repository holds no AWS credentials, only the role ARN
    as the `AWS_DEPLOY_ROLE_ARN` variable. The role trusts `main` only.
-2. Read `MarqueeStack`'s outputs live (`describe-stacks`), so no resource id is copied into settings.
+2. Read `MarqueeStack`'s and `MarqueeAuthStack`'s outputs live (`describe-stacks`), so no resource id
+   is copied into settings. The pool's issuer and client id reach the API through `deploy.sh`'s
+   arguments into `.env`.
 3. Build and push `marquee-api` / `marquee-worker` to ECR, tagged with the 7-character commit SHA.
 4. Upload `docker-compose.prod.yml` and `deploy.sh` to the artifacts bucket under that tag.
 5. **SSM Run Command** runs `deploy.sh` on the host: fetch the compose file, write `.env` from
@@ -366,6 +374,12 @@ A tag stays deployable only while its pieces exist: ECR keeps the **last 10 imag
 the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
 is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
 the bucket) cannot be redeployed this way; use 1b-ops.
+
+**The phase 2 cutover (#113) cannot be rolled back this way.** Its migration (`RemovePasswordAuth`) drops
+`users.PasswordHash`, which every earlier image still requires, and those images also need the old
+`Jwt__Key`. A failed cutover is undone by restoring the data volume from a snapshot taken immediately
+before the cutover deploy (the daily 08:00 UTC one can be a day old) and then redeploying the old tag.
+Rolling back between tags built after the cutover works as above.
 
 A failed deploy prints only container states to the Actions log, never log lines — the repository is
 public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
@@ -488,15 +502,15 @@ entry say which zone they are in.
 Postgres). Must land before real users sign up: existing password hashes cannot be imported into
 Cognito, so switching later would need a User Migration Lambda. The decisions below were settled on
 2026-10-04; the replacement CLAUDE.md wording is written out under *Domain rule changes* and is
-swapped in by the phase 2 build, not before — until then CLAUDE.md describes what is built.
+applied to CLAUDE.md in #112.
 
 What changes:
 
-- **Cognito User Pool** (CDK) for sign-up, sign-in, confirmation and password reset. The existing
-  `PasswordHasherService`, confirmation-token and reset-token services are replaced by the pool.
+- **Cognito User Pool** (CDK) for sign-up, sign-in, confirmation and password reset. The API's own
+  password hasher, token minting and confirmation/reset-token services were deleted in #112.
 - **The API validates Cognito access tokens** — `JwtBearer` pointed at the pool as authority (decision
-  9). Integration tests keep minting their own tokens through a test issuer accepted only outside
-  Production.
+  9). Integration tests sign in through a cognito-local Testcontainer; the API has no test-only token
+  path.
 - **The frontend keeps its own screens** (the pass-card login, #64/#67) and calls Cognito's API
   directly (decision 6). Cognito's hosted Managed Login is not used — it would discard the redesign.
 - **Email uses Cognito's built-in sender** — no domain or SES needed, capped at a small daily quota
@@ -520,8 +534,8 @@ username and everything else the domain uses stay in Postgres as the source of t
    Cognito `sub` (both GUIDs, no mapping column); the username comes from the access token's `username`
    claim, and the email — which access tokens do not carry (decision 9) — from one `GetUser` call made
    with that same access token (no IAM needed), only on row creation. Every row is confirmed by
-   construction; `EmailConfirmedAt` stays and is set at row creation, so the existing filters become
-   always-true (removing them is left to the cleanup issue). **Creation must be idempotent** (CLAUDE.md
+   construction; `EmailConfirmedAt` stays and is set at row creation, so the filters that read it were
+   always-true; #112 removed them. **Creation must be idempotent** (CLAUDE.md
    §7): a page load fires several parallel first requests, so insert, and on a unique-key conflict
    re-read the row that won. A Cognito username or email already held by a row with a *different* id
    (a pre-cutover row, say) is refused and logged, never merged or overwritten. The frontend signs in
@@ -574,12 +588,11 @@ username and everything else the domain uses stay in Postgres as the source of t
 8. **Local development runs `cognito-local`** (Docker image `jagregory/cognito-local`) in
    `docker-compose.yml`: offline, no AWS credentials, codes printed in its log instead of emailed. It
    supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /
-   admin operations, and a JWKS endpoint, so only the issuer URL differs from prod — confirm refresh and
-   the exact operation list when building. Fidelity is "good enough for local development" (it likely
-   does not enforce the pool's password policy, for one), so behaviour is verified once against the real
-   pool (below). *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run,
-   real email addresses, quota) and keeping the old password auth in Development (two auth
-   implementations).
+   admin operations, refresh, and a JWKS endpoint, so only the issuer URL differs from prod. Fidelity is
+   "good enough for local development" — no password policy, no resend, case-sensitive usernames among
+   the gaps recorded in §2b — so behaviour is verified once against the real pool (below).
+   *Rejected:* a dev pool in AWS (internet + `aws login`'s 12h credentials on every run, real email
+   addresses, quota) and keeping the old password auth in Development (two auth implementations).
 9. **The API accepts Cognito access tokens, not ID tokens.** An access token is the credential meant for
    calling an API; the ID token describes the signed-in user to the frontend. Access tokens carry no
    `aud` claim, so `ValidateAudience` is turned off and the API checks the equivalent itself:
@@ -603,7 +616,7 @@ or decision 5's seeding fails — nothing at startup checks it today beyond pres
 routing every auth call through the API with a client-secret app client to keep #27 server-side — it
 reverses decision 6 to protect only an account owner from their own choice.
 
-### Domain rule changes (applied to CLAUDE.md by the phase 2 build)
+### Domain rule changes (applied to CLAUDE.md in #112)
 
 - **§3 User:** `PasswordHash` is removed; `Id` is the Cognito `sub`; `EmailConfirmedAt` is set when the
   row is created (rows only exist for confirmed users).
@@ -622,6 +635,49 @@ reverses decision 6 to protect only an account owner from their own choice.
   Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the
   first sign-in a registered one."*
 
+### Cutover checklist (#113)
+
+The one merge of `feat/phase2-cognito` into `main`. In this order; each item that breaks prod if missed
+says why. Rolling back past the migration is a snapshot restore, not a tag redeploy (Rollback, 1c).
+
+**Before the merge**
+
+1. SSM `/marquee/prod/AnonymousSession__SigningKey` exists, at least 32 letters and digits — without it
+   the API refuses to start, before migrating. (Created 2026-10-07.) **Leave `Jwt__Key` where it is.**
+2. `Admin__Password` meets the pool's policy (at least 10 characters, a digit). If it does not, seeding
+   fails *quietly*: the deploy still goes green and the API has no admin.
+3. The host's metadata hop limit is 2 — the API container reaches its role credentials only through it
+   (2a):
+   `aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'`
+4. No Premiere is `Active` and none is `Scheduled` within about 30 minutes (times are UTC): one that
+   opened after step 6 would write contributions for users that no longer exist. In Session Manager on
+   the host (`sudo -i`, then `cd /opt/marquee`):
+   `docker compose -f docker-compose.prod.yml exec -T postgres psql -U marquee -d marquee -c "select \"Status\", \"ScheduledFor\" from premieres where \"Status\" in ('Active','Scheduled') order by \"ScheduledFor\" limit 6;"`
+5. **Snapshot the data volume now** (the daily 08:00 UTC one can be a day old): EC2 → Volumes → the
+   data volume → Actions → Create snapshot, description `pre-cutover #113`; wait for *Completed*.
+6. **Reset the user-linked data** (destructive; old rows have random GUIDs that never match a Cognito
+   `sub`, and a leftover admin row stops the new admin being seeded). Same session, same directory:
+   - count first: `... psql ... -c "select (select count(*) from users) users, (select count(*) from contributions) contributions, (select count(*) from library_entries) library, (select count(*) from friendships) friendships;"`
+   - `... psql ... -c "truncate table users cascade;"` — cascades to contributions, library entries,
+     friendships and reset tokens; Premieres and Movies are kept (the film cooldown reads them).
+   - `docker compose -f docker-compose.prod.yml exec -T redis sh -c "redis-cli --scan --pattern 'user:*' | xargs -r redis-cli del"`
+   - re-run the count; every number should be 0. Record the before and after on #113.
+7. Merge the PR; watch CI, then the Deploy workflow (the first run of the five-argument `deploy.sh`).
+
+**After the deploy**
+
+8. CloudWatch log group `/marquee/prod`: the API logged `Seeded admin 'admin'`, and not "starting without
+   it" (a hop limit of 1, a password the pool refused, or a leftover row). Sign in as `admin` on the site.
+   If seeding failed, fix the cause and redeploy; the seeder retries on every start.
+9. Run *Verification against the real pool*, below, and record the dates. It sends sign-up emails
+   against Cognito's 50-a-day-per-account quota.
+10. Once stable: delete `/marquee/prod/Jwt__Key`; remove `feat/phase2-cognito` from the `pull_request`
+    branches in `.github/workflows/ci.yml` and delete the branch; file any cognito-local fidelity gap
+    found; close #113.
+
+For a few minutes after step 7 the frontend lags the backend: a browser with the old cached page calls
+the new API, gets a 401 or 404 on its old session, and falls back to a visitor session by itself.
+
 ### Verification against the real pool (once, after the first prod deploy)
 
 `cognito-local` stands in for Cognito everywhere but prod, so these are checked live and recorded here
@@ -630,6 +686,89 @@ expired code; resend; sign-in while unconfirmed routes to code entry; password r
 9-character and a digit-less password are refused, and an all-lowercase password with a digit is
 accepted; an ID token presented to the API is refused; the seeded admin can sign in and is Admin; a role
 change and a block take effect on the next request.
+
+### 2a. User pool (#107 — deployed 2026-10-04)
+
+`MarqueeAuthStack` (`infra/MarqueeAuthStack.cs`), separate from `MarqueeStack` because the pool is the
+only copy of users' password hashes — they cannot be exported, so losing it means everyone resets.
+`MarqueeStack` can be torn down and rebuilt without touching it. Stack termination protection on; the
+pool has deletion protection and a `RETAIN` removal policy. Deploy order: `MarqueeAuthStack` before
+`MarqueeStack`, which reads the pool ARN for the host role's grant. CDK wires that ARN through
+`Fn::GetStackOutput` (resolved at deploy time) rather than a CloudFormation export, which is why the auth
+stack has an auto-named `PublishOutputFnGetAtt…` output; its name derives from the pool's construct id
+(`Users`), so renaming that id renames the output. The pool name, the `email` alias, case-insensitive
+usernames and the required `email` attribute are **immutable after creation** — changing any of them
+replaces the pool, which deletion protection and `RETAIN` exist to stop.
+
+- **Pool** `ca-central-1_4mv04X3ap`, issuer `https://cognito-idp.ca-central-1.amazonaws.com/ca-central-1_4mv04X3ap`.
+  Username sign-in, case-insensitive, `email` alias (Cognito enforces username uniqueness at sign-up and
+  email uniqueness among confirmed users only); code verification ("Your Marquee code is {####}");
+  recovery by verified email only; password policy min 10 + numbers, upper/lower/symbols off. The
+  verification email ("Your Marquee code is {####}.") names no expiry, because Cognito sends the same
+  template for password resets (1h) as for sign-up (24h).
+- **Feature plan: Lite** — 10,000 MAU/month always free, then $0.0055/MAU. Essentials (the default for
+  new pools, $0.015/MAU after the same free tier) adds passwordless and password-history features this
+  app does not use.
+- **Email: Cognito's built-in sender, 50 messages per day per AWS account, not adjustable**, from
+  `no-reply@verificationemail.com`. Every sign-up, resend and reset counts. Phase 3's SES lifts it.
+- **App client** `marquee-web` (`20ljh9mr0pc2hpjbriduqqtp1t`): public, no secret,
+  `USER_PASSWORD_AUTH` + refresh, OAuth/hosted UI disabled, access and ID tokens 24h (Cognito's maximum),
+  user-existence errors suppressed. The refresh token keeps CDK's default **30 days** — longer than
+  today's "24h, then sign in again". It only matters if the frontend stores it; whether to (and whether
+  to shorten it) is #111's call.
+- **Grants**: the host role has `AdminCreateUser`, `AdminGetUser`, `AdminSetUserPassword` on the pool
+  ARN only; the deploy role can `DescribeStacks` on `MarqueeAuthStack` to read its outputs.
+  The seeder calls those from **inside the API container**, which reaches the instance role through
+  IMDSv2 only because the instance's metadata hop limit is 2 (one hop for the instance, one for Docker's
+  bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
+  it — so check `aws ec2 describe-instances --query '...MetadataOptions'` after any AMI change: at 1,
+  seeding fails (logged) and the API starts with no admin.
+
+Checked live 2026-10-04: `SignUp` with a 9-character password → `InvalidPasswordException` (not long
+enough); with no digit → `InvalidPasswordException` (numeric characters); an all-lowercase password
+with a digit accepted (via `AdminCreateUser` + `AdminSetUserPassword --permanent`, so no email was sent
+— status `CONFIRMED`); `InitiateAuth` with `USER_PASSWORD_AUTH` signed in using the username in upper
+case (case-insensitive) and returned a 24h token; test user deleted, pool left empty. Host role policy
+read back from IAM with exactly the three actions on the pool ARN.
+
+### 2b. Local stand-in: `cognito-local` (#108)
+
+The `cognito` service in `docker-compose.yml` (decision 8). Image `jagregory/cognito-local`, pinned by
+digest because the project publishes no version tags (the pinned build is from 2026-05-21). The pool
+`local_marquee` and client `marquee-local-web` are seeded from `docker/cognito-local/db` with fixed ids,
+so local config can name them; users live in the `marquee-cognitodata` volume — in the same file as
+the pool, so a seed edit only reaches a machine after `docker volume rm marquee_marquee-cognitodata`.
+`config.json` turns off the emulator's default of email-as-username and sets the issuer to
+`http://localhost:9229`, so tokens carry `iss: http://localhost:9229/local_marquee` and JwtBearer finds
+`/.well-known/openid-configuration` and the JWKS under it. `CODE=123456` makes every code the same.
+
+**Matches the real pool** (checked 2026-10-04 with the AWS CLI): `SignUp`; `UserNotConfirmedException`
+on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSignUp`;
+`USER_PASSWORD_AUTH` and `REFRESH_TOKEN_AUTH`; access-token claims `iss`, `sub`, `client_id`,
+`token_use: access`, `username`, `scope: aws.cognito.signin.user.admin` and no `aud` (decision 9);
+`GetUser` with the access token returns the email (decision 2); `ForgotPassword` +
+`ConfirmForgotPassword`; `AdminCreateUser` (`UsernameExistsException` on a repeat), `AdminGetUser`,
+`AdminSetUserPassword --permanent` → `CONFIRMED` (decision 5's seeder); `ListUsers` with
+`cognito:user_status = "UNCONFIRMED"` (#30).
+
+**Differs — covered only by the real-pool checklist:**
+
+- **No password policy.** `abc` is accepted. Only the real pool (and the frontend's hints) enforce it;
+  the policy in the seed file is there to mirror the real pool, not because the emulator reads it.
+- **Usernames are case-sensitive**, despite `CaseSensitive: false`: `ALICE` signs up as a second user
+  beside `alice`, and signing in must match the case used at sign-up.
+- **No sign-in by email alias** — only the username works.
+- **No `ResendConfirmationCode`** (`Unsupported`). With `CODE` fixed, the original code always works, so
+  locally "resend" is a no-op the UI must survive, not a path to exercise.
+- **`email_verified` stays `false`** after confirmation, unlike the real pool's auto-verification.
+- `InitiateAuth` responses carry no `ExpiresIn`; read expiry from the token's `exp`.
+- **A wrong password at sign-in is `InvalidPasswordException`**, not the real pool's
+  `NotAuthorizedException`. The frontend reads any password refused at sign-in as a wrong one (#111).
+- **Confirming an already-confirmed account is `ExpiredCodeException`**, where the real pool says
+  `NotAuthorizedException` — which the frontend treats as "already confirmed, carry on" (#111). Locally
+  the person sees "code expired" instead; harmless, and only reachable by confirming twice.
+- **Accepts an email-shaped username.** The real pool refuses one (`InvalidParameterException`), since
+  email is a sign-in alias; the register form stops it before any request either way (#111).
 
 ---
 

@@ -1,4 +1,3 @@
-using System.Text;
 using Marquee.Api;
 using Marquee.Api.Auth;
 using Marquee.Api.Messaging;
@@ -7,22 +6,16 @@ using Marquee.Api.Realtime;
 using Marquee.Api.Scheduling;
 using Marquee.Api.Security;
 using Marquee.Domain.Entities;
-using Marquee.Domain.Enums;
-using Marquee.Domain.Options;
-using Marquee.Domain.Rules;
 using Marquee.Infrastructure;
 using Marquee.Infrastructure.Observability;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Tmdb;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Trace;
 using Serilog;
 
 // A bootstrap logger, replaced by the configured one as soon as the host is built. Without it, any
-// failure before that point — bad connection string, unreadable config, a missing Jwt:Key — would be
+// failure before that point — bad connection string, unreadable config, a missing AnonymousSession:SigningKey — would be
 // written by whatever default logger happened to exist, or not at all. Startup is exactly when you
 // most need the log to work.
 Log.Logger = new LoggerConfiguration()
@@ -58,15 +51,15 @@ builder.Services.AddMarqueeTracing(builder.Configuration, MarqueeLogging.ApiServ
     }));
 
 // --- Options ---
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
-if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
-    throw new InvalidOperationException("Jwt:Key must be configured and at least 32 characters.");
+var anonymousSigningKey = builder.Configuration[$"{AnonymousSessionOptions.SectionName}:{nameof(AnonymousSessionOptions.SigningKey)}"];
+if (string.IsNullOrWhiteSpace(anonymousSigningKey) || anonymousSigningKey.Length < AnonymousSessionOptions.MinSigningKeyLength)
+    throw new InvalidOperationException(
+        $"AnonymousSession:SigningKey must be configured and at least {AnonymousSessionOptions.MinSigningKeyLength} characters.");
 if (builder.Environment.IsProduction())
     builder.Configuration.RequireKeys(
         "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
-        "Tmdb:ApiKey", "Admin:Password", "EmailConfirmation:BaseUrl", "PasswordReset:BaseUrl",
-        OriginVerification.SecretKey);
+        "Tmdb:ApiKey", "Admin:Password",
+        "Cognito:Issuer", "Cognito:ClientId", OriginVerification.SecretKey);
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);
@@ -78,39 +71,7 @@ builder.Services.AddMarqueeForwardedHeaders();
 builder.Services.AddMarqueeHealthChecks(builder.Configuration);
 
 // --- Auth ---
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwt.Issuer,
-            ValidAudience = jwt.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key))
-        };
-
-        // WebSocket and server-sent-event connections cannot carry an Authorization header, so the
-        // SignalR client passes the token as a query string parameter on the hub URL. Accept it
-        // only for hub paths — everywhere else the header remains the only way in.
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                var accessToken = context.Request.Query["access_token"];
-                if (!string.IsNullOrEmpty(accessToken) &&
-                    context.HttpContext.Request.Path.StartsWithSegments(HubRoutes.Premieres))
-                {
-                    context.Token = accessToken;
-                }
-                return Task.CompletedTask;
-            }
-        };
-    });
-
+builder.Services.AddMarqueeAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddAuthorization(options => options.AddMarqueePolicies());
 
 // --- Web ---
@@ -133,7 +94,16 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
     await db.Database.MigrateAsync();
-    await SeedAdminAsync(scope.ServiceProvider, app.Configuration, app.Logger);
+    // The seeder logs its own failures; this catches the ones before it can, such as an unusable
+    // Cognito:Issuer failing its construction. Starting without an admin beats not starting.
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<AdminSeeder>().SeedAsync(CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Could not seed the admin; starting without it.");
+    }
     await SeedGenresAsync(scope.ServiceProvider, app.Logger);
     await SeedCountriesAsync(scope.ServiceProvider, app.Logger);
 }
@@ -161,12 +131,13 @@ app.UseSerilogRequestLogging();
 
 app.UseCors(CorsPolicy);
 // Explicit, because the order of the next four is load-bearing. Authentication first so the rate
-// limiter and the block check both know who is calling; the block check before the rate limiter so
-// a blocked account cannot spend a bucket; the rate limiter after routing so it can see the
-// per-endpoint [EnableRateLimiting] metadata.
+// limiter and the access check both know who is calling; the access check before the rate limiter so
+// a blocked account cannot spend a bucket, and before authorization because it sets the permissions
+// authorization reads; the rate limiter after routing so it can see the per-endpoint
+// [EnableRateLimiting] metadata.
 app.UseRouting();
 app.UseAuthentication();
-app.UseBlockedUserCheck();
+app.UseUserAccess();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
@@ -176,41 +147,6 @@ app.MapHub<PremiereHub>(HubRoutes.Premieres);
 app.MapMarqueeHealthChecks();
 
 app.Run();
-
-// Seeds a single admin so Premieres can be created out of the box in dev.
-// ILogger is qualified because `using Serilog` brings a second, unrelated ILogger into scope here.
-static async Task SeedAdminAsync(
-    IServiceProvider sp, IConfiguration config, Microsoft.Extensions.Logging.ILogger logger)
-{
-    var db = sp.GetRequiredService<MarqueeDbContext>();
-    var hasher = sp.GetRequiredService<IPasswordHasherService>();
-
-    var username = config["Admin:Username"] ?? "admin";
-    var email = (config["Admin:Email"] ?? "admin@marquee.local").ToLowerInvariant();
-    var password = config["Admin:Password"] ?? "seed-me-locally-1";
-
-    if (await db.Users.AnyAsync(u => u.Role == UserRole.Admin))
-        return;
-
-    // Seeding writes a hash directly, so it does not pass through the registration policy (#27) —
-    // which is the right call, since a misconfigured password should not stop the API from starting.
-    // It is still worth saying out loud: the account with the most authority in the system is the
-    // one place a password nobody would be allowed to choose can quietly end up.
-    var policy = sp.GetRequiredService<IOptions<PasswordPolicyOptions>>().Value;
-    var verdict = PasswordPolicy.Evaluate(password, username, email, policy);
-    if (!verdict.IsAcceptable)
-        logger.LogWarning(
-            "Seeded admin password does not meet the password policy: {Reasons} Change Admin:Password before this reaches anything but a development machine.",
-            verdict.Summary);
-
-    // Confirmed at seed time: the admin has to be a fully counted, fully functional registered
-    // participant from the first request, not stuck clapping under the anonymous cap (issue #29).
-    var admin = new User { Username = username, Email = email, Role = UserRole.Admin, EmailConfirmedAt = DateTime.UtcNow };
-    admin.PasswordHash = hasher.Hash(admin, password);
-    db.Users.Add(admin);
-    await db.SaveChangesAsync();
-    logger.LogInformation("Seeded admin user '{Username}' (password from config or default).", username);
-}
 
 // Mirrors TMDB's genre list locally so genre names are data rather than a hardcoded map.
 //

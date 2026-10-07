@@ -80,7 +80,7 @@ public sealed class AdminService(
     IMovieCatalog movies,
     IPremiereCache cache,
     IPremiereBroadcaster broadcaster,
-    IUserBlockCache blockCache,
+    IUserAccessCache accessCache,
     IOptions<MarqueeScheduleOptions> schedule,
     IOptions<MarqueeRulesOptions> rules,
     IOptions<SchedulerOptions> scheduler,
@@ -116,7 +116,6 @@ public sealed class AdminService(
                 u.Role.ToString(),
                 u.IsBlocked,
                 u.IsPrivate,
-                u.EmailConfirmedAt != null,
                 u.CreatedAt,
                 u.LibraryEntries.Count))
             .ToListAsync(ct);
@@ -135,7 +134,7 @@ public sealed class AdminService(
 
         // Invalidate rather than overwrite: the next request from this user re-reads Postgres, so
         // the cached answer cannot disagree with the row even if this write raced another one.
-        await blockCache.InvalidateAsync(userId, ct);
+        await accessCache.InvalidateAsync(userId, ct);
 
         logger.LogWarning(
             "User {UserId} ({Username}) {Action}. Reason: {Reason}",
@@ -246,8 +245,7 @@ public sealed class AdminService(
         if (premiere.Status != PremiereStatus.Scheduled)
             return new AdminResult<AdminPremiereDto>(AdminOutcome.AlreadyTerminal);
 
-        // Confirmed only (issue #29) — see PremiereFactory.CreateAsync.
-        var totalUsers = await db.Users.CountAsync(u => u.EmailConfirmedAt != null, ct);
+        var totalUsers = await db.Users.CountAsync(ct);
         var (min, max) = ThresholdCalculator.AdminBand(totalUsers, _rules);
         if (threshold < min || threshold > max)
         {
@@ -297,8 +295,7 @@ public sealed class AdminService(
         var localDate = DateOnly.FromDateTime(premiere.ScheduledFor.ToLocalTime());
         var editable = premiere.Status == PremiereStatus.Scheduled;
 
-        // Confirmed only (issue #29) — see PremiereFactory.CreateAsync.
-        var totalUsers = await db.Users.CountAsync(u => u.EmailConfirmedAt != null, ct);
+        var totalUsers = await db.Users.CountAsync(ct);
         var (min, max) = ThresholdCalculator.AdminBand(totalUsers, _rules);
 
         // An uneditable Premiere reports no windows rather than windows nobody may use.

@@ -49,9 +49,8 @@ public sealed class PremiereFactory(
         var movie = await movies.GetOrAddAsync(chosen, ct);
 
         // --- Threshold + caps, computed once from the current registered user base (§4.1, §4.2). ---
-        // Confirmed only (issue #29): an unconfirmed account is treated fully as an anonymous session
-        // and must not be able to move the threshold or the caps that govern one.
-        var totalUsers = await db.Users.CountAsync(u => u.EmailConfirmedAt != null, ct);
+        // Every row is a confirmed account (CLAUDE.md §4.1), so this is every registered user.
+        var totalUsers = await db.Users.CountAsync(ct);
         var localTime = TimeOnly.FromDateTime(scheduledFor.ToLocalTime());
         var isPeak = ThresholdCalculator.IsPeak(localTime, _rules);
         var threshold = ThresholdCalculator.Draw(totalUsers, isPeak, _rules, rng);

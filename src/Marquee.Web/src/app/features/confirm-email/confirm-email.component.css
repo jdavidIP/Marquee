@@ -72,6 +72,49 @@
   color: #4a463c;
 }
 
+.pass__form {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6f6a5c;
+}
+
+.field__input {
+  font-family: var(--font-body);
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  color: #1b1a17;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--sign-face-border);
+  padding: 0 0 7px;
+  outline: none;
+}
+
+.field__input:disabled {
+  color: #8d8778;
+  border-bottom-color: #cfc5ad;
+}
+
+/* The code itself: spaced numerals, like the serial on the pass. */
+.field__input--code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.4em;
+}
+
 .error-box {
   padding: 12px 14px;
   border-left: 3px solid #a3202f;
@@ -99,6 +142,12 @@
   padding: 15px 20px;
   cursor: pointer;
 }
+.pass__submit:disabled {
+  color: #8d8778;
+  background: transparent;
+  border-color: #cfc5ad;
+  cursor: default;
+}
 
 .pass__switch {
   display: flex;
@@ -110,7 +159,11 @@
   font-family: var(--font-body);
   font-size: 12px;
 }
-.pass__switch a {
+.pass__switch span {
+  color: #6f6a5c;
+}
+.pass__switch a,
+.pass__switch button {
   background: none;
   border: none;
   border-bottom: 1px solid #e0a8a8;
@@ -122,6 +175,11 @@
   color: #c2213a;
   text-decoration: none;
   cursor: pointer;
+}
+.pass__switch button:disabled {
+  color: #8d8778;
+  border-bottom-color: #cfc5ad;
+  cursor: default;
 }
 
 /* Decorative ticket perforation — a fixed pattern, not per-user like the profile badge's barcode. */

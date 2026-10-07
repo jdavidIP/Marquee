@@ -35,6 +35,11 @@
     -->
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.*" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.*" />
+    <!--
+      Cognito's admin API (phase 2, #110): the startup seeder creates the admin in the user pool. Those
+      calls must be SigV4-signed, unlike the unsigned GetUser the provisioner makes over plain HttpClient.
+    -->
+    <PackageReference Include="AWSSDK.CognitoIdentityProvider" Version="4.*" />
   </ItemGroup>
 
   <ItemGroup>
