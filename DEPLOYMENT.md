@@ -687,6 +687,28 @@ expired code; resend; sign-in while unconfirmed routes to code entry; password r
 accepted; an ID token presented to the API is refused; the seeded admin can sign in and is Admin; a role
 change and a block take effect on the next request.
 
+Recorded after the cutover deploy (#113, `06cac2e`), against pool `ca-central-1_4mv04X3ap` and the live
+site. The checks marked *operator* were done by hand in the browser and reported back; the rest were
+run from the command line.
+
+- [x] **2026-10-07** — Deploy: CI and the Deploy workflow green on the merge commit; the new route
+  `/api/auth/password-rules` answers 200 and the removed `/api/auth/login` answers 404 through
+  CloudFront; `Seeded admin 'admin' as cc8d1508-70a1-7086-6506-ad593f2e499b` in `/marquee/prod`.
+- [x] **2026-10-07** — The seeded admin signs in on the site. *(operator)*
+- [x] **2026-10-07** — Sign-up with a real address → code email arrives → confirm → signed in
+  automatically; a wrong code is refused; "Send a new code" works; signing in before confirming routes
+  to code entry; password reset end to end. *(operator)*
+- [x] **2026-10-07** — A 9-character and a digit-less password are refused; a lowercase-only password of
+  at least 10 characters with a digit is accepted. *(operator)*
+- [x] **2026-10-07** — A role change and a block take effect on the user's next request. *(operator)*
+- [x] **2026-10-07** — Access token versus ID token, sent to `GET /api/auth/me` on the live site: the
+  pool's access token (`token_use` `access`, `client_id` our app client) answers 200 with the account;
+  the same sign-in's ID token (`token_use` `id`) answers 401; no token answers 401.
+- [x] **2026-10-07** — `/marquee/prod/Jwt__Key` deleted from SSM once the above held; nothing reads it
+  any more; the six parameters left under `/marquee/prod` are the ones listed under *SSM Parameter Store*.
+- [ ] An **expired** confirmation code is refused. Not run: sign-up codes stay valid for 24 hours, so it
+  needs a code left unused until the next day.
+
 ### 2a. User pool (#107 — deployed 2026-10-04)
 
 `MarqueeAuthStack` (`infra/MarqueeAuthStack.cs`), separate from `MarqueeStack` because the pool is the
