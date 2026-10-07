@@ -24,7 +24,7 @@ public class UserAccessTests(MarqueeAppFactory factory)
 {
     private const string Password = "access-tests-password-1";
 
-    private sealed record Me(Guid Id, string Username, string Email, string Role, bool EmailConfirmed, List<string> Permissions);
+    private sealed record Me(Guid Id, string Username, string Email, string Role, List<string> Permissions);
 
     private static string NewUsername() => $"ua_{Guid.NewGuid():n}"[..20];
 
@@ -67,7 +67,6 @@ public class UserAccessTests(MarqueeAppFactory factory)
         me.Username.Should().Be(username);
         me.Email.Should().Be($"{username}@example.test", "it comes from GetUser — access tokens carry no email");
         me.Role.Should().Be(nameof(UserRole.User));
-        me.EmailConfirmed.Should().BeTrue("Cognito only issues tokens to confirmed accounts");
         me.Permissions.Should().BeEmpty();
     }
 
@@ -95,7 +94,7 @@ public class UserAccessTests(MarqueeAppFactory factory)
         await WithScopeAsync(async sp =>
         {
             var db = sp.GetRequiredService<MarqueeDbContext>();
-            db.Users.Add(new User { Id = otherId, Username = username, Email = $"other-{username}@example.test", PasswordHash = "" });
+            db.Users.Add(new User { Id = otherId, Username = username, Email = $"other-{username}@example.test" });
             return await db.SaveChangesAsync();
         });
         var tokens = await factory.Cognito.CreateUserAsync(username, Password);
@@ -141,33 +140,6 @@ public class UserAccessTests(MarqueeAppFactory factory)
     }
 
     [Fact]
-    public async Task Permissions_stamped_into_a_legacy_token_are_not_trusted()
-    {
-        var username = NewUsername();
-        var anonymous = factory.CreateClient();
-        (await anonymous.PostAsJsonAsync("/api/auth/register", new
-        {
-            username,
-            email = $"{username}@example.test",
-            password = Password,
-            confirmPassword = Password,
-        })).EnsureSuccessStatusCode();
-        var userId = await WithScopeAsync(sp =>
-            sp.GetRequiredService<MarqueeDbContext>().Users.Where(u => u.Username == username).Select(u => u.Id).SingleAsync());
-
-        // Signed in while an admin, so the token carries admin permission claims...
-        await UpdateUserAsync(userId, u => u.Role = UserRole.Admin);
-        var login = await anonymous.PostAsJsonAsync("/api/auth/login", new { usernameOrEmail = username, password = Password });
-        var token = (await login.Content.ReadFromJsonAsync<LoginBody>())!.Token;
-        var client = ClientWith(token);
-        (await client.GetAsync("/api/admin/users")).StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // ...which stop counting the moment the role is taken away.
-        await UpdateUserAsync(userId, u => u.Role = UserRole.User);
-        (await client.GetAsync("/api/admin/users")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
     public async Task Blocking_a_cognito_account_refuses_its_next_request()
     {
         var tokens = await factory.Cognito.CreateUserAsync(NewUsername(), Password);
@@ -185,6 +157,4 @@ public class UserAccessTests(MarqueeAppFactory factory)
     }
 
     private sealed record Refusal(string Error, string Code);
-
-    private sealed record LoginBody(string Token);
 }

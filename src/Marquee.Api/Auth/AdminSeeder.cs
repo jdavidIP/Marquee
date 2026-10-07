@@ -2,8 +2,6 @@ using Amazon.CognitoIdentityProvider;
 using Amazon.CognitoIdentityProvider.Model;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
-using Marquee.Domain.Options;
-using Marquee.Domain.Rules;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -22,9 +20,7 @@ namespace Marquee.Api.Auth;
 public sealed class AdminSeeder(
     IAmazonCognitoIdentityProvider cognito,
     MarqueeDbContext db,
-    IPasswordHasherService hasher,
     IOptions<CognitoOptions> cognitoOptions,
-    IOptions<PasswordPolicyOptions> policyOptions,
     IConfiguration config,
     ILogger<AdminSeeder> logger)
 {
@@ -45,12 +41,6 @@ public sealed class AdminSeeder(
                 User.UsernameMaxLength, User.EmailMaxLength);
             return;
         }
-
-        var verdict = PasswordPolicy.Evaluate(password, username, email, policyOptions.Value);
-        if (!verdict.IsAcceptable)
-            logger.LogWarning(
-                "Seeded admin password does not meet the password policy: {Reasons} Change Admin:Password before this reaches anything but a development machine.",
-                verdict.Summary);
 
         Guid sub;
         try
@@ -85,10 +75,6 @@ public sealed class AdminSeeder(
             Role = UserRole.Admin,
             EmailConfirmedAt = DateTime.UtcNow,
         };
-        // Cognito holds the password that matters. This hash keeps the old /api/auth/login working for
-        // the admin outside Production until the old auth goes (#112) — production never accepts the
-        // token that login issues.
-        admin.PasswordHash = hasher.Hash(admin, password);
         db.Users.Add(admin);
         try
         {

@@ -11,15 +11,14 @@ namespace Marquee.UnitTests;
 /// </summary>
 public class AnonymousSessionServiceTests
 {
-    private const string JwtKey = "unit-test-signing-key-that-is-at-least-32-chars";
+    private const string DefaultKey = "unit-test-signing-key-that-is-at-least-32-chars";
 
-    private static AnonymousSessionService Create(int lifetimeMinutes = 180, string signingKey = "") =>
+    private static AnonymousSessionService Create(int lifetimeMinutes = 180, string signingKey = DefaultKey) =>
         new(Options.Create(new AnonymousSessionOptions
             {
                 LifetimeMinutes = lifetimeMinutes,
                 SigningKey = signingKey
-            }),
-            Options.Create(new JwtOptions { Key = JwtKey }));
+            }));
 
     [Fact]
     public void An_issued_token_validates_and_recovers_its_session_id()
@@ -101,19 +100,6 @@ public class AnonymousSessionServiceTests
         var other = Create(signingKey: "a-completely-different-signing-key");
 
         other.TryValidate(issued.Token, out _).Should().BeFalse();
-    }
-
-    /// <summary>
-    /// The derived key must not equal the JWT key, or one secret would authenticate two different
-    /// kinds of credential and a token forged for one could be replayed against the other.
-    /// </summary>
-    [Fact]
-    public void Deriving_from_the_jwt_key_is_not_the_same_as_signing_with_it()
-    {
-        var derived = Create().Issue();
-        var rawJwtKey = Create(signingKey: JwtKey);
-
-        rawJwtKey.TryValidate(derived.Token, out _).Should().BeFalse();
     }
 
     [Fact]

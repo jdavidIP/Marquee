@@ -25,33 +25,9 @@ public class UserLibraryAndHistoryVisibilityTests(MarqueeAppFactory factory)
         List<LibraryEntryBody> Items, int Total, int Page, int PageSize, int PlatinumCount, int PremieresAttended);
     private sealed record HistoryEntryBody(Guid PremiereId, MovieBody Movie, DateTime? OpenedAt, string Status, int ClapCount, int? EmblemTier);
     private sealed record HistoryPageBody(List<HistoryEntryBody> Items, int Total, int Page, int PageSize);
-    private sealed record AuthBody(string Token, UserBody User);
-    private sealed record UserBody(Guid Id);
 
-    private async Task<(HttpClient Client, string Username, Guid UserId)> NewUserAsync(string tag)
-    {
-        var client = factory.CreateClient();
-        var username = $"ulh_{tag}_{Guid.NewGuid():n}"[..24];
-
-        var response = await client.PostAsJsonAsync("/api/auth/register",
-            new
-            {
-                username,
-                email = $"{username}@marquee.test",
-                password = TestPasswords.Valid,
-                confirmPassword = TestPasswords.Valid,
-            });
-        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-
-        var body = await response.Content.ReadFromJsonAsync<AuthBody>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
-
-        // BefriendAsync below sends and accepts a friend request, which issue #29 now refuses
-        // between unconfirmed accounts.
-        await TestAuth.ConfirmAsync(factory, client, username, TestPasswords.Valid);
-
-        return (client, username, body.User.Id);
-    }
+    private async Task<(HttpClient Client, string Username, Guid UserId)> NewUserAsync(string tag) =>
+        await TestAuth.NewUserAsync(factory, $"ulh_{tag}");
 
     private static Task<HttpResponseMessage> MakePrivateAsync(HttpClient client) =>
         client.PatchAsJsonAsync("/api/users/me", new { isPrivate = true });

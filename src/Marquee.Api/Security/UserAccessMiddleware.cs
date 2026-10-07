@@ -45,7 +45,8 @@ public sealed class UserAccessMiddleware(RequestDelegate next, ILogger<UserAcces
                 .Select(u => new UserAccess(u.IsBlocked, u.Role))
                 .FirstOrDefaultAsync(context.RequestAborted);
 
-            if (access is null && context.User.Identity?.AuthenticationType == AuthenticationRegistration.CognitoScheme)
+            // No row yet: a Cognito account's first request (DEPLOYMENT.md § Phase 2, decision 2).
+            if (access is null)
             {
                 access = await provisioner.ProvisionAsync(context, userId, context.RequestAborted);
                 if (access is null)
@@ -55,9 +56,6 @@ public sealed class UserAccessMiddleware(RequestDelegate next, ILogger<UserAcces
                 }
             }
 
-            // A legacy token whose row is gone: nothing to grant, but nothing to refuse either —
-            // the same as before this check existed.
-            access ??= new UserAccess(IsBlocked: false, UserRole.User);
             await cache.SetAsync(userId, access, context.RequestAborted);
         }
 

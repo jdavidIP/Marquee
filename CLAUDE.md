@@ -84,9 +84,7 @@ The threshold, cap, and emblem formulas live in `Marquee.Domain` as pure functio
 Entities and their essential fields. Add audit fields (`CreatedAt`, `UpdatedAt`) everywhere.
 
 **User**
-`Id`, `Username` (unique), `Email` (unique), `PasswordHash`, `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `EmailConfirmedAt` (nullable, set once when the confirmation link is used, never cleared — see §4.1), `CreatedAt`
-
-> **Pending — phase 2 (Cognito).** Decided 2026-10-04, not yet built: `PasswordHash` goes, `Id` becomes the Cognito `sub`, and the unconfirmed-account rules in §4.1/§4.2 and the password policy change. The replacement wording is in `DEPLOYMENT.md` § Phase 2 → *Domain rule changes*; the phase 2 build swaps it in here. Until then this file describes what is built.
+`Id` (the Cognito `sub`), `Username` (unique), `Email` (unique), `Bio`, `IsPrivate` (bool, default false), `IsBlocked` (bool), `Role` (enum: `User` | `Admin`), `EmailConfirmedAt` (set when the row is created — rows exist only for confirmed accounts, see §4.1), `CreatedAt`
 
 **Premiere**
 `Id`, `ScopeId` (string, `"global"` in v1 — see §6), `ScheduledFor` (UTC), `OpensAt` (when it became active), `ExpiresAt` (= `OpensAt` + 60 min), `Threshold` (int, computed at creation), `RegisteredClapCap` (int, computed at creation), `AnonymousClapCap` (int, computed at creation), `Status` (enum: `Scheduled` | `Active` | `Opened` | `AutoOpened` | `Missed` — see §4.5), `MovieId` (FK), `TotalClaps` (int, authoritative final count, written at open time), `OpenedAt`
@@ -130,9 +128,7 @@ These are exact. Implement them as pure functions in `Marquee.Domain` and unit-t
 
 Computed once, at Premiere creation, from the total count of registered users.
 
-> **Pending — phase 2 (Cognito):** this paragraph and §4.2's unconfirmed-account block are replaced; see the note under §3 User.
-
-**`totalRegisteredUsers` counts only confirmed accounts** (`EmailConfirmedAt` set) — issue #29. An account that has never confirmed its email does not exist for this formula at all: it cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an account does. See §4.2 for what that means for the account itself while it stays unconfirmed. This matters specifically because it is the one count in this section an attacker can inflate for free — a wave of throwaway signups moves nothing here, unlike claps, which are already guarded (Iteration 5).
+**`totalRegisteredUsers` counts every `User` row.** A row is created on an account's first authenticated request, and the identity provider only issues tokens to accounts that have confirmed their email, so every row is a confirmed account by construction. An account that never confirms never reaches the app at all: it cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an account does. This matters specifically because it is the one count in this section an attacker can inflate for free — a wave of throwaway sign-ups moves nothing here, unlike claps, which are already guarded (Iteration 5).
 
 ```
 peak hours       = ScheduledFor local time is >= 10:00 and <= 20:00
@@ -171,14 +167,7 @@ Worked example: 1,000 users, threshold 500 → minParticipants = 80 → register
 
 > **Known limitation — document this in a code comment, do not engineer around it in v1.** At very small user counts the 8% guarantee becomes weak (20 users → minParticipants = 2 → two people could open a Premiere alone). This is an accepted tradeoff for v1.
 
-**An unconfirmed account is not a registered participant for any purpose beyond authenticating itself** (issue #29) — it is treated fully as an anonymous session, not as a registered user with a flag:
-
-- It claps under `anonymousCap`, never `registeredCap`.
-- Its Contribution is recorded against an anonymous session id, **not** its `UserId` — the load-bearing detail, not an implementation nicety. It means the account accrues no `Contribution` row, no `LibraryEntry` row, and (per §6's friendship rules) no `Friendship` row while unconfirmed, which is what makes later deleting an unconfirmed account (the lifecycle work) safe: there is nothing keyed to its id for a cascade to reach.
-- It earns nothing per §4.3, the same as any other anonymous participant — including for a Premiere it clapped open itself. Confirming afterward does not retroactively grant that Premiere's emblem or library entry; it only makes every *subsequent* clap a registered one.
-- It cannot send or receive friend requests.
-
-Once confirmed, the account is a registered participant from that point on, immediately — no re-login required.
+An account that has not confirmed its email cannot sign in (the identity provider refuses it), so it never reaches the app as a registered participant. Until it confirms, the person is an ordinary visitor with an anonymous session: anonymous cap, no emblems, no library entries, no friendships. Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the first sign-in a registered one.
 
 ### 4.3 Emblem tiers
 

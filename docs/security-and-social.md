@@ -88,8 +88,9 @@ themselves: a session id that happened to look like a user id must never land in
 Windows are **sliding**, not fixed. A fixed window lets a caller spend a full budget at the end of
 one window and again at the start of the next — a burst of twice the intended limit at the boundary.
 
-Two endpoints partition by IP instead, because the caller has no identity yet and these are the
-endpoints an attacker would use to *acquire* one: anonymous-session issuance, and login/register.
+One endpoint partitions by IP instead, because the caller has no identity yet and it is the endpoint
+an attacker would use to *acquire* one: anonymous-session issuance. Sign-up and sign-in go straight to
+the user pool, which applies its own limits.
 
 ## 3. Anonymous participation
 
@@ -116,15 +117,7 @@ determined bot can still collect tokens one at a time, within the IP limit. Maki
 hard — proof of work, device attestation, a CAPTCHA — is out of scope for v1, and pretending
 otherwise would be worse than naming it.
 
-The signing key is **derived** from `Jwt:Key` rather than being it:
-
-```csharp
-HMACSHA256.HashData(jwtKeyBytes, "marquee-anonymous-session-v1")
-```
-
-Domain separation. Signing two different kinds of credential with one secret means a weakness in
-either can forge the other. Deriving a subkey costs nothing and keeps them independent, while still
-requiring no new secret to configure.
+The signing key is its own secret, `AnonymousSession:SigningKey` — required, at least 32 characters, checked at startup. Nothing else is signed with it: the API mints no other tokens (user tokens are the user pool's), so there is no second credential for a weakness in this one to forge. Rotating it ends every current session, which costs a visitor their place in the current Premiere's cap and nothing else.
 
 Signature comparison is fixed-time (`CryptographicOperations.FixedTimeEquals`) — a byte-by-byte
 early exit would leak how much of a forged signature was correct, which is enough to reconstruct one

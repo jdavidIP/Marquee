@@ -21,7 +21,7 @@ public class NotificationDispatchTests(MarqueeAppFactory factory)
 
         var dispatcher = factory.Services.GetRequiredService<INotificationDispatcher>();
         var notification = new SendNotification(
-            Kind: nameof(NotificationKind.EmailConfirmation),
+            Kind: "Test",
             RecipientEmail: "person@example.com",
             RecipientDisplayName: "Person",
             ActionUrl: "https://marquee.local/confirm?token=abc",
@@ -30,6 +30,6 @@ public class NotificationDispatchTests(MarqueeAppFactory factory)
         await dispatcher.DispatchAsync(notification);
 
         factory.Notifications.Sent.Should().ContainSingle(n =>
-            n.Kind == nameof(NotificationKind.EmailConfirmation) && n.RecipientEmail == "person@example.com");
+            n.Kind == "Test" && n.RecipientEmail == "person@example.com");
     }
 }

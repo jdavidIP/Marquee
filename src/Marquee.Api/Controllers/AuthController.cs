@@ -1,130 +1,32 @@
 using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
-using Marquee.Api.Security;
-using Marquee.Api.Services;
+using Marquee.Domain.Options;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Marquee.Api.Controllers;
 
+/// <summary>
+/// Sign-up, sign-in, confirmation and password reset are the user pool's: the browser calls Cognito
+/// directly and presents the access token it gets back (DEPLOYMENT.md § Phase 2). What is left here is
+/// what only the API can answer.
+/// </summary>
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IAuthService auth, MarqueeDbContext db) : ControllerBase
+public class AuthController(MarqueeDbContext db, IOptions<PasswordPolicyOptions> passwordPolicy) : ControllerBase
 {
-    // Register and login are partitioned by IP rather than by participant: an attacker working
-    // through a credential list has no identity of their own to throttle, and the account they are
-    // guessing at is the victim's, not theirs.
-    [EnableRateLimiting(RateLimitPolicies.Auth)]
-    [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken ct)
-    {
-        try
-        {
-            var result = await auth.RegisterAsync(request, ct);
-            return Ok(result);
-        }
-        catch (PasswordRejectedException ex)
-        {
-            // Both shapes on purpose: `error` is the single line every Marquee failure carries and
-            // the web client already reads, `problems` is the same content itemised for a form that
-            // wants to mark each rule separately.
-            return BadRequest(new { error = ex.Message, problems = ex.Problems });
-        }
-        catch (RegistrationConflictException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
-    }
-
     /// <summary>
     /// What a password has to satisfy, so the registration form can say so before anyone submits.
     /// Anonymous, and deliberately so — it is a description of the front door, needed by people who
-    /// have not come through it yet, and it reveals nothing an attempted registration would not.
+    /// have not come through it yet, and it reveals nothing an attempted sign-up would not.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("password-rules")]
-    public ActionResult<PasswordRulesDto> PasswordRules() => Ok(auth.DescribePasswordRules());
-
-    /// <summary>
-    /// What the confirm-email link in the notification actually opens (issue #29). GET, because a
-    /// mailto link is clicked, not submitted — the token is the credential, not the method.
-    ///
-    /// Anonymous and rate-limited by IP for the same reason register/login are: whoever holds a
-    /// token proves themselves by presenting it, not by being signed in already, and an attacker
-    /// guessing at tokens has no account of their own to throttle instead.
-    ///
-    /// Returns no bearer token (issue #48) — see IAuthService.ConfirmEmailAsync's doc comment. The
-    /// caller signs in normally afterward.
-    /// </summary>
-    [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.Auth)]
-    [HttpGet("confirm-email")]
-    public async Task<IActionResult> ConfirmEmail([FromQuery] string token, CancellationToken ct)
-    {
-        var result = await auth.ConfirmEmailAsync(token, ct);
-        return result is true
-            ? Ok(new { message = "Email confirmed. Sign in to continue." })
-            : BadRequest(new { error = "This confirmation link is invalid or has expired." });
-    }
-
-    /// <summary>
-    /// Always the same response whether or not <paramref name="request"/>'s address is registered
-    /// (issue #31). A response that differed would turn this into a user-enumeration oracle — and
-    /// that matters more here than it might elsewhere, because usernames are already publicly
-    /// searchable, so confirming which *emails* are registered would be a real leak on top of that.
-    /// AuthService does the divergent work internally rather than this method short-circuiting it,
-    /// which is what keeps the response body identical.
-    ///
-    /// That does not close a timing side channel — a known address does real work (generate a token,
-    /// hash it, insert a row, publish) that an unknown one skips, so the two paths take measurably
-    /// different time. Padding that out was judged not worth the complexity for v1, on the same
-    /// footing as CLAUDE.md §4.2's documented small-user-base limitation: a known, accepted gap rather
-    /// than an oversight.
-    /// </summary>
-    [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.Auth)]
-    [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken ct)
-    {
-        await auth.RequestPasswordResetAsync(request.Email, ct);
-        return Ok(new { message = "If that address is registered, a reset link has been sent." });
-    }
-
-    /// <summary>
-    /// What the reset link points at, once a frontend exists to collect the new password and POST
-    /// here (issue #47 tracks the confirm-email page; a reset page belongs alongside it) — unlike
-    /// confirm-email, this can never be the link itself, since setting a password needs a form.
-    /// </summary>
-    [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.Auth)]
-    [HttpPost("reset-password")]
-    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken ct)
-    {
-        try
-        {
-            var ok = await auth.ResetPasswordAsync(request.Token, request.NewPassword, request.ConfirmPassword, ct);
-            return ok
-                ? Ok(new { message = "Password reset. Sign in with your new password." })
-                : BadRequest(new { error = "This reset link is invalid, expired, or already used." });
-        }
-        catch (PasswordRejectedException ex)
-        {
-            return BadRequest(new { error = ex.Message, problems = ex.Problems });
-        }
-    }
-
-    [EnableRateLimiting(RateLimitPolicies.Auth)]
-    [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken ct)
-    {
-        var result = await auth.LoginAsync(request, ct);
-        if (result is null)
-            return Unauthorized(new { error = "Invalid credentials." });
-        return Ok(result);
-    }
+    public ActionResult<PasswordRulesDto> PasswordRules() =>
+        Ok(new PasswordRulesDto(passwordPolicy.Value.MinLength, passwordPolicy.Value.RequireDigit));
 
     [Authorize]
     [HttpGet("me")]

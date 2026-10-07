@@ -10,7 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Json;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 
@@ -73,13 +72,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         // and the distinction is not cosmetic.
         //
         // Program.cs reads several values *inline* while composing the app -- the Postgres connection
-        // string in AddMarqueeInfrastructure, and Jwt:Key for the bearer validation parameters.
+        // string in AddMarqueeInfrastructure, and Cognito:Issuer for the bearer validation parameters.
         // Those reads execute before WebApplicationFactory's ConfigureAppConfiguration delegates are
         // applied, so overrides supplied that way arrive too late for them while still reaching
         // anything bound lazily through IOptions.
         //
         // That split is silent and produces absurd symptoms. It first showed up here as tokens that
-        // failed validation with "the signature key was not found": JwtTokenService signed with the
+        // failed validation with "the signature key was not found": the token was signed with the
         // test key it got from IOptions, while the validator had already captured the key from
         // appsettings.Development.json. The same split had the tests quietly running against the
         // developer's local Postgres instead of the container, which was the more dangerous half --
@@ -131,9 +130,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         yield return ("Cognito__Issuer", Cognito.Issuer);
         yield return ("Cognito__ClientId", CognitoLocal.ClientId);
 
-        yield return ("Jwt__Key", JwtKey);
-        yield return ("Jwt__Issuer", "marquee");
-        yield return ("Jwt__Audience", "marquee");
+        yield return ("AnonymousSession__SigningKey", "integration-test-anonymous-signing-key-32-chars");
 
         // Empty key selects the offline stub, so tests never reach the network.
         yield return ("Tmdb__ApiKey", "");
@@ -180,7 +177,6 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         });
     }
 
-    public const string JwtKey = "integration-test-signing-key-at-least-32-chars-long";
     public const string AdminUsername = "admin";
     public const string AdminPassword = "seed-me-locally-1";
 
@@ -232,29 +228,13 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     /// <summary>RabbitMQ's AMQP port, which a test run must never be pointed at.</summary>
     private const ushort DefaultBrokerPort = 5672;
 
-    /// <summary>Logs in as the seeded admin and returns a bearer token.</summary>
+    /// <summary>
+    /// Signs the seeded admin in through the pool and returns its access token. The seeder runs when
+    /// the host starts, so the host is started first: without it the pool has no admin to sign in.
+    /// </summary>
     public async Task<string> AdminTokenAsync()
     {
-        var client = CreateClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new
-        {
-            usernameOrEmail = AdminUsername,
-            password = AdminPassword,
-        });
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"Admin login failed with {(int)response.StatusCode}. Body: {body}");
-        }
-
-        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        if (string.IsNullOrWhiteSpace(payload?.Token))
-            throw new InvalidOperationException("Admin login returned no token.");
-
-        return payload.Token;
+        _ = Services;
+        return (await Cognito.SignInAsync(AdminUsername, AdminPassword)).AccessToken;
     }
-
-    private sealed record LoginResponse(string Token);
 }

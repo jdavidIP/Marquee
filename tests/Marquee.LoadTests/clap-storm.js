@@ -13,6 +13,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 import { SharedArray } from 'k6/data';
+import { createUsers, signIn } from './cognito.k6.js';
 
 const API = __ENV.API_BASE || 'http://localhost:5080/api';
 const USERS = parseInt(__ENV.USERS || '300', 10);
@@ -30,6 +31,8 @@ export const options = {
   scenarios: {
     storm: { executor: 'shared-iterations', vus: USERS, iterations: USERS, maxDuration: '2m' },
   },
+  // Creating USERS accounts through the pool is most of setup()'s time.
+  setupTimeout: '5m',
 };
 
 function jsonPost(path, body, token) {
@@ -40,18 +43,10 @@ function jsonPost(path, body, token) {
 
 // setup() runs once: seed users, create the target Premiere, hand tokens + id to the VUs.
 export function setup() {
-  const adminLogin = jsonPost('/auth/login', { usernameOrEmail: ADMIN_USER, password: ADMIN_PASS });
-  const adminToken = adminLogin.json('token');
+  const adminToken = signIn(ADMIN_USER, ADMIN_PASS);
 
-  const tokens = [];
-  for (let i = 0; i < USERS; i++) {
-    const username = `storm_${RUN}_${i}`;
-    const reg = jsonPost('/auth/register',
-      { username, email: `${username}@marquee.load`, password: PASSWORD, confirmPassword: PASSWORD });
-    tokens.push(reg.status === 200 || reg.status === 201
-      ? reg.json('token')
-      : jsonPost('/auth/login', { usernameOrEmail: username, password: PASSWORD }).json('token'));
-  }
+  const usernames = Array.from({ length: USERS }, (_, i) => `storm_${RUN}_${i}`);
+  const tokens = createUsers(usernames, PASSWORD, API);
 
   const prem = jsonPost('/premieres', {}, adminToken);
   return { premiereId: prem.json('id'), threshold: prem.json('threshold'), tokens };

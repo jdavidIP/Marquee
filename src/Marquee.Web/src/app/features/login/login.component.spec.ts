@@ -23,8 +23,6 @@ describe('LoginComponent', () => {
 
   const rules: PasswordRulesDto = {
     minLength: 12,
-    maxLength: 128,
-    requireLetter: false,
     requireDigit: true,
   };
 
@@ -94,7 +92,7 @@ describe('LoginComponent', () => {
   });
 
   it('reflects a retuned policy without a code change', () => {
-    const c = make({ rules: { minLength: 16, maxLength: 128, requireLetter: false, requireDigit: false } });
+    const c = make({ rules: { minLength: 16, requireDigit: false } });
 
     expect(c['passwordHint']()).toContain('16');
     expect(c['passwordHint']()).not.toContain('a number');
@@ -104,7 +102,7 @@ describe('LoginComponent', () => {
     // requireDigit is false here, so a tick for it would tell the person to do work the server
     // never asked for.
     const c = make({
-      rules: { minLength: 12, maxLength: 128, requireLetter: false, requireDigit: false },
+      rules: { minLength: 12, requireDigit: false },
     });
     c['mode'].set('register');
     c['password'] = 'short1';

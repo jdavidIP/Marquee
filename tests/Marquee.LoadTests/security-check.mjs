@@ -30,6 +30,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { SignalRClient } from './signalr-client.mjs';
+import { createUser, signIn } from './cognito.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -81,34 +82,11 @@ const post = (path, auth) => request('POST', path, auth);
 const patch = (path, auth) => request('PATCH', path, auth);
 const del = (path, auth) => request('DELETE', path, auth);
 
-async function login(usernameOrEmail, password) {
-  const { status, body } = await post('/auth/login', { body: { usernameOrEmail, password } });
-  if (status !== 200) throw new Error(`login ${usernameOrEmail} failed: ${status} ${JSON.stringify(body)}`);
-  return body.token;
-}
-
 async function register(label) {
   const username = `s_${RUN}_${label}`;
-
-  // Registration is IP-rate-limited too (credential-stuffing brake), and this script creates a lot
-  // of accounts. Back off and retry rather than failing a security check for the wrong reason.
-  for (let attempt = 0; ; attempt++) {
-    const { status, body } = await post('/auth/register', {
-      body: { username, email: `${username}@marquee.test`, password: PASSWORD, confirmPassword: PASSWORD },
-    });
-
-    if (status === 200 || status === 201) return { username, token: body.token, id: body.user.id };
-    if (status === 409) {
-      const token = await login(username, PASSWORD);
-      const me = await get('/auth/me', { token });
-      return { username, token, id: me.body.id };
-    }
-    if (status === 429 && attempt < 6) {
-      await sleep(5000);
-      continue;
-    }
-    throw new Error(`register ${username} failed: ${status} ${JSON.stringify(body)}`);
-  }
+  const token = await createUser(username, PASSWORD, API);
+  const me = await get('/auth/me', { token });
+  return { username, token, id: me.body.id };
 }
 
 async function anonSession() {
@@ -643,7 +621,7 @@ async function main() {
   console.log('Marquee — iteration 5 acceptance check (security, anti-abuse, social)');
   line();
 
-  const adminToken = await login(ADMIN_USER, ADMIN_PASS);
+  const adminToken = await signIn(ADMIN_USER, ADMIN_PASS);
   const premiere = await activePremiere(adminToken);
   console.log(`Premiere ${premiere.id} — status ${premiere.status}, threshold ${premiere.threshold}, ` +
     `registered cap ${premiere.registeredClapCap}, anonymous cap ${premiere.anonymousClapCap}`);

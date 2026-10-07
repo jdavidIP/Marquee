@@ -26,13 +26,10 @@ public static class RateLimitingRegistration
             limiter.AddPolicy(RateLimitPolicies.Clap, context =>
                 Partition(context, RateLimitPolicies.Clap, options.Clap, options.Enabled));
 
-            // These two partition on IP rather than participant: both are reachable without any
-            // identity, and both are the endpoints an attacker would use to *acquire* one.
+            // Partitions on IP rather than participant: reachable without any identity, and the
+            // endpoint an attacker would use to *acquire* one.
             limiter.AddPolicy(RateLimitPolicies.SessionIssue, context =>
                 IpPartition(context, RateLimitPolicies.SessionIssue, options.SessionIssue, options.Enabled));
-
-            limiter.AddPolicy(RateLimitPolicies.Auth, context =>
-                IpPartition(context, RateLimitPolicies.Auth, options.Auth, options.Enabled));
 
             limiter.OnRejected = async (context, ct) =>
             {

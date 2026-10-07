@@ -57,9 +57,6 @@ public sealed class CognitoUserProvisioner(
             Id = userId,
             Username = username,
             Email = email,
-            // Cognito holds the password; the column goes with the old auth (#112). An empty hash
-            // never verifies, so the old login endpoint cannot sign in as this account.
-            PasswordHash = "",
             EmailConfirmedAt = DateTime.UtcNow,
             Role = UserRole.User,
         });

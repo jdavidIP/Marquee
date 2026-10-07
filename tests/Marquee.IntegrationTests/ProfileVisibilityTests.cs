@@ -26,33 +26,9 @@ public class ProfileVisibilityTests(MarqueeAppFactory factory)
         Guid Id, string Username, string? Bio, bool IsPrivate, DateTime CreatedAt,
         int MoviesCollected, int PremieresAttended, int FriendCount,
         string? FriendshipStatus, bool? FriendRequestOutgoing, int? SharedPremieresAttended);
-    private sealed record AuthResponse(string Token, UserBody User);
-    private sealed record UserBody(Guid Id);
 
-    private async Task<(HttpClient Client, string Username, Guid UserId)> NewUserAsync(string tag)
-    {
-        var client = factory.CreateClient();
-        var username = $"u_{tag}_{Guid.NewGuid():n}"[..24];
-
-        var response = await client.PostAsJsonAsync("/api/auth/register",
-            new
-            {
-                username,
-                email = $"{username}@marquee.test",
-                password = TestPasswords.Valid,
-                confirmPassword = TestPasswords.Valid,
-            });
-        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
-
-        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Token);
-
-        // Some of these tests send friend requests, which issue #29 now refuses between unconfirmed
-        // accounts.
-        await TestAuth.ConfirmAsync(factory, client, username, TestPasswords.Valid);
-
-        return (client, username, body.User.Id);
-    }
+    private async Task<(HttpClient Client, string Username, Guid UserId)> NewUserAsync(string tag) =>
+        await TestAuth.NewUserAsync(factory, $"u_{tag}");
 
     private static Task<HttpResponseMessage> MakePrivateAsync(HttpClient client) =>
         client.PatchAsJsonAsync("/api/users/me", new { isPrivate = true });
