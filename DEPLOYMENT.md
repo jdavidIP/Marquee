@@ -527,8 +527,8 @@ username and everything else the domain uses stay in Postgres as the source of t
    Cognito `sub` (both GUIDs, no mapping column); the username comes from the access token's `username`
    claim, and the email — which access tokens do not carry (decision 9) — from one `GetUser` call made
    with that same access token (no IAM needed), only on row creation. Every row is confirmed by
-   construction; `EmailConfirmedAt` stays and is set at row creation, so the existing filters become
-   always-true (removing them is left to the cleanup issue). **Creation must be idempotent** (CLAUDE.md
+   construction; `EmailConfirmedAt` stays and is set at row creation, so the filters that read it were
+   always-true; #112 removed them. **Creation must be idempotent** (CLAUDE.md
    §7): a page load fires several parallel first requests, so insert, and on a unique-key conflict
    re-read the row that won. A Cognito username or email already held by a row with a *different* id
    (a pre-cutover row, say) is refused and logged, never merged or overwritten. The frontend signs in
