@@ -235,8 +235,8 @@ and another created — a sign the wrong value was passed.
   - `AnonymousSession__SigningKey` — random, **at least 32 characters** (the API checks this at startup
     and refuses to start below it). Signs the visitors' anonymous session tokens; rotating it ends every
     current session (they last 3 hours). Replaces `Jwt__Key`, which signed the API's own user tokens
-    until #112 removed them: create this parameter before cutover, and delete `/marquee/prod/Jwt__Key`
-    once it is live.
+    until #112 removed them: create this parameter before cutover, and keep `/marquee/prod/Jwt__Key`
+    until the cutover is confirmed stable — a rollback to the old images needs it (see Rollback, 1c).
   - `Tmdb__ApiKey` — the TMDB **v3 API key**, not the read access token.
   - `Admin__Password` — at least 10 characters with a digit (the user pool's password policy); this is
     the seeded admin's sign-in password, so keep it somewhere you can find it again.
@@ -291,7 +291,6 @@ aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'P
   --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
 echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
-echo "PUBLIC_BASE_URL=<SiteUrl>" >> .env
 echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
 echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
 chmod 600 .env
@@ -373,6 +372,12 @@ A tag stays deployable only while its pieces exist: ECR keeps the **last 10 imag
 the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
 is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
 the bucket) cannot be redeployed this way; use 1b-ops.
+
+**The phase 2 cutover (#113) cannot be rolled back this way.** Its migration (`RemovePasswordAuth`) drops
+`users.PasswordHash`, which every earlier image still requires, and those images also need the old
+`Jwt__Key`. A failed cutover is undone by restoring the data volume from a snapshot taken immediately
+before the cutover deploy (the daily 08:00 UTC one can be a day old) and then redeploying the old tag.
+Rolling back between tags built after the cutover works as above.
 
 A failed deploy prints only container states to the Actions log, never log lines — the repository is
 public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
