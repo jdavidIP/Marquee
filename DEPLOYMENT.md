@@ -745,6 +745,16 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
   it — so check `aws ec2 describe-instances --query '...MetadataOptions'` after any AMI change: at 1,
   seeding fails (logged) and the API starts with no admin.
+  **Do not pin it in CDK as things stand** (`cdk diff`, 2026-10-07): CDK refuses `RequireImdsv2` together
+  with the individual metadata options, and switching to `HttpTokens` plus `HttpPutResponseHopLimit`
+  drops the instance's launch template, which the diff reports as **replacing the host** (and its data
+  volume attachment, Elastic IP association and alarms). Replacing it is the known-fragile operation
+  (the retained data volume's attach-before-detach ordering), so the hop limit stays an operational check.
+  Revisit only if a later CDK can set it without dropping the launch template, and run `cdk diff` first.
+  Today the cost of a wrong value is small: only `AdminSeeder` uses the credentials, and an admin that
+  already exists keeps working. That changes as soon as the API calls AWS for anything else from the
+  container, profile photo uploads (#63) being the planned case, so #128 tracks setting it in the stack
+  before then.
 
 Checked live 2026-10-04: `SignUp` with a 9-character password → `InvalidPasswordException` (not long
 enough); with no digit → `InvalidPasswordException` (numeric characters); an all-lowercase password
