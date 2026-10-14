@@ -11,7 +11,6 @@ using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Logs;
 using Amazon.CDK.AWS.S3;
 using Amazon.CDK.AWS.SNS;
-using Amazon.CDK.AWS.SNS.Subscriptions;
 using Constructs;
 
 namespace Marquee.Cdk;
@@ -382,7 +381,16 @@ public class MarqueeStack : Stack
     private void Alarms(Instance_ host, string alertEmail)
     {
         var alerts = new Topic(this, "Alerts");
-        alerts.AddSubscription(new EmailSubscription(alertEmail));
+        // An explicit construct rather than alerts.AddSubscription(new EmailSubscription(...)): the
+        // first subscription was never confirmed, SNS deleted it after 3 days, and CloudFormation kept
+        // tracking it (#133). A new id makes CloudFormation create a fresh one. The confirmation
+        // email has to be clicked within 3 days of a deploy that creates it.
+        new Subscription(this, "AlertsEmail", new SubscriptionProps
+        {
+            Topic = alerts,
+            Protocol = SubscriptionProtocol.EMAIL,
+            Endpoint = alertEmail,
+        });
         var notify = new SnsAction(alerts);
         var dimensions = new Dictionary<string, string> { ["InstanceId"] = host.InstanceId };
 
