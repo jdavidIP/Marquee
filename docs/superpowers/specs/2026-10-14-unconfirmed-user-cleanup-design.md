@@ -57,9 +57,10 @@ The schedule uses the Scheduler L2 constructs (`Amazon.CDK.AWS.Scheduler.Schedul
 
 Files in `infra/lambda/unconfirmed-cleanup/`:
 
-- **`select.mjs`** — `selectExpired(users, now, minAgeDays)`: pure, no SDK, no I/O.
+- **`select.mjs`** — `selectExpired(users, now, minAgeDays)`, `isDryRun(event)` and
+  `parseMinAgeDays(raw)`: pure, no SDK, no I/O.
 - **`index.mjs`** — the handler: Cognito calls, the dry-run switch, logging.
-- **`select.test.mjs`** — `node --test` tests for `selectExpired`.
+- **`select.test.mjs`** — `node --test` tests for the three functions.
 
 **Selection rule.** A user is selected only if `UserStatus === "UNCONFIRMED"` **and** `UserCreateDate`
 is strictly more than `minAgeDays × 24h` before `now`. `ListUsers` already filters with
@@ -69,8 +70,11 @@ check is the one the unit test pins down.
 
 **Handler flow.**
 
-1. `dryRun` = `event?.dryRun === true`. Read `USER_POOL_ID` and `MIN_AGE_DAYS`; if either is missing
-   or `MIN_AGE_DAYS` is not a positive integer, throw (a misconfigured deploy raises the alarm).
+1. `dryRun` is true when the event has a `dryRun` key with any value other than `false` — so a typo
+   like `"dryRun": "true"` still deletes nothing; the schedule's `{}` is a real run. Read
+   `USER_POOL_ID` and `MIN_AGE_DAYS`; if either is missing or `MIN_AGE_DAYS` is not a positive
+   integer, throw (a misconfigured deploy raises the alarm). Both checks are pure functions in
+   `select.mjs`, so they are unit-tested.
 2. **Collect first, delete second:** page through `ListUsers` (limit 60, following `PaginationToken`)
    and gather every candidate before deleting anything — deleting mid-pagination can shift pages and
    skip users.
@@ -99,7 +103,10 @@ check is the one the unit test pins down.
   selected), so a `<` / `<=` slip fails.
 - `CONFIRMED`, `FORCE_CHANGE_PASSWORD`, `RESET_REQUIRED`, `EXTERNAL_PROVIDER`, however old → never
   selected.
-- Empty list → empty result.
+- Empty list → empty result; a user with no `UserCreateDate` → never selected.
+- `isDryRun`: `{}`, `null`, `undefined` and `{"dryRun": false}` → real run; `true`, `"true"`, `"false"`,
+  `1` → dry run.
+- `parseMinAgeDays`: `"7"` → 7; missing, empty, `0`, negative, fractional or non-numeric → throws.
 
 The handler is not unit-tested: mocking the SDK client would mostly test the mock. It is proven by the
 dry run and the live run against the real pool, recorded in DEPLOYMENT.md.
