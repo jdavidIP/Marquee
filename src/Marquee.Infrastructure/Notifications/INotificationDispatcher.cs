@@ -9,8 +9,7 @@ namespace Marquee.Infrastructure.Notifications;
 /// <see cref="SendNotification"/> — an intent already resolved to its final content — never in a
 /// transport.
 ///
-/// Selected once, by configuration, exactly like ITmdbClient: DevNotificationDispatcher when no SMTP
-/// host is configured, EmailNotificationDispatcher once one is (see AddMarqueeInfrastructure).
+/// DevNotificationDispatcher is the only implementation (see AddMarqueeInfrastructure).
 ///
 /// Never called from the request path. Application code publishes <see cref="SendNotification"/>
 /// through the existing outbox — <c>IPublishEndpoint.Publish</c>, the same pattern PremiereOpener

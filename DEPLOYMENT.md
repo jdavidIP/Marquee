@@ -126,6 +126,8 @@ changes how accounts work, and doing that before real users exist avoids a user 
 6. **Email in phase 1:** none. `Email:SmtpHost` stays empty, so `DevNotificationDispatcher` writes
    confirmation/reset links to the log — which lands in CloudWatch. That is enough for the handful of
    test accounts phase 1 needs, and phase 2 replaces the email path anyway.
+   *As built:* phase 2 moved those emails to the Cognito user pool, and the `Email:SmtpHost` key and the
+   SMTP dispatcher were removed as unused (#131).
 
 ### 1b. Infrastructure (CDK, C#)
 
@@ -585,6 +587,9 @@ username and everything else the domain uses stay in Postgres as the source of t
    `JwtTokenService` writes today. The frontend's `jwt.ts` gets permissions from an API response instead
    of decoding them from the token. *Rejected:* a Pre Token
    Generation Lambda — it would need to reach Postgres, the same problem as decision 2.
+   *As built:* the middleware and cache became `UserAccessMiddleware` and `IUserAccessCache` (#109);
+   the frontend's `jwt.ts` went with the move to Cognito sign-in (#111), and `JwtTokenService` with
+   the old auth (#112).
 8. **Local development runs `cognito-local`** (Docker image `jagregory/cognito-local`) in
    `docker-compose.yml`: offline, no AWS credentials, codes printed in its log instead of emailed. It
    supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /

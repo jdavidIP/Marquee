@@ -5,9 +5,10 @@
 //
 //   A. THROTTLING     — a script hammering the clap endpoint is throttled, and a normal user
 //                       clapping at a human pace at the same time is completely unaffected.
-//   B. PRIVACY        — a stranger asking for a private profile gets ONLY username and bio, with
-//                       the other fields absent from the payload rather than null; the private user
-//                       is still discoverable in search; and an accepted friend sees everything.
+//   B. PRIVACY        — a stranger asking for a private profile gets only its name, picture and
+//                       their own relationship to it, with the account's own fields absent from the
+//                       payload rather than null; the private user is still discoverable in search;
+//                       and an accepted friend sees everything.
 //   C. FRIENDS        — "which of my friends contributed" is answered per request and per viewer:
 //                       two viewers of the same Premiere get different answers, non-friends never
 //                       appear, and nothing personalised is ever broadcast to the group.
@@ -211,8 +212,13 @@ async function checkThrottling(premiereId) {
 
 // ============================================================= B. PRIVACY
 
+const LIMITED_PROFILE_KEYS =
+  ['avatarUrl', 'friendRequestOutgoing', 'friendshipStatus', 'sharedPremieresAttended', 'username'];
+const ACCOUNT_OWN_KEYS =
+  ['id', 'bio', 'isPrivate', 'createdAt', 'moviesCollected', 'premieresAttended', 'friendCount'];
+
 async function checkPrivacy() {
-  console.log('\nB. PRIVACY — a private profile shows a stranger only username and bio');
+  console.log('\nB. PRIVACY — a private profile shows a stranger only its name, picture and their standing');
 
   const priv = await register('private');
   const stranger = await register('stranger');
@@ -227,21 +233,19 @@ async function checkPrivacy() {
   const asStranger = await get(`/users/${priv.username}`, { token: stranger.token });
   check('a private profile still resolves for a stranger', asStranger.status === 200, `HTTP ${asStranger.status}`);
 
+  // LimitedProfileDto (SocialDtos.cs): name and picture, plus three fields describing the viewer's
+  // own relationship to the account. Those three may legitimately be null; bio is withheld.
   const keys = Object.keys(asStranger.body ?? {}).sort();
   check(
-    'the stranger sees exactly username and bio',
-    JSON.stringify(keys) === JSON.stringify(['bio', 'username']),
+    'the stranger sees exactly the limited profile',
+    JSON.stringify(keys) === JSON.stringify(LIMITED_PROFILE_KEYS),
     `keys: [${keys.join(', ')}]`,
   );
 
-  // The plan is explicit that the other fields are omitted, not nulled. A null still tells the
-  // reader the field exists and leaks the shape of the record.
-  const raw = JSON.stringify(asStranger.body ?? {});
-  check(
-    'the withheld fields are absent, not null',
-    !raw.includes('null') && !('id' in (asStranger.body ?? {})) && !('friendCount' in (asStranger.body ?? {})),
-    raw,
-  );
+  // The plan is explicit that the account's own fields are omitted, not nulled. A null still tells
+  // the reader the field exists and leaks the shape of the record.
+  const leaked = ACCOUNT_OWN_KEYS.filter((k) => k in (asStranger.body ?? {}));
+  check('the account\'s own fields are absent, not null', leaked.length === 0, `present: [${leaked.join(', ')}]`);
 
   // --- discoverability ---
   const search = await get(`/users?query=${encodeURIComponent(priv.username)}`, { token: stranger.token });
@@ -253,7 +257,7 @@ async function checkPrivacy() {
   const anonKeys = Object.keys(asAnon.body ?? {}).sort();
   check(
     'an unauthenticated viewer is also restricted',
-    JSON.stringify(anonKeys) === JSON.stringify(['bio', 'username']),
+    JSON.stringify(anonKeys) === JSON.stringify(LIMITED_PROFILE_KEYS),
     `keys: [${anonKeys.join(', ')}]`,
   );
 

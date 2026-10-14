@@ -98,19 +98,8 @@ public static class DependencyInjection
             });
         }
 
-        // --- Notifications (CLAUDE.md §6): dev-log by default, real email only once configured. ---
-        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
-        var notificationOpts = configuration.GetSection(NotificationOptions.SectionName)
-            .Get<NotificationOptions>() ?? new NotificationOptions();
-        if (string.IsNullOrWhiteSpace(notificationOpts.SmtpHost))
-        {
-            // No host -> offline stub so the app runs without a mail account (see DevNotificationDispatcher).
-            services.AddSingleton<INotificationDispatcher, DevNotificationDispatcher>();
-        }
-        else
-        {
-            services.AddSingleton<INotificationDispatcher, EmailNotificationDispatcher>();
-        }
+        // --- Notifications (CLAUDE.md §6): the single in-app implementation; a real channel is additive. ---
+        services.AddSingleton<INotificationDispatcher, DevNotificationDispatcher>();
 
         return services;
     }
