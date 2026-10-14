@@ -585,6 +585,9 @@ username and everything else the domain uses stay in Postgres as the source of t
    `JwtTokenService` writes today. The frontend's `jwt.ts` gets permissions from an API response instead
    of decoding them from the token. *Rejected:* a Pre Token
    Generation Lambda — it would need to reach Postgres, the same problem as decision 2.
+   *As built:* the middleware and cache became `UserAccessMiddleware` and `IUserAccessCache` (#109);
+   the frontend's `jwt.ts` went with the move to Cognito sign-in (#111), and `JwtTokenService` with
+   the old auth (#112).
 8. **Local development runs `cognito-local`** (Docker image `jagregory/cognito-local`) in
    `docker-compose.yml`: offline, no AWS credentials, codes printed in its log instead of emailed. It
    supports the sign-in flow decision 6 uses (`USER_PASSWORD_AUTH`), the sign-up / confirm / reset /
