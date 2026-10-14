@@ -17,11 +17,12 @@ export function selectExpired(users, now, minAgeDays) {
 }
 
 /**
- * The schedule sends {} and deletes. A console test that mentions dryRun at all gets a dry run
- * unless it says exactly false — a typo errs towards deleting nothing.
+ * Deleting takes exactly {"dryRun": false}, which is what the schedule sends. Anything else — an
+ * empty event, the console's sample event, a misspelled key or value — is a dry run, so a mistake
+ * can never delete anyone.
  */
 export function isDryRun(event) {
-  return typeof event === 'object' && event !== null && 'dryRun' in event && event.dryRun !== false;
+  return event?.dryRun !== false;
 }
 
 /** The window from the environment; anything but a positive integer is a broken deploy. */

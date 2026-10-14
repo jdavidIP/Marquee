@@ -39,16 +39,21 @@ test('an empty list selects nothing', () => {
   assert.deepEqual(selectExpired([], NOW, 7), []);
 });
 
-test('only a payload naming dryRun means a dry run', () => {
-  assert.equal(isDryRun({}), false);
-  assert.equal(isDryRun(undefined), false);
-  assert.equal(isDryRun(null), false);
+test('only an explicit dryRun: false deletes', () => {
   assert.equal(isDryRun({ dryRun: false }), false);
+});
+
+test('everything else is a dry run, so a mistake never deletes', () => {
+  // The schedule's old {} payload and the console's sample event.
+  assert.equal(isDryRun({}), true);
+  assert.equal(isDryRun({ key1: 'value1', key2: 'value2', key3: 'value3' }), true);
+  assert.equal(isDryRun(undefined), true);
+  assert.equal(isDryRun(null), true);
+  // A misspelled key (2026-10-14: a console test with a typo ran for real under the old rule).
+  assert.equal(isDryRun({ dryrun: false }), true);
   assert.equal(isDryRun({ dryRun: true }), true);
-  // Anything else a person might type still errs on the side of not deleting.
-  assert.equal(isDryRun({ dryRun: 'true' }), true);
   assert.equal(isDryRun({ dryRun: 'false' }), true);
-  assert.equal(isDryRun({ dryRun: 1 }), true);
+  assert.equal(isDryRun({ dryRun: 0 }), true);
 });
 
 test('MIN_AGE_DAYS must be a positive integer', () => {

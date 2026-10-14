@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-14-unconfirmed-user-cleanup-design.md`
 
+> **Amended 2026-10-14, after the first console test:** the dry-run rule was inverted. Only `{"dryRun": false}` deletes and the schedule sends it; every other event is a dry run. Task 1–3 code blocks below show the original rule; the committed code and the spec are authoritative.
+
 ## Global Constraints
 
 - Lambda runtime **Node.js 22** (`Runtime.NODEJS_22_X`), 128 MB, 1-minute timeout; **no** `package.json`, `node_modules`, bundling or build step.
@@ -475,14 +477,14 @@ Each 🟦 step is the user's, in the console unless stated; stop and wait for th
 - [ ] **Step 3: 🟦 Console tour**
   - **Lambda → Functions → `unconfirmed-user-cleanup`**: Code tab (both `.mjs` files, no test file); Configuration → General (128 MB, 1 min); Configuration → Environment variables (`USER_POOL_ID`, `MIN_AGE_DAYS=7`); the diagram shows EventBridge Scheduler as a trigger source.
   - **Configuration → Permissions → role name** (opens IAM): one policy with the two Cognito actions on the pool ARN, plus the basic execution policy for logs.
-  - **EventBridge → Scheduler → Schedules → `MarqueeCleanupStack-DailyCleanup…`**: `cron(0 4 * * ? *)`, time zone America/Toronto, target the Lambda with input `{}`; its execution role allows only `lambda:InvokeFunction` on this function.
+  - **EventBridge → Scheduler → Schedules → `MarqueeCleanupStack-DailyCleanup…`**: `cron(0 4 * * ? *)`, time zone America/Toronto, target the Lambda with input `{"dryRun": false}`; its execution role allows only `lambda:InvokeFunction` on this function.
   - **CloudWatch → Alarms → `MarqueeCleanupStack-CleanupErrorsAlarm…`**: Errors ≥ 1 for 1 datapoint within 1 hour, action → the topic, state OK (or Insufficient data before the first run).
 
 - [ ] **Step 4: 🟦 Dry run** — Lambda → **Test** tab → new event named `dry-run`, JSON `{"dryRun": true}` → **Test**. Expected result: `dryRun: true`, `deleted: 0`, `failed: []`; before 2026-10-21 `selected: []`. Then **Monitor → View CloudWatch logs** → newest log stream: the same JSON summary line, no emails.
 
 - [ ] **Step 5: 🟦 Optional alarm test** — CloudWatch → Alarms → the alarm → **Actions → Set alarm state → In alarm**: the alert email arrives; the alarm returns to OK on its next evaluation.
 
-- [ ] **Step 6: 🟦 Live run (on or after 2026-10-21, 20:54 UTC)** — **Cognito → User pools → `marquee` → Users**: `test_throw` is Unconfirmed. Dry run (Step 4): `selected` lists `test_throw`. Then a real run: a new test event `{}` → **Test** (or wait for 04:00). Expected: `deleted: 1`. Cognito Users: `test_throw` gone; `admin` and `j_david_ip` still there.
+- [ ] **Step 6: 🟦 Live run (on or after 2026-10-21, 20:54 UTC)** — **Cognito → User pools → `marquee` → Users**: `test_throw` is Unconfirmed. Dry run (Step 4): `selected` lists `test_throw`. Then a real run: a new test event `{"dryRun": false}` → **Test** (or wait for 04:00). Expected: `deleted: 1`. Cognito Users: `test_throw` gone; `admin` and `j_david_ip` still there.
 
 - [ ] **Step 7: Record it** — in `DEPLOYMENT.md`, add a `MarqueeCleanupStack` description next to the other stacks (what it holds, that it deploys by hand like the others, the confirm-the-email caveat) and a dated checklist of Steps 2, 4, 5 (if done) and 6 with the observed results.
 

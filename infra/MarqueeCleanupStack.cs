@@ -68,8 +68,9 @@ public class MarqueeCleanupStack : Stack
             }),
             Target = new LambdaInvoke(cleanup, new ScheduleTargetBaseProps
             {
-                // {} means a real run; {"dryRun": true} is for console test invokes.
-                Input = ScheduleTargetInput.FromObject(new Dictionary<string, object>()),
+                // Only this exact payload deletes; any other event, including a console test with a
+                // typo, is a dry run.
+                Input = ScheduleTargetInput.FromObject(new Dictionary<string, object> { ["dryRun"] = false }),
             }),
         });
 

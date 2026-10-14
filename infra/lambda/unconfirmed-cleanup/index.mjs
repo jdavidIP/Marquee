@@ -1,6 +1,6 @@
 // Deletes Cognito users who never confirmed their email, once they are older than MIN_AGE_DAYS
-// (#30). Invoked daily by EventBridge Scheduler with {}; invoke it from the console with
-// {"dryRun": true} to see what it would delete without deleting anything.
+// (#30). Invoked daily by EventBridge Scheduler with {"dryRun": false}, the only payload that
+// deletes; any other event (e.g. a console test) only reports what it would delete.
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,

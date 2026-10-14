@@ -21,12 +21,12 @@ CloudWatch alarm, with nothing in the app's critical path depending on it.
 | 2 | **CDK creates every resource.** The console is for everything that is not CDK code: inspecting, test invokes, logs, test data. | Building it by hand first, then in CDK: double work and a drift risk. Console only: contradicts the issue and every other resource. |
 | 3 | **Its own stack, `MarqueeCleanupStack`.** | Inside `MarqueeAuthStack`: every learning iteration would deploy the stack holding the irreplaceable pool. |
 | 4 | **A CloudWatch alarm** on the Lambda's `Errors`, emailing `alertEmail` through the stack's own SNS topic. | Logs only: nobody looks. Reusing `MarqueeStack`'s topic: couples this stack to the app host. |
-| 5 | **Dry run chosen per invocation**, by `{"dryRun": true}` in the event. The schedule sends `{}`. | An environment variable: redeploy (or console drift) to switch, and easy to leave on. No dry run: no safe first look. |
+| 5 | **Dry run chosen per invocation.** Only the exact payload `{"dryRun": false}` deletes; the schedule sends it. Every other event is a dry run. *(Amended 2026-10-14: originally `{}` deleted and `{"dryRun": true}` was needed for a dry run — a console test with a misspelled key then ran for real.)* | An environment variable: redeploy (or console drift) to switch, and easy to leave on. No dry run: no safe first look. |
 
 ## Architecture
 
 ```
-Scheduler (04:00 Toronto) ──invoke {}──▶ Lambda ──ListUsers / AdminDeleteUser──▶ Cognito pool
+Scheduler (04:00 Toronto) ──invoke {"dryRun": false}──▶ Lambda ──ListUsers / AdminDeleteUser──▶ Cognito pool
                                             │
                                             └─ Errors metric ──▶ Alarm ──▶ SNS ──▶ alertEmail
 ```
@@ -41,7 +41,7 @@ same way `MarqueeStack` is. It contains:
 2. **The Lambda's role** — basic execution (its own logs) plus exactly `cognito-idp:ListUsers` and
    `cognito-idp:AdminDeleteUser` on the pool ARN, granted with `userPool.Grant(...)`.
 3. **EventBridge Scheduler schedule** — daily at 04:00 `America/Toronto` (Scheduler handles the time zone
-   and daylight saving). Target: the Lambda, payload `{}`. CDK generates Scheduler's own role, allowed
+   and daylight saving). Target: the Lambda, payload `{"dryRun": false}`. CDK generates Scheduler's own role, allowed
    only `lambda:InvokeFunction` on this function. Retry settings stay at AWS defaults.
 4. **SNS topic** with an email subscription to `alertEmail`.
 5. **CloudWatch alarm** — Lambda `Errors` sum ≥ 1 over one hour → the topic. Missing data is treated as
@@ -70,8 +70,8 @@ check is the one the unit test pins down.
 
 **Handler flow.**
 
-1. `dryRun` is true when the event has a `dryRun` key with any value other than `false` — so a typo
-   like `"dryRun": "true"` still deletes nothing; the schedule's `{}` is a real run. Read
+1. `dryRun` is false only when the event's `dryRun` is exactly `false` (the schedule's payload);
+   any other event — empty, the console's sample, a misspelled key or value — is a dry run. Read
    `USER_POOL_ID` and `MIN_AGE_DAYS`; if either is missing or `MIN_AGE_DAYS` is not a positive
    integer, throw (a misconfigured deploy raises the alarm). Both checks are pure functions in
    `select.mjs`, so they are unit-tested.
@@ -104,8 +104,8 @@ check is the one the unit test pins down.
 - `CONFIRMED`, `FORCE_CHANGE_PASSWORD`, `RESET_REQUIRED`, `EXTERNAL_PROVIDER`, however old → never
   selected.
 - Empty list → empty result; a user with no `UserCreateDate` → never selected.
-- `isDryRun`: `{}`, `null`, `undefined` and `{"dryRun": false}` → real run; `true`, `"true"`, `"false"`,
-  `1` → dry run.
+- `isDryRun`: only `{"dryRun": false}` → real run; `{}`, `null`, `undefined`, the console sample event,
+  `{"dryrun": false}`, `true`, `"false"`, `0` → dry run.
 - `parseMinAgeDays`: `"7"` → 7; missing, empty, `0`, negative, fractional or non-numeric → throws.
 
 The handler is not unit-tested: mocking the SDK client would mostly test the mock. It is proven by the
@@ -130,7 +130,7 @@ uses Node 24, the function runs on Node 22; nothing used differs between them.
    Read the same run in **CloudWatch Logs**.
 6. 🟦 Optional: **Set alarm state** → `ALARM` in CloudWatch and check the email arrives.
 7. 🟦 On or after 2026-10-21: `test_throw` (created 2026-10-14 20:54 UTC, kept `UNCONFIRMED`) shows in
-   **Cognito → Users**; a dry run lists it; a real invoke (`{}`, or the 04:00 run) deletes it; `admin`
+   **Cognito → Users**; a dry run lists it; a real invoke (`{"dryRun": false}`, or the 04:00 run) deletes it; `admin`
    and `j_david_ip` are untouched.
 8. Record steps 5–7 in DEPLOYMENT.md with dates; reviewer; PR (`Closes #30`); closing comment.
 
