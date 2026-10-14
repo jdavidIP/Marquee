@@ -74,8 +74,8 @@ public sealed record PremiereRevealReady(
 /// already sitting in the outbox or the queue during a deploy must still deserialise if a new kind is
 /// added later. The dispatcher maps a kind to its content.
 ///
-/// Consumed by SendNotificationConsumer in Marquee.Worker, which hands it to whichever
-/// INotificationDispatcher is configured — never sent synchronously from the request path.
+/// Consumed by SendNotificationConsumer in Marquee.Worker, which hands it to the registered
+/// INotificationDispatcher — never sent synchronously from the request path.
 /// </summary>
 public sealed record SendNotification(
     string Kind,

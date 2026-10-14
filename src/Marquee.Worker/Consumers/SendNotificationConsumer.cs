@@ -6,9 +6,8 @@ namespace Marquee.Worker.Consumers;
 
 /// <summary>
 /// Performs the actual delivery for a SendNotification event, off the API's request path
-/// (CLAUDE.md §6). The dispatcher itself — dev log or real email — is selected once, by
-/// configuration, in AddMarqueeInfrastructure; this consumer neither knows nor cares which one it
-/// got.
+/// (CLAUDE.md §6). The dispatcher is registered in AddMarqueeInfrastructure (today only
+/// DevNotificationDispatcher); this consumer neither knows nor cares which one it got.
 ///
 /// No outbox on this endpoint, unlike PremiereOpenedConsumer: this consumer writes nothing to
 /// Postgres and publishes nothing further, so there is no downstream state that needs the

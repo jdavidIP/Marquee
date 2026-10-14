@@ -126,6 +126,8 @@ changes how accounts work, and doing that before real users exist avoids a user 
 6. **Email in phase 1:** none. `Email:SmtpHost` stays empty, so `DevNotificationDispatcher` writes
    confirmation/reset links to the log — which lands in CloudWatch. That is enough for the handful of
    test accounts phase 1 needs, and phase 2 replaces the email path anyway.
+   *As built:* phase 2 moved those emails to the Cognito user pool, and the `Email:SmtpHost` key and the
+   SMTP dispatcher were removed as unused (#131).
 
 ### 1b. Infrastructure (CDK, C#)
 

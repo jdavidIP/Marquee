@@ -8,6 +8,9 @@ namespace Marquee.Infrastructure.Notifications;
 /// log instead of sending anything. Nothing publishes a SendNotification today (sign-up and reset
 /// emails are the user pool's); a real channel is a second implementation selected in
 /// AddMarqueeInfrastructure, not a change here.
+///
+/// Do not publish a SendNotification before that real channel exists: this runs in production too,
+/// and would write the recipient's email and the action link (a bearer-style token) to the logs.
 /// </summary>
 public sealed class DevNotificationDispatcher(ILogger<DevNotificationDispatcher> logger) : INotificationDispatcher
 {
