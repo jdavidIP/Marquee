@@ -353,6 +353,16 @@ describe('PremiereComponent', () => {
     discardPeriodicTasks();
   }));
 
+  it('ignores a late 409 for a clap that was out when the reveal landed', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    realtimeFake.premiereOpened.next({ premiereId: 'p1', status: 'Opened', totalClaps: 100, contributors: 1, openedAt: null, movie: null });
+    fail(0, 409);
+    expect(c['error']()).toBeNull();
+    tick(1500); // the reveal's one-off emblem re-fetch
+    discardPeriodicTasks();
+  }));
+
   // The server's read already counts the clap still in flight; pendingTaps counts it too.
   it('does not count an in-flight clap twice when a catch-up refresh lands', fakeAsync(() => {
     const c = make();

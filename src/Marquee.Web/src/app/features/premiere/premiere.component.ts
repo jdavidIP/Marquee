@@ -746,7 +746,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
         sendAgainAfter(environment.clapPacingMs);
       },
       error: (err: unknown) => {
-        if (this.premiere()?.id !== p.id) return;
+        // A Premiere that opened while this clap was out (the reveal reset the queue) has nothing
+        // left to report — a late 409 here would put a stale error over the reveal (#136).
+        if (this.premiere()?.id !== p.id || this.isOpen()) return;
         const res = err as { status?: number; headers?: { get(name: string): string | null } };
         if (res.status === 429) {
           // Throttled, not lost: the server counted nothing, so the same tap goes again once the
