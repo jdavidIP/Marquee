@@ -85,7 +85,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.card__note { color: var(--muted-3); }
+.card__note { color: var(--muted-2); }
 
 .bar {
   height: 6px;

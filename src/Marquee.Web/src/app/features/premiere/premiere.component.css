@@ -9,6 +9,7 @@
 
 .primary {
   display: inline-block;
+  align-self: flex-start;
   background: var(--accent-amber);
   color: #241a00;
   border: none;
@@ -170,7 +171,7 @@
   font-size: 10px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: #8d8778;
+  color: #5c574a;
 }
 
 /* Poster/curtain stage + the progress/lobby/clap column beside it */
@@ -502,7 +503,7 @@
 .createAccount {
   display: inline-block;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--bg-page);
@@ -589,15 +590,17 @@
 .ledger-claps {
   font-family: var(--font-body);
   font-size: 11px;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 .doors-line,
 .last-showing-next {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.12em;
-  color: var(--muted-3);
   white-space: nowrap;
+}
+.doors-line {
+  color: #5c574a; /* on the cream sign face */
 }
 .last-showing-next {
   text-transform: uppercase;
@@ -687,7 +690,7 @@
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 .ledger-outcome {
   width: 120px;
@@ -750,7 +753,7 @@
 .last-showing-meta {
   font-family: var(--font-body);
   font-size: 12px;
-  color: var(--muted-3);
+  color: var(--muted-2);
   font-variant-numeric: tabular-nums;
 }
 .last-showing-note {
@@ -773,7 +776,9 @@
 }
 .last-showing-action {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-steel);
   border: 1px solid var(--border);
