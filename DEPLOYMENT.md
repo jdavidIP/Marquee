@@ -811,6 +811,52 @@ on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSign
 - **Accepts an email-shaped username.** The real pool refuses one (`InvalidParameterException`), since
   email is a sign-in alias; the register form stops it before any request either way (#111).
 
+### 2c. Unconfirmed-user cleanup (#30 — deployed 2026-10-14)
+
+`MarqueeCleanupStack` (`infra/MarqueeCleanupStack.cs`) deletes Cognito users who never confirmed their
+email, once they are more than 7 days old (decision 4 above). Design and plan:
+`docs/superpowers/specs/2026-10-14-unconfirmed-user-cleanup-design.md` and
+`docs/superpowers/plans/2026-10-14-unconfirmed-user-cleanup.md`. No VPC, about $0 a month (Scheduler
+and Lambda free tiers).
+
+- **Lambda `unconfirmed-user-cleanup`** (Node.js 22, 128 MB, 1 min, logs kept one month), code in
+  `infra/lambda/unconfirmed-cleanup/`. It lists `UNCONFIRMED` users with `ListUsers` and deletes those
+  older than `MIN_AGE_DAYS` (7) with `AdminDeleteUser`. Its role holds only those two Cognito actions,
+  on the pool ARN (plus the standard basic-execution policy for writing its logs). `CONFIRMED`,
+  `FORCE_CHANGE_PASSWORD` and newer users are never touched (unit-tested in `select.test.mjs`, which CI
+  runs with `node --test "lambda/**/*.test.mjs"`).
+- **Only an explicit `{"dryRun": false}` deletes.** Any other input — `{}`, a misspelled key, a console
+  test with no body — is a dry run that reports what it would delete and deletes nothing. The rule was
+  inverted after a console test with a misspelled key ran for real; the safe failure is now a nightly run
+  that silently deletes nothing, which the logs show.
+- **EventBridge Scheduler** runs it daily at 04:00 America/Toronto with `{"dryRun": false}`; its role can
+  only invoke this function.
+- **Alarm**: Lambda `Errors` ≥ 1 within an hour → the stack's own SNS topic → `alertEmail`. The same
+  caveat as `MarqueeStack`'s alarms applies (§1b): **confirm the subscription email within 3 days of
+  the deploy that creates it**, or SNS silently deletes the subscription and the alarm emails nobody.
+- **Deploys by hand**, like the other stacks (it is not part of the Deploy workflow):
+  `cd infra && eval "$(aws configure export-credentials --format env)" && npx cdk deploy MarqueeCleanupStack -c alertEmail=<address>`.
+  The pool id comes from `MarqueeAuthStack`, so this stack depends on it; the first deploy added an
+  auto-named output to the auth stack (§2a explains why), so deploy both from the same commit.
+
+Checked live:
+
+- [x] **2026-10-14** — Deployed; the SNS subscription confirmed (status **Confirmed** in the console).
+  *(operator)*
+- [x] **2026-10-14** — Console tour matches the stack: the function's memory, timeout and environment;
+  the role's two Cognito actions on the pool ARN; the schedule's cron, time zone and
+  `{"dryRun": false}` input; the alarm's threshold and SNS action. *(operator)*
+- [x] **2026-10-14** — Dry runs with `{"dryRun": true}` and with `{}`: both `dryRun: true`, one user
+  scanned, nothing selected (the only unconfirmed user was under 7 days old). *(operator)*
+- [x] **2026-10-14** — Alarm forced to `ALARM` (19:33 Toronto): the SNS action succeeded and the email
+  arrived. *(operator)*
+- [ ] **On or after 2026-10-21, ~17:00 Toronto** — Live run: the unconfirmed `test_throw` (created
+  2026-10-14 20:54 UTC, so past 7 days from 16:54 Toronto on 2026-10-21) is deleted (`deleted: 1`);
+  `admin` and `j_david_ip` are still in the pool. Two ways it can happen, and the record says which:
+  a manual dry run that selects it and then a manual `{"dryRun": false}` run, between 16:54 on
+  2026-10-21 and 04:00 on 2026-10-22; or, if nobody runs it first, the scheduled 04:00 run on
+  2026-10-22, read back from its CloudWatch log line and the Cognito user list.
+
 ---
 
 ## Phase 3 — managed database, domain, real email

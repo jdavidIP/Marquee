@@ -64,6 +64,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Lambda unit tests
+        run: node --test "lambda/**/*.test.mjs"
+
       - name: Synth
         run: npx --yes aws-cdk@2.1143.0 synth --quiet -c alertEmail=ci@example.invalid
 
