@@ -4,9 +4,9 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { UserFriendsComponent } from './user-friends.component';
-import { UsersService } from '../../core/users.service';
-import { FriendsService } from '../../core/friends.service';
-import { AuthService } from '../../core/auth.service';
+import { UsersService } from '../../core/api/users.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { FriendDto, LimitedProfileDto } from '../../core/models';
 
 /**

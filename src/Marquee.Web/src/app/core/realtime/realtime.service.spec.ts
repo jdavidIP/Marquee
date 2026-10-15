@@ -1,6 +1,6 @@
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { HubConnectionBuilder, HubConnectionState, RetryContext } from '@microsoft/signalr';
-import { AuthService } from './auth.service';
+import { AuthService } from '../auth/auth.service';
 import { RealtimeService, reconnectForever } from './realtime.service';
 
 /**

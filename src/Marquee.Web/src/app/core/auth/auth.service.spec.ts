@@ -5,8 +5,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { AuthService } from './auth.service';
 import { CognitoError } from './cognito';
 import { authInterceptor } from './auth.interceptor';
-import { environment } from '../../environments/environment';
-import { UserDto } from './models';
+import { environment } from '../../../environments/environment';
+import { UserDto } from '../models';
 
 /**
  * Phase 2 (#111): the browser talks to the Cognito user pool directly and to the API for who the

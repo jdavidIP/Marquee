@@ -3,10 +3,10 @@ import { WritableSignal, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { Observable, of, throwError, Subject } from 'rxjs';
 import { PremiereComponent } from './premiere.component';
-import { PremiereService } from '../../core/premiere.service';
-import { RealtimeService } from '../../core/realtime.service';
-import { AuthService } from '../../core/auth.service';
-import { AnonymousSessionService } from '../../core/anonymous-session.service';
+import { PremiereService } from '../../core/api/premiere.service';
+import { RealtimeService } from '../../core/realtime/realtime.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { AnonymousSessionService } from '../../core/auth/anonymous-session.service';
 import { ClapResponse, LobbyDto, PremiereDto, TodayScheduleDto, TodayScheduleSlotDto } from '../../core/models';
 
 /**

@@ -2,13 +2,13 @@ import { Component, computed, effect, inject, input, signal, untracked } from '@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { FriendsService } from '../../core/friends.service';
-import { UsersService } from '../../core/users.service';
-import { PremiereHistoryService } from '../../core/premiere-history.service';
-import { apiError } from '../../core/http-error';
+import { AuthService } from '../../core/auth/auth.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { UsersService } from '../../core/api/users.service';
+import { PremiereHistoryService } from '../../core/api/premiere-history.service';
+import { apiError } from '../../core/api/http-error';
 import { FullProfileDto, PremiereHistoryEntryDto, ProfileDto, isFullProfile } from '../../core/models';
-import { AccessCategory, accessCategoryFor, nextAccessCategory } from '../../core/access-category';
+import { AccessCategory, accessCategoryFor, nextAccessCategory } from '../../core/util/access-category';
 import { IdBadgeComponent } from '../../shared/id-badge.component';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 

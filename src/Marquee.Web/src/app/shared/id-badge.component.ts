@@ -1,9 +1,9 @@
 import { Component, computed, input } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { initialsOf } from '../core/avatar';
+import { initialsOf } from '../core/util/avatar';
 import { FullProfileDto, ProfileDto, isFullProfile } from '../core/models';
-import { AccessCategory, accessCategoryFor } from '../core/access-category';
-import { serialFor } from '../core/serial';
+import { AccessCategory, accessCategoryFor } from '../core/util/access-category';
+import { serialFor } from '../core/util/serial';
 
 /**
  * A per-user barcode pattern that encodes nothing — its only job is to not be identical from one

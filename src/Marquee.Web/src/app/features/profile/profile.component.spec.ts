@@ -3,10 +3,10 @@ import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { ProfileComponent } from './profile.component';
-import { UsersService } from '../../core/users.service';
-import { FriendsService } from '../../core/friends.service';
-import { PremiereHistoryService } from '../../core/premiere-history.service';
-import { AuthService } from '../../core/auth.service';
+import { UsersService } from '../../core/api/users.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { PremiereHistoryService } from '../../core/api/premiere-history.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { FullProfileDto, LimitedProfileDto, ProfileDto, isFullProfile } from '../../core/models';
 
 /**

@@ -7,9 +7,9 @@ import {
   LogLevel,
 } from '@microsoft/signalr';
 import { Subject } from 'rxjs';
-import { environment } from '../../environments/environment';
-import { AuthService } from './auth.service';
-import { ClapUpdate, PremiereDto, PremiereOpenedNotification } from './models';
+import { environment } from '../../../environments/environment';
+import { AuthService } from '../auth/auth.service';
+import { ClapUpdate, PremiereDto, PremiereOpenedNotification } from '../models';
 
 /** First wait between attempts; doubles each time until it reaches the cap. */
 const RETRY_BASE_DELAY_MS = 1_000;

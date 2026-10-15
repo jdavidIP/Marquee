@@ -3,9 +3,9 @@ import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { FriendsComponent } from './friends.component';
-import { FriendsService } from '../../core/friends.service';
-import { UsersService } from '../../core/users.service';
-import { AuthService } from '../../core/auth.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { UsersService } from '../../core/api/users.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { FriendDto, FriendRequestDto, UserSearchResultDto } from '../../core/models';
 
 /**

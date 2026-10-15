@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
-import { FriendDto, FriendRequestDto } from './models';
+import { environment } from '../../../environments/environment';
+import { FriendDto, FriendRequestDto } from '../models';
 
 /**
  * The signed-in user's friendships. One service per API resource, matching LibraryService and

@@ -4,8 +4,8 @@ import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { PremiereHistoryComponent } from './premiere-history.component';
-import { PremiereHistoryService } from '../../core/premiere-history.service';
-import { AuthService } from '../../core/auth.service';
+import { PremiereHistoryService } from '../../core/api/premiere-history.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { PagedResult, PremiereHistoryEntryDto, PremiereHistoryQuery } from '../../core/models';
 
 /**

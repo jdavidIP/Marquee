@@ -1,8 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, map, of, switchMap, tap, throwError, timeout } from 'rxjs';
-import { environment } from '../../environments/environment';
-import { PasswordRulesDto, UserDto } from './models';
+import { environment } from '../../../environments/environment';
+import { PasswordRulesDto, UserDto } from '../models';
 import { CognitoClient, CognitoError } from './cognito';
 
 const TOKEN_KEY = 'marquee.token';

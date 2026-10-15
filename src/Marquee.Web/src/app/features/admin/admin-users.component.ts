@@ -1,9 +1,9 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { AdminService } from '../../core/admin.service';
-import { AuthService } from '../../core/auth.service';
-import { apiError } from '../../core/http-error';
+import { AdminService } from '../../core/api/admin.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { apiError } from '../../core/api/http-error';
 import { AdminUserDto } from '../../core/models';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 

@@ -4,8 +4,8 @@ import { provideRouter, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LoginComponent } from './login.component';
-import { AuthService } from '../../core/auth.service';
-import { CognitoError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { CognitoError } from '../../core/auth/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 /**

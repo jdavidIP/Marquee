@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { authError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { authError } from '../../core/auth/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 type ResetStatus = 'form' | 'succeeded';

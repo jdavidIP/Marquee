@@ -1,14 +1,14 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
+import { environment } from '../../../environments/environment';
 import {
   ClapResponse,
   FriendContributorsResponse,
   LobbyDto,
   PremiereDto,
   TodayScheduleDto,
-} from './models';
+} from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class PremiereService {

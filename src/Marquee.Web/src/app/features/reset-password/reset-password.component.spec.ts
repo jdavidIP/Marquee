@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
 import { ResetPasswordComponent } from './reset-password.component';
-import { AuthService } from '../../core/auth.service';
-import { CognitoError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { CognitoError } from '../../core/auth/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 describe('ResetPasswordComponent', () => {

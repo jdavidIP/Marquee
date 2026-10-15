@@ -2,13 +2,13 @@ import { Component, DestroyRef, OnDestroy, OnInit, computed, inject, signal } fr
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { AnonymousSessionService } from '../../core/anonymous-session.service';
-import { PremiereService } from '../../core/premiere.service';
-import { RealtimeService } from '../../core/realtime.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { AnonymousSessionService } from '../../core/auth/anonymous-session.service';
+import { PremiereService } from '../../core/api/premiere.service';
+import { RealtimeService } from '../../core/realtime/realtime.service';
 import { ClapResponse, LobbyDto, PremiereDto, TodayScheduleDto } from '../../core/models';
-import { initialsOf, monogramColor } from '../../core/avatar';
-import { serialFor } from '../../core/serial';
+import { initialsOf, monogramColor } from '../../core/util/avatar';
+import { serialFor } from '../../core/util/serial';
 import { environment } from '../../../environments/environment';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
 

@@ -1,8 +1,8 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
-import { environment } from '../../environments/environment';
-import { apiError } from './http-error';
+import { environment } from '../../../environments/environment';
+import { apiError } from '../api/http-error';
 
 /**
  * A refusal from the user pool, by its error type (e.g. `NotAuthorizedException`) — what decides how

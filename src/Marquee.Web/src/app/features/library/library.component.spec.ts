@@ -3,9 +3,9 @@ import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { LibraryComponent } from './library.component';
-import { LibraryService } from '../../core/library.service';
-import { UsersService } from '../../core/users.service';
-import { FriendsService } from '../../core/friends.service';
+import { LibraryService } from '../../core/api/library.service';
+import { UsersService } from '../../core/api/users.service';
+import { FriendsService } from '../../core/api/friends.service';
 import {
   FullProfileDto,
   LibraryEntryDto,

@@ -9,12 +9,12 @@ import {
   untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { UsersService } from '../../core/users.service';
-import { FriendsService } from '../../core/friends.service';
-import { apiError, isForbidden } from '../../core/http-error';
+import { UsersService } from '../../core/api/users.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { apiError, isForbidden } from '../../core/api/http-error';
 import { FriendDto, ProfileDto } from '../../core/models';
-import { AuthService } from '../../core/auth.service';
-import { initialsOf, monogramColor } from '../../core/avatar';
+import { AuthService } from '../../core/auth/auth.service';
+import { initialsOf, monogramColor } from '../../core/util/avatar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 

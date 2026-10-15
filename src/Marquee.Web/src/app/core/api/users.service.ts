@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
-import { FriendDto, ProfileDto, UpdateProfileRequest, UserDto, UserSearchResultDto } from './models';
+import { environment } from '../../../environments/environment';
+import { FriendDto, ProfileDto, UpdateProfileRequest, UserDto, UserSearchResultDto } from '../models';
 
 /** The /api/users resource: search, profile reading, and editing your own. */
 @Injectable({ providedIn: 'root' })

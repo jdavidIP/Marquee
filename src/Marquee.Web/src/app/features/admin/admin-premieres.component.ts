@@ -2,8 +2,8 @@ import { Component, computed, effect, inject, input, signal, untracked } from '@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AdminService } from '../../core/admin.service';
-import { apiError } from '../../core/http-error';
+import { AdminService } from '../../core/api/admin.service';
+import { apiError } from '../../core/api/http-error';
 import { AdminPremiereDto, PremiereEditOptionsDto, PremiereStatus } from '../../core/models';
 import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 import { AdminMoviePickerComponent } from './admin-movie-picker.component';

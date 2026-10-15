@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
-import { requirePermission } from '../../core/admin.guard';
-import { Permissions } from '../../core/auth.service';
+import { requirePermission } from '../../core/auth/admin.guard';
+import { Permissions } from '../../core/auth/auth.service';
 import { AdminShellComponent } from './admin-shell.component';
 
 /**

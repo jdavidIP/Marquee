@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
+import { environment } from '../../../environments/environment';
 import {
   AdminMetricsDto,
   AdminPremiereDto,
@@ -13,7 +13,7 @@ import {
   PagedResult,
   PremiereEditOptionsDto,
   PremiereStatus,
-} from './models';
+} from '../models';
 
 /**
  * The admin surface, kept a thin transport layer: no error shaping here — that lives in

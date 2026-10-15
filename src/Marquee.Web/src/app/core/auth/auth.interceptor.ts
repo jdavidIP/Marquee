@@ -3,7 +3,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
 import { AnonymousSessionService } from './anonymous-session.service';
-import { environment } from '../../environments/environment';
+import { environment } from '../../../environments/environment';
 import { catchError, throwError } from 'rxjs';
 
 /** The codes UserAccessMiddleware attaches to a 403 that refuses the account, not one action. */

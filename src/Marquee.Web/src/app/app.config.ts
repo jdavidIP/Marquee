@@ -10,9 +10,9 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { routes } from './app.routes';
-import { authInterceptor } from './core/auth.interceptor';
-import { AnonymousSessionService } from './core/anonymous-session.service';
-import { AuthService } from './core/auth.service';
+import { authInterceptor } from './core/auth/auth.interceptor';
+import { AnonymousSessionService } from './core/auth/anonymous-session.service';
+import { AuthService } from './core/auth/auth.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
