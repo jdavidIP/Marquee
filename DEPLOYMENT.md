@@ -145,21 +145,7 @@ stacks:
 - The deploy role is created with **no permissions**. Each stack that owns a resource grants the role
   access to that resource's ARN — never a broad `*`.
 
-Running it, signed in with `aws login` and with `aws configure set region ca-central-1` done once, from
-`infra/` in Git Bash:
-
-```
-eval "$(aws configure export-credentials --format env)"   # per shell; see below
-cdk bootstrap aws://<account-id>/ca-central-1              # once per account and region
-cdk deploy MarqueeCiStack -c alertEmail=<address>
-cdk deploy MarqueeStack -c alertEmail=<address>
-```
-
-The CDK CLI cannot yet read the `login_session` credentials `aws login` stores, so the first line hands
-it short-lived credentials through environment variables for that shell. In PowerShell the equivalent
-is `aws configure export-credentials --format powershell | Out-String | Invoke-Expression`. Claude
-Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk diff` first, then pass
-`--require-approval never`.
+Deploying the stacks by hand, and the CLI credentials CDK needs: [runbook](docs/deployment/runbook.md#cdk-credentials-diff-and-deploy).
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
 committed; synth refuses to run without `alertEmail`, which receives both the budget and the
@@ -176,8 +162,9 @@ a subscription destroyed and another created — a sign the wrong value was pass
     throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
     the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
-    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a, and the
-    Cutover checklist): re-check it after any AMI change or instance replacement.
+    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a): re-check
+    it after any AMI change or instance replacement
+    ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)).
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
   - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
     than OOM-killing a container.
@@ -232,8 +219,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
   - Outputs: `SiteUrl`, `SiteBucket`, `DistributionId`.
 - **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
   hand once (CDK should not hold secret values), named after the `.env` key each becomes. **Use only
-  letters and digits in every value** (`openssl rand -hex 24` for the random ones): the manual deploy
-  below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
+  letters and digits in every value** (`openssl rand -hex 24` for the random ones): `deploy.sh` and the
+  manual deploy (runbook) write them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
   there, so a value containing either would be silently corrupted.
   - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
   - `AnonymousSession__SigningKey` — random, **at least 32 characters** (the API checks this at startup
@@ -252,8 +239,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
 - **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
   Two alarms, both emailing `alertEmail` through an SNS topic. **Confirm the subscription email within
   3 days of the deploy that creates it:** SNS silently deletes an unconfirmed subscription and
-  CloudFormation keeps reporting it as created, so the alarms email nobody (#133). **Detect drift** on the
-  stack in the CloudFormation console shows it — the topic reports `MODIFIED` on `/Subscription`.
+  CloudFormation keeps reporting it as created, so the alarms email nobody (#133). How to confirm it and
+  how to spot a lost one: [runbook](docs/deployment/runbook.md#confirm-an-alarm-subscription).
   - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
     id, Elastic IP and volumes.
   - CPU credit balance below 20 → about to be throttled to baseline. Under `standard` credits this is
@@ -266,77 +253,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
 
 ### 1b-ops. Manual deploy (fallback)
 
-The pipeline in 1c is the normal path. This is what it automates, for when GitHub Actions is
-unavailable or a step needs doing by hand. From `infra/` with the CLI signed in:
-
-```
-aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
-```
-
-gives `HostInstanceId`, `HostPublicDns`, `ArtifactsBucket`, `SiteUrl`, `SiteBucket` and
-`DistributionId`. Then, from the repository root:
-
-```
-TAG=$(git rev-parse --short HEAD)
-REGISTRY=<account-id>.dkr.ecr.ca-central-1.amazonaws.com   # aws sts get-caller-identity for the id
-aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
-docker build --target api -t $REGISTRY/marquee-api:$TAG . && docker push $REGISTRY/marquee-api:$TAG
-docker build --target worker -t $REGISTRY/marquee-worker:$TAG . && docker push $REGISTRY/marquee-worker:$TAG
-aws s3 cp docker-compose.prod.yml s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml
-```
-
-Then on the host — no SSH, everything through SSM Run Command (`AWS-RunShellScript`) or, for a shell,
-`aws ssm start-session --target <HostInstanceId>` (needs the Session Manager plugin locally):
-
-```bash
-TAG=<the tag from above>
-REGISTRY=<the same registry host>
-mkdir -p /opt/marquee && cd /opt/marquee
-aws s3 cp s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml .
-umask 077
-aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'Parameters[].[Name,Value]' \
-  --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
-echo "REGISTRY=$REGISTRY" >> .env
-echo "IMAGE_TAG=$TAG" >> .env
-echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
-echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
-chmod 600 .env
-aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d --wait
-docker inspect --format '{{.State.Health.Status}}' marquee-prod-api-1
-```
-
-The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
-`curl http://localhost/...` on the host returns 403 for every path, `/health` included: it lacks the
-origin header, and through Docker's port mapping it does not arrive from loopback inside the container.
-That is the check working — read health from Docker (`docker inspect` above), which runs the
-container's own in-container healthcheck.
-
-Then the frontend, from `src/Marquee.Web` locally. Only `index.html` and `favicon.ico` are unhashed;
-everything else is content-hashed and can be cached for good:
-
-```
-npx ng build --configuration production
-cd dist/marquee-web/browser
-aws s3 sync . s3://<SiteBucket> --delete --exclude index.html --exclude favicon.ico \
-  --cache-control "public,max-age=31536000,immutable"
-aws s3 cp index.html s3://<SiteBucket>/index.html --cache-control "no-cache"
-aws s3 cp favicon.ico s3://<SiteBucket>/favicon.ico --cache-control "public,max-age=86400"
-aws cloudfront create-invalidation --distribution-id <DistributionId> --paths "/index.html"
-```
-
-From Git Bash on Windows, prefix the invalidation with `MSYS_NO_PATHCONV=1`, or `/index.html` is
-rewritten into a Windows path and rejected as invalid.
-
-**Rotating the origin secret.** CloudFront and the host each hold a copy, updated separately, so every
-`/api` and `/hubs` request gets 403 between the two steps — minutes, not seconds, because the
-distribution change takes a few minutes to propagate. Do it when nobody is on:
-
-1. `aws ssm put-parameter --name /marquee/prod/OriginVerify__Secret --type String --overwrite --value "$(openssl rand -hex 32)"`
-2. `cdk deploy MarqueeStack` — CloudFront starts sending the new value.
-3. Redeploy the running tag so the host rewrites `.env` from SSM: `gh workflow run deploy.yml -f
-   tag=<running tag>` (the host's `/opt/marquee/last-healthy-tag`).
+The manual deploy and the origin-secret rotation are in the
+[runbook](docs/deployment/runbook.md#manual-deploy-fallback).
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
@@ -365,26 +283,9 @@ tests but must never interrupt a deploy). Deploys share a concurrency group and 
 sync` with the cache headers from 1b-ops → CloudFront invalidation of `/index.html`. A failed backend
 therefore never ships a frontend ahead of its API.
 
-**Rollback** is the same workflow run by hand with an existing tag — backend only, no build:
-
-```
-gh workflow run deploy.yml -f tag=<last healthy tag>
-```
-
-The tag is validated against `[A-Za-z0-9._-]` before it reaches the host's shell. The frontend is left
-alone: a backend failure stops before it, so it still matches the last healthy tag. Single instance,
-so a failed deploy means downtime until the rollback finishes — accepted for phase 1.
-
-A tag stays deployable only while its pieces exist: ECR keeps the **last 10 images** per repository and
-the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
-is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
-the bucket) cannot be redeployed this way; use 1b-ops.
-
-**The phase 2 cutover (#113) cannot be rolled back this way.** Its migration (`RemovePasswordAuth`) drops
-`users.PasswordHash`, which every earlier image still requires, and those images also need the old
-`Jwt__Key`. A failed cutover is undone by restoring the data volume from a snapshot taken immediately
-before the cutover deploy (the daily 08:00 UTC one can be a day old) and then redeploying the old tag.
-Rolling back between tags built after the cutover works as above.
+**Rollback** is the same workflow run by hand with an existing tag, backend only: see the
+[runbook](docs/deployment/runbook.md#rollback), including why the phase 2 cutover cannot be rolled
+back that way.
 
 A failed deploy prints only container states to the Actions log, never log lines — the repository is
 public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
@@ -624,7 +525,7 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   The seeder calls those from **inside the API container**, which reaches the instance role through
   IMDSv2 only because the instance's metadata hop limit is 2 (one hop for the instance, one for Docker's
   bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
-  it — so check `aws ec2 describe-instances --query '...MetadataOptions'` after any AMI change: at 1,
+  it — so re-check it after any AMI change ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)): at 1,
   seeding fails (logged) and the API starts with no admin.
   **Do not pin it in CDK as things stand** (`cdk diff`, 2026-10-07): CDK refuses `RequireImdsv2` together
   with the individual metadata options, and switching to `HttpTokens` plus `HttpPutResponseHopLimit`
@@ -701,8 +602,8 @@ and Lambda free tiers).
 - **Alarm**: Lambda `Errors` ≥ 1 within an hour → the stack's own SNS topic → `alertEmail`. The same
   caveat as `MarqueeStack`'s alarms applies (§1b): **confirm the subscription email within 3 days of
   the deploy that creates it**, or SNS silently deletes the subscription and the alarm emails nobody.
-- **Deploys by hand**, like the other stacks (it is not part of the Deploy workflow):
-  `cd infra && eval "$(aws configure export-credentials --format env)" && npx cdk deploy MarqueeCleanupStack -c alertEmail=<address>`.
+- **Deploys by hand**, like the other stacks (it is not part of the Deploy workflow; commands in the
+  [runbook](docs/deployment/runbook.md#cdk-credentials-diff-and-deploy)).
   The pool id comes from `MarqueeAuthStack`, so this stack depends on it; the first deploy added an
   auto-named output to the auth stack (§2a explains why), so deploy both from the same commit.
 

@@ -79,7 +79,7 @@ entry say which zone they are in. Entries marked *operator* were done by hand an
   deliberate window with `RateLimiting__Enabled=false` set in SSM and redeployed — every k6 request
   comes from one IP, so with limits on it would have measured the limiter. The parameter was deleted
   and redeployed afterwards, and 429s confirmed back (ten 200s, then 429). Results replace the estimate
-  in "Measured capacity" below.
+  in `DEPLOYMENT.md`'s "Measured capacity".
 - [x] **2026-09-29** — Phase 1 gate (#78): budget. Free plan credits **$159.58** remaining, plan ends
   **2027-03-24** (`aws freetier get-account-plan-state`). Cost Explorer cannot forecast yet (too little
   history), so the answer is a range: the credits outlast the plan (~5.8 months away) only at
