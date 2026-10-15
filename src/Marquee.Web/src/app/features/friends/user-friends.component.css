@@ -88,17 +88,17 @@
 
 .search-field__label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .search {
   width: 100%;
-  font-family: var(--font-numeral);
-  font-size: 26px;
-  letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  font-size: 20px;
+  letter-spacing: 0.01em;
   color: var(--ink-cream);
   background: transparent;
   border: 0;
@@ -106,7 +106,7 @@
   outline: none;
 }
 .search::placeholder {
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .panel__note {
