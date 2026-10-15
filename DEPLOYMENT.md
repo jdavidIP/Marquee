@@ -306,8 +306,7 @@ Recorded in the [verification log](docs/deployment/verification-log.md#1d-phase-
 **This phase changes domain rules** (CLAUDE.md §4.1/§4.2 are written around `EmailConfirmedAt` in
 Postgres). Must land before real users sign up: existing password hashes cannot be imported into
 Cognito, so switching later would need a User Migration Lambda. The decisions below were settled on
-2026-10-04; the replacement CLAUDE.md wording is written out under *Domain rule changes* and is
-applied to CLAUDE.md in #112.
+2026-10-04; the domain-rule wording they implied went into CLAUDE.md §3, §4.1 and §4.2 in #112.
 
 What changes:
 
@@ -424,67 +423,16 @@ or decision 5's seeding fails — nothing at startup checks it today beyond pres
 routing every auth call through the API with a client-secret app client to keep #27 server-side — it
 reverses decision 6 to protect only an account owner from their own choice.
 
-### Domain rule changes (applied to CLAUDE.md in #112)
+### Domain rule changes (#112)
 
-- **§3 User:** `PasswordHash` is removed; `Id` is the Cognito `sub`; `EmailConfirmedAt` is set when the
-  row is created (rows only exist for confirmed users).
-- **§4.1:** the "counts only confirmed accounts" paragraph is replaced by: *"**`totalRegisteredUsers`
-  counts every `User` row.** A row is created on an account's first authenticated request, and the
-  identity provider only issues tokens to accounts that have confirmed their email, so every row is a
-  confirmed account by construction. An account that never confirms never reaches the app at all: it
-  cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an
-  account does. This matters specifically because it is the one count in this section an attacker can
-  inflate for free — a wave of throwaway sign-ups moves nothing here, unlike claps, which are already
-  guarded (Iteration 5)."*
-- **§4.2:** the four-bullet "unconfirmed account" block and the "no re-login required" line are replaced
-  by: *"An account that has not confirmed its email cannot sign in (the identity provider refuses it), so
-  it never reaches the app as a registered participant. Until it confirms, the person is an ordinary
-  visitor with an anonymous session: anonymous cap, no emblems, no library entries, no friendships.
-  Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the
-  first sign-in a registered one."*
+The replacement wording for CLAUDE.md §3 (User), §4.1 and §4.2 was applied in #112; CLAUDE.md is
+now the source. The proposed text lives in that PR and in this file's history.
 
-### Cutover checklist (#113)
+### Cutover (#113)
 
-The one merge of `feat/phase2-cognito` into `main`. In this order; each item that breaks prod if missed
-says why. Rolling back past the migration is a snapshot restore, not a tag redeploy (Rollback, 1c).
-
-**Before the merge**
-
-1. SSM `/marquee/prod/AnonymousSession__SigningKey` exists, at least 32 letters and digits — without it
-   the API refuses to start, before migrating. (Created 2026-10-07.) **Leave `Jwt__Key` where it is.**
-2. `Admin__Password` meets the pool's policy (at least 10 characters, a digit). If it does not, seeding
-   fails *quietly*: the deploy still goes green and the API has no admin.
-3. The host's metadata hop limit is 2 — the API container reaches its role credentials only through it
-   (2a):
-   `aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'`
-4. No Premiere is `Active` and none is `Scheduled` within about 30 minutes (times are UTC): one that
-   opened after step 6 would write contributions for users that no longer exist. In Session Manager on
-   the host (`sudo -i`, then `cd /opt/marquee`):
-   `docker compose -f docker-compose.prod.yml exec -T postgres psql -U marquee -d marquee -c "select \"Status\", \"ScheduledFor\" from premieres where \"Status\" in ('Active','Scheduled') order by \"ScheduledFor\" limit 6;"`
-5. **Snapshot the data volume now** (the daily 08:00 UTC one can be a day old): EC2 → Volumes → the
-   data volume → Actions → Create snapshot, description `pre-cutover #113`; wait for *Completed*.
-6. **Reset the user-linked data** (destructive; old rows have random GUIDs that never match a Cognito
-   `sub`, and a leftover admin row stops the new admin being seeded). Same session, same directory:
-   - count first: `... psql ... -c "select (select count(*) from users) users, (select count(*) from contributions) contributions, (select count(*) from library_entries) library, (select count(*) from friendships) friendships;"`
-   - `... psql ... -c "truncate table users cascade;"` — cascades to contributions, library entries,
-     friendships and reset tokens; Premieres and Movies are kept (the film cooldown reads them).
-   - `docker compose -f docker-compose.prod.yml exec -T redis sh -c "redis-cli --scan --pattern 'user:*' | xargs -r redis-cli del"`
-   - re-run the count; every number should be 0. Record the before and after on #113.
-7. Merge the PR; watch CI, then the Deploy workflow (the first run of the five-argument `deploy.sh`).
-
-**After the deploy**
-
-8. CloudWatch log group `/marquee/prod`: the API logged `Seeded admin 'admin'`, and not "starting without
-   it" (a hop limit of 1, a password the pool refused, or a leftover row). Sign in as `admin` on the site.
-   If seeding failed, fix the cause and redeploy; the seeder retries on every start.
-9. Run *Verification against the real pool*, below, and record the dates. It sends sign-up emails
-   against Cognito's 50-a-day-per-account quota.
-10. Once stable: delete `/marquee/prod/Jwt__Key`; remove `feat/phase2-cognito` from the `pull_request`
-    branches in `.github/workflows/ci.yml` and delete the branch; file any cognito-local fidelity gap
-    found; close #113.
-
-For a few minutes after step 7 the frontend lags the backend: a browser with the old cached page calls
-the new API, gets a 401 or 404 on its old session, and falls back to a visitor session by itself.
+The one merge of `feat/phase2-cognito` into `main` (PR #125, `06cac2e`, 2026-10-07). Its ordered
+checklist was executed and is kept in #113, PR #125 and this file's history; why it cannot be
+rolled back with a tag redeploy is in the [runbook](docs/deployment/runbook.md#rollback).
 
 ### Verification against the real pool (once, after the first prod deploy)
 
