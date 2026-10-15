@@ -714,8 +714,9 @@ run from the command line.
   the same sign-in's ID token (`token_use` `id`) answers 401; no token answers 401.
 - [x] **2026-10-07** — `/marquee/prod/Jwt__Key` deleted from SSM once the above held; nothing reads it
   any more; the six parameters left under `/marquee/prod` are the ones listed under *SSM Parameter Store*.
-- [ ] An **expired** confirmation code is refused. Not run: sign-up codes stay valid for 24 hours, so it
-  needs a code left unused until the next day.
+- [x] **2026-10-15** — An **expired** confirmation code is refused: a sign-up code left unused for
+  about 26 hours was entered on the live site and refused with "That code has expired. Send a new one."
+  (the pool's `ExpiredCodeException`, not `CodeMismatchException`). *(operator)*
 
 ### 2a. User pool (#107 — deployed 2026-10-04)
 
