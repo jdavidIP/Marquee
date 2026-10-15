@@ -18,6 +18,7 @@ public static class ApiServiceRegistration
         services.AddScoped<IPremiereOpener, PremiereOpener>();
         services.AddScoped<IPremiereScheduleService, PremiereScheduleService>();
         services.AddScoped<ILibraryService, LibraryService>();
+        services.Configure<LibraryFilterOptions>(configuration.GetSection(LibraryFilterOptions.SectionName));
         services.AddScoped<IPremiereHistoryService, PremiereHistoryService>();
         services.Configure<CognitoOptions>(configuration.GetSection(CognitoOptions.SectionName));
         // Short, because it runs inside a user's first request; the default is 100 seconds. A timeout

@@ -17,15 +17,17 @@ public interface ILibraryService
     /// </summary>
     Task<LibraryPageDto> GetLibraryPageAsync(Guid userId, LibraryQuery query, CancellationToken ct);
 
-    /// <summary>The filter values worth offering for this particular library.</summary>
-    Task<LibraryFiltersDto> GetFiltersAsync(Guid userId, CancellationToken ct);
+    /// <summary>The filter values every library offers — the same for every account (#140).</summary>
+    Task<LibraryFiltersDto> GetFiltersAsync(CancellationToken ct);
 }
 
 public sealed class LibraryService(
     MarqueeDbContext db,
-    IOptions<TmdbOptions> tmdbOptions) : ILibraryService
+    IOptions<TmdbOptions> tmdbOptions,
+    IOptions<LibraryFilterOptions> filterOptions) : ILibraryService
 {
     private readonly TmdbOptions _tmdb = tmdbOptions.Value;
+    private readonly LibraryFilterOptions _filters = filterOptions.Value;
 
     /// <summary>The entries themselves, searched/filtered/sorted/paged — no header stats attached.</summary>
     private async Task<PagedResult<LibraryEntryDto>> QueryEntriesAsync(
@@ -96,25 +98,16 @@ public sealed class LibraryService(
             page.Items, page.Total, page.Page, page.PageSize, platinumCount, premieresAttended);
     }
 
-    public async Task<LibraryFiltersDto> GetFiltersAsync(Guid userId, CancellationToken ct)
+    public async Task<LibraryFiltersDto> GetFiltersAsync(CancellationToken ct)
     {
-        var mine = db.LibraryEntries.AsNoTracking().Where(e => e.UserId == userId);
-
-        var genres = await mine
-            .SelectMany(e => e.Movie.MovieGenres)
-            .Select(mg => new { mg.Genre.TmdbId, mg.Genre.Name })
-            .Distinct()
+        // Every genre the API seeded from TMDB, not just the ones this library holds: the bar must
+        // look the same on every account, even if some picks then match nothing (#140).
+        var genres = await db.Genres.AsNoTracking()
             .OrderBy(g => g.Name)
             .Select(g => new GenreDto(g.TmdbId, g.Name))
             .ToListAsync(ct);
 
-        // Aggregates over a nullable column: an empty library yields SQL NULL, which arrives here as
-        // null rather than throwing, and says exactly what it should — there is no range to offer.
-        var withYear = mine.Where(e => e.Movie.ReleaseYear != null);
-        var minYear = await withYear.MinAsync(e => e.Movie.ReleaseYear, ct);
-        var maxYear = await withYear.MaxAsync(e => e.Movie.ReleaseYear, ct);
-
-        return new LibraryFiltersDto(genres, minYear, maxYear);
+        return new LibraryFiltersDto(genres, _filters.StartYear, DateTime.UtcNow.Year);
     }
 
     private static IQueryable<LibraryEntry> Filter(IQueryable<LibraryEntry> query, LibraryQuery q)

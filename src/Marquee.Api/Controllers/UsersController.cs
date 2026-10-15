@@ -119,7 +119,11 @@ public class UsersController(
         return Ok(await library.GetLibraryPageAsync(entitlement!.UserId, query, ct));
     }
 
-    /// <summary>The genre/year filter values worth offering for this user's library — see LibraryController.Filters.</summary>
+    /// <summary>
+    /// The library filter values — identical for every account, see LibraryController.Filters. Kept
+    /// behind the same entitlement check as the library it belongs to, so a private library's route
+    /// answers the same way throughout (#140).
+    /// </summary>
     [Authorize]
     [HttpGet("{username}/library/filters")]
     public async Task<ActionResult<LibraryFiltersDto>> LibraryFilters(string username, CancellationToken ct)
@@ -128,7 +132,7 @@ public class UsersController(
         if (error is not null)
             return error;
 
-        return Ok(await library.GetFiltersAsync(entitlement!.UserId, ct));
+        return Ok(await library.GetFiltersAsync(ct));
     }
 
     /// <summary>
