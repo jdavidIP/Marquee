@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Marquee.Api.Services;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
 using Marquee.Infrastructure.Persistence;
@@ -54,8 +55,11 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
     /// The endpoint under test reads LibraryEntry and Contribution; how those rows came to exist is
     /// the fan-out's business and is covered where the fan-out is. Building them directly is what
     /// lets one test hold a precise, known collection to sort and filter.
+    ///
+    /// Returns the run's genre tag: every genre is offered to every library now (#140), so a test that
+    /// needs one of its own genres from the filters has to know its name.
     /// </summary>
-    private async Task SeedAsync(Guid userId, params Film[] films)
+    private async Task<string> SeedAsync(Guid userId, params Film[] films)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
@@ -133,6 +137,7 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
         }
 
         await db.SaveChangesAsync();
+        return tag;
     }
 
     private static async Task<PageBody> PageAsync(HttpClient client, string query = "")
@@ -222,13 +227,13 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
     public async Task Filtering_by_genre_uses_the_id_the_filters_endpoint_hands_out()
     {
         var (client, userId) = await NewUserAsync();
-        await SeedAsync(userId,
+        var tag = await SeedAsync(userId,
             new Film("An Animated One", 2001, 8.5, "Animation", 2),
             new Film("A Dramatic One", 1999, 7.0, "Drama", 3),
             new Film("Another Dramatic One", 2005, 7.2, "Drama", 4));
 
         var filters = await client.GetFromJsonAsync<FiltersBody>("/api/library/filters");
-        var drama = filters!.Genres.Single(g => g.Name.StartsWith("Drama"));
+        var drama = filters!.Genres.Single(g => g.Name == $"Drama-{tag}");
 
         var page = await PageAsync(client, $"?genreId={drama.TmdbId}");
 
@@ -236,34 +241,44 @@ public class LibraryQueryTests(MarqueeAppFactory factory)
     }
 
     [Fact]
-    public async Task The_filters_endpoint_offers_only_what_this_library_actually_contains()
+    public async Task The_filters_endpoint_offers_every_genre_and_the_configured_years()
     {
         var (client, userId) = await NewUserAsync();
-        await SeedAsync(userId,
-            new Film("A Comedy", 1990, 6.5, "Comedy", 2),
-            new Film("A Thriller", 2010, 7.8, "Thriller", 3));
+        await SeedAsync(userId, new Film("A Comedy", 1990, 6.5, "Comedy", 2));
+
+        // Read first: other classes share this database and may add genres while the test runs, so
+        // "every genre that existed before the call" is the strongest claim that cannot flake.
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+        var allGenres = await db.Genres.Select(g => g.TmdbId).ToListAsync();
 
         var filters = await client.GetFromJsonAsync<FiltersBody>("/api/library/filters");
 
-        // Offering a genre this library holds nothing in would be a filter that returns nothing.
-        filters!.Genres.Select(g => g.Name.Split('-')[0])
-            .Should().BeEquivalentTo("Comedy", "Thriller");
-        filters.MinYear.Should().Be(1990);
-        filters.MaxYear.Should().Be(2010);
+        // Every seeded genre, not just the one this library holds (#140).
+        filters!.Genres.Select(g => g.TmdbId).Should().Contain(allGenres);
+        allGenres.Count.Should().BeGreaterThan(1);
+
+        filters.MinYear.Should().Be(new LibraryFilterOptions().StartYear);
+        filters.MaxYear.Should().Be(DateTime.UtcNow.Year);
     }
 
     [Fact]
-    public async Task An_empty_library_reports_no_year_range_rather_than_failing()
+    public async Task An_empty_library_gets_the_same_filters_as_a_full_one()
     {
-        // The aggregate runs over no rows at all. Postgres answers NULL, which has to arrive as "no
-        // range to offer" rather than as an exception on the way out.
-        var (client, _) = await NewUserAsync();
+        // The bar keeps one shape on every account: a brand-new library must not lose its controls.
+        var (empty, _) = await NewUserAsync();
+        var (full, fullId) = await NewUserAsync();
+        await SeedAsync(fullId, new Film("A Thriller", 2010, 7.8, "Thriller", 3));
 
-        var filters = await client.GetFromJsonAsync<FiltersBody>("/api/library/filters");
+        var forFull = await full.GetFromJsonAsync<FiltersBody>("/api/library/filters");
+        var forEmpty = await empty.GetFromJsonAsync<FiltersBody>("/api/library/filters");
 
-        filters!.Genres.Should().BeEmpty();
-        filters.MinYear.Should().BeNull();
-        filters.MaxYear.Should().BeNull();
+        // Contain rather than equal: a genre another class adds between the two calls is not a
+        // difference between the libraries.
+        forEmpty!.Genres.Should().Contain(forFull!.Genres);
+        forEmpty.Genres.Should().Contain(g => g.Name.StartsWith("Thriller"));
+        forEmpty.MinYear.Should().Be(forFull.MinYear);
+        forEmpty.MaxYear.Should().Be(forFull.MaxYear);
     }
 
     [Fact]

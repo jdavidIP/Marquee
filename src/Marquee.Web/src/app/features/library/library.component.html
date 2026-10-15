@@ -98,56 +98,52 @@
         />
       </div>
 
-      <!-- Genres and years come from the API and describe this library, so nothing here offers a
-           filter that would return an empty grid. -->
-      @if (genres().length > 0) {
-        <div class="control">
-          <label class="control__label" for="library-genre">Genre</label>
-          <select
-            id="library-genre"
-            class="control__input"
-            [value]="genreId() ?? ''"
-            (change)="onGenreChange($any($event.target).value)"
-          >
-            <option value="">Any genre</option>
-            @for (genre of genres(); track genre.tmdbId) {
-              <option [value]="genre.tmdbId">{{ genre.name }}</option>
-            }
-          </select>
-        </div>
-      }
+      <!-- Always rendered, with every genre and the full year range from the API, so the bar has
+           the same shape on every account (#140). A pick that matches nothing gets the empty state. -->
+      <div class="control">
+        <label class="control__label" for="library-genre">Genre</label>
+        <select
+          id="library-genre"
+          class="control__input"
+          [value]="genreId() ?? ''"
+          (change)="onGenreChange($any($event.target).value)"
+        >
+          <option value="">Any genre</option>
+          @for (genre of genres(); track genre.tmdbId) {
+            <option [value]="genre.tmdbId">{{ genre.name }}</option>
+          }
+        </select>
+      </div>
 
-      @if (years().length > 1) {
-        <div class="control">
-          <label class="control__label" for="library-min-year">From</label>
-          <select
-            id="library-min-year"
-            class="control__input"
-            [value]="minYear() ?? ''"
-            (change)="onMinYearChange($any($event.target).value)"
-          >
-            <option value="">Any year</option>
-            @for (year of years(); track year) {
-              <option [value]="year">{{ year }}</option>
-            }
-          </select>
-        </div>
+      <div class="control">
+        <label class="control__label" for="library-min-year">From</label>
+        <select
+          id="library-min-year"
+          class="control__input"
+          [value]="minYear() ?? ''"
+          (change)="onMinYearChange($any($event.target).value)"
+        >
+          <option value="">Any year</option>
+          @for (year of years(); track year) {
+            <option [value]="year">{{ year }}</option>
+          }
+        </select>
+      </div>
 
-        <div class="control">
-          <label class="control__label" for="library-max-year">To</label>
-          <select
-            id="library-max-year"
-            class="control__input"
-            [value]="maxYear() ?? ''"
-            (change)="onMaxYearChange($any($event.target).value)"
-          >
-            <option value="">Any year</option>
-            @for (year of years(); track year) {
-              <option [value]="year">{{ year }}</option>
-            }
-          </select>
-        </div>
-      }
+      <div class="control">
+        <label class="control__label" for="library-max-year">To</label>
+        <select
+          id="library-max-year"
+          class="control__input"
+          [value]="maxYear() ?? ''"
+          (change)="onMaxYearChange($any($event.target).value)"
+        >
+          <option value="">Any year</option>
+          @for (year of years(); track year) {
+            <option [value]="year">{{ year }}</option>
+          }
+        </select>
+      </div>
 
       <div class="control">
         <label class="control__label" for="library-sort">Sort by</label>
@@ -174,13 +170,16 @@
         </div>
       </div>
 
-      @if (filtered()) {
-        <button class="clear" type="button" (click)="clearFilters()">Clear filters</button>
-      }
-
-      <span class="result-count">
-        {{ total() | number }} {{ total() === 1 ? 'film' : 'films' }}
-      </span>
+      <!-- A fixed line under the filters: Clear is always there, disabled until something narrows
+           the list, so nothing jumps when a filter is picked (#140). -->
+      <div class="controls__footer">
+        <button class="clear" type="button" (click)="clearFilters()" [disabled]="!filtered()">
+          Clear filters
+        </button>
+        <span class="result-count">
+          {{ total() | number }} {{ total() === 1 ? 'film' : 'films' }}
+        </span>
+      </div>
     </section>
 
     @if (error()) {

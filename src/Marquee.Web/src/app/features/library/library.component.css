@@ -167,8 +167,9 @@
 
 .send-request {
   font-family: var(--font-body);
-  font-size: 12px;
-  letter-spacing: 0.18em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 12px 22px;
   border-radius: 999px;
@@ -309,24 +310,42 @@
   color: var(--accent-amber);
 }
 
+/* Its own full-width line under the filters: Clear on the left, the count on the right (#140). */
+.controls__footer {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .clear {
   font-family: var(--font-body);
   background: none;
   border: 1px solid var(--border);
-  color: var(--muted-2);
-  cursor: pointer;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 10px 12px;
-}
-.clear:hover {
-  border-color: var(--accent-red);
   color: var(--accent-red);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+}
+/* A deeper red than --accent-red: white text on it measures 4.99:1, the brighter red only 3.24:1. */
+.clear:not(:disabled) {
+  border-color: #d42a43;
+}
+.clear:hover:not(:disabled) {
+  background: #d42a43;
+  color: #fff;
+}
+/* Nothing to clear: still in place so the line never shifts, but plainly inactive. */
+.clear:disabled {
+  color: var(--muted-3);
+  cursor: default;
 }
 
 .result-count {
-  margin-left: auto;
   font-family: var(--font-body);
   font-size: 11px;
   letter-spacing: 0.16em;
@@ -479,7 +498,7 @@
   padding: 12px;
   text-align: center;
   background: repeating-linear-gradient(135deg, #1b2136 0 10px, #161c2e 10px 20px);
-  color: var(--muted-3);
+  color: var(--muted-2);
   font-size: 12px;
 }
 
@@ -516,7 +535,7 @@ h2 {
   font-family: var(--font-body);
   font-size: 11px;
   white-space: nowrap;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .pager {
@@ -529,8 +548,9 @@ h2 {
 
 .pager__button {
   font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   background: var(--panel);
   border: 1px solid var(--border);

@@ -106,7 +106,8 @@ export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly premiere = signal<PremiereDto | null>(null);
   protected readonly todaySchedule = signal<TodayScheduleDto | null>(null);
   protected readonly loading = signal(true);
-  protected readonly clapping = signal(false);
+  /** Taps already shown on screen but not yet confirmed by the server (#136). */
+  protected readonly pendingTaps = signal(0);
   protected readonly error = signal<string | null>(null);
   protected readonly lobby = signal<LobbyDto | null>(null);
   private readonly nowMs = signal(Date.now());
@@ -148,10 +149,19 @@ export class PremiereComponent implements OnInit, OnDestroy {
   /** The reveal banner swaps to a conversion pitch — no emblem, nothing kept — for a visitor. */
   protected readonly revealVisitor = computed(() => this.isOpen() && !this.auth.isLoggedIn());
 
+  /**
+   * The viewer's own count as they see it: confirmed claps plus taps still queued (#136), so a tap
+   * lands on screen the moment it happens. Never past the cap — taps beyond it are not queued.
+   */
+  protected readonly myClapsShown = computed(() => {
+    const p = this.premiere();
+    return p ? Math.min(p.myCap, p.myClaps + this.pendingTaps()) : 0;
+  });
+
   /** myCap, not registeredClapCap — an anonymous participant's cap is lower (§4.2). */
   protected readonly capReached = computed(() => {
     const p = this.premiere();
-    return !!p && p.myClaps >= p.myCap;
+    return !!p && this.myClapsShown() >= p.myCap;
   });
 
   protected readonly remainingSeconds = computed(() => {
@@ -279,8 +289,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
   protected readonly pips = computed(() => {
     const p = this.premiere();
     if (!p) return [];
-    if (!this.pipsScaled()) return Array.from({ length: p.myCap }, (_, i) => i < p.myClaps);
-    const lit = p.myClaps >= p.myCap ? MAX_PIPS : Math.min(MAX_PIPS - 1, Math.floor((p.myClaps * MAX_PIPS) / p.myCap));
+    const mine = this.myClapsShown();
+    if (!this.pipsScaled()) return Array.from({ length: p.myCap }, (_, i) => i < mine);
+    const lit = mine >= p.myCap ? MAX_PIPS : Math.min(MAX_PIPS - 1, Math.floor((mine * MAX_PIPS) / p.myCap));
     return Array.from({ length: MAX_PIPS }, (_, i) => i < lit);
   });
 
@@ -290,7 +301,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
    */
   protected readonly pipsLabel = computed(() => {
     const p = this.premiere();
-    return p ? `${p.myClaps} of ${p.myCap} claps used` : '';
+    return p ? `${this.myClapsShown()} of ${p.myCap} claps used` : '';
   });
 
   protected readonly clapButtonState = computed<'on' | 'capped' | 'off'>(() => {
@@ -443,6 +454,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
   private clockHandle: ReturnType<typeof setInterval> | null = null;
   private lobbyPollHandle: ReturnType<typeof setInterval> | null = null;
   private emblemSettleHandle: ReturnType<typeof setTimeout> | null = null;
+  private clapTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A clap request is out, or the queue is waiting out the pacing interval before the next one. */
+  private sending = false;
 
   /**
    * Whether this viewer can clap at all — signed in, or holding a valid anonymous session (§4.2).
@@ -482,6 +496,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
     if (this.clockHandle) clearInterval(this.clockHandle);
     this.stopLobbyPolling();
     if (this.emblemSettleHandle) clearTimeout(this.emblemSettleHandle);
+    this.resetClapQueue();
     void this.realtime.stopWatching();
   }
 
@@ -527,6 +542,7 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
     this.realtime.premiereActivated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((p) => {
       // A new Premiere went live while this page was open — switch to it.
+      this.resetClapQueue();
       this.todaySchedule.set(null);
       this.premiere.set(p);
       this.error.set(null);
@@ -539,7 +555,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
   private load(initial: boolean): void {
     this.premieres.getActive().subscribe({
       next: (p) => {
-        this.premiere.set(p);
+        const cur = this.premiere();
+        if (cur?.id !== p.id) {
+          // A different Premiere now: queued taps were for the old one and must not go to this one.
+          this.resetClapQueue();
+          this.premiere.set(p);
+        } else {
+          // Same one: as in refreshCurrent, a clap in flight sets myClaps itself (#136).
+          this.premiere.set(this.sending ? { ...p, myClaps: cur.myClaps } : p);
+        }
         this.todaySchedule.set(null);
         // A banner the fallback poll raised while the connection was down is stale now.
         this.error.set(null);
@@ -572,6 +596,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
 
   /** What the page does once the Premiere it is showing has opened, however it found out. */
   private onRevealed(): void {
+    this.resetClapQueue();
+    // A clap error raised before the reveal is moot now (#136).
+    this.error.set(null);
     this.stopLobbyPolling();
     this.scheduleEmblemSettle();
     // The Premiere the viewer just watched is over; refresh today's programme.
@@ -606,7 +633,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
               ? {
                   ...fresh,
                   totalClaps: Math.max(c.totalClaps, fresh.totalClaps),
-                  myClaps: Math.max(c.myClaps, fresh.myClaps),
+                  // While a clap is out this read may already count it, and pendingTaps still
+                  // does too — that clap's own response sets myClaps instead (#136).
+                  myClaps: this.sending ? c.myClaps : Math.max(c.myClaps, fresh.myClaps),
                   contributors: Math.max(c.contributors, fresh.contributors),
                 }
               : c,
@@ -661,14 +690,41 @@ export class PremiereComponent implements OnInit, OnDestroy {
     }, EMBLEM_SETTLE_DELAY_MS);
   }
 
+  /**
+   * A tap is queued, not sent (#136). The API refuses a participant's claps closer together than
+   * ClapGuards:MinIntervalMs — an anti-script guard, deliberately kept — and a person tapping fast
+   * beats it easily. So every tap shows at once (myClapsShown), and the queue drains one request
+   * per environment.clapPacingMs. Nothing a human does at the button can draw the 429 any more.
+   */
   protected clap(): void {
+    if (!this.premiere() || this.isOpen() || this.capReached()) return;
+    this.pendingTaps.update((n) => n + 1);
+    if (!this.sending) this.sendNextClap();
+  }
+
+  private sendNextClap(): void {
     const p = this.premiere();
-    if (!p || this.clapping() || this.isOpen()) return;
-    this.clapping.set(true);
+    if (!p || this.pendingTaps() === 0 || this.isOpen()) {
+      this.sending = false;
+      return;
+    }
+    this.sending = true;
+    const sentAt = Date.now();
+    // The next send waits out whatever is left of the interval since this one went out, so a slow
+    // response does not add its latency on top of the pacing.
+    const sendAgainAfter = (minMs: number) => {
+      this.clapTimer = setTimeout(
+        () => this.sendNextClap(),
+        Math.max(0, minMs - (Date.now() - sentAt)),
+      );
+    };
 
     this.premieres.clap(p.id).subscribe({
       next: (r: ClapResponse) => {
-        this.clapping.set(false);
+        // The Premiere on screen changed under this request (a new one went live): drop it.
+        if (this.premiere()?.id !== r.premiereId) return;
+        this.pendingTaps.update((n) => Math.max(0, n - 1));
+        this.error.set(null);
         // The broadcast carries the shared count; this response carries what only this viewer
         // knows — how many of their own claps landed. Personalised data never goes to a group.
         this.premiere.update((cur) =>
@@ -682,20 +738,43 @@ export class PremiereComponent implements OnInit, OnDestroy {
               }
             : cur,
         );
+        if (r.capReached || isOpenStatus(r.status)) this.pendingTaps.set(0);
         if (isOpenStatus(r.status)) {
           this.stopLobbyPolling();
           this.scheduleEmblemSettle();
         }
+        sendAgainAfter(environment.clapPacingMs);
       },
       error: (err: unknown) => {
-        this.clapping.set(false);
-        const status = (err as { status?: number }).status;
+        // A Premiere that opened while this clap was out (the reveal reset the queue) has nothing
+        // left to report — a late 409 here would put a stale error over the reveal (#136).
+        if (this.premiere()?.id !== p.id || this.isOpen()) return;
+        const res = err as { status?: number; headers?: { get(name: string): string | null } };
+        if (res.status === 429) {
+          // Throttled, not lost: the server counted nothing, so the same tap goes again once the
+          // server says it may. Rare now — only network jitter bunching two paced requests.
+          const retryAfterSeconds = Number(res.headers?.get('Retry-After')) || 1;
+          sendAgainAfter(retryAfterSeconds * 1000);
+          return;
+        }
+        // A real failure. Whatever is still queued would most likely fail the same way, so the
+        // display falls back to what the server has confirmed.
+        this.pendingTaps.set(0);
+        this.sending = false;
         this.error.set(
-          status === 409
+          res.status === 409
             ? 'This Premiere is no longer accepting claps.'
             : 'That clap did not register. Try again.',
         );
       },
     });
+  }
+
+  /** Forgets any queued taps — the Premiere they were for is over or no longer on screen. */
+  private resetClapQueue(): void {
+    if (this.clapTimer) clearTimeout(this.clapTimer);
+    this.clapTimer = null;
+    this.pendingTaps.set(0);
+    this.sending = false;
   }
 }

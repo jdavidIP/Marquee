@@ -165,8 +165,8 @@ The account comes from the signed-in CLI and the alert address from the command 
 committed; synth refuses to run without `alertEmail`, which receives both the budget and the
 CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows. **Pass the same address
 on every deploy:** a different one replaces the SNS subscription rather than adding to it, and the new
-address has to confirm before any alarm reaches it. `cdk diff` shows this as a subscription destroyed
-and another created — a sign the wrong value was passed.
+address has to confirm (within 3 days, see below) before any alarm reaches it. `cdk diff` shows this as
+a subscription destroyed and another created — a sign the wrong value was passed.
 
 **`MarqueeStack`** — everything the app runs on:
 - **VPC**: 1 AZ, public subnets only, **no NAT gateway** (~$32/mo idle for nothing we need).
@@ -250,7 +250,10 @@ and another created — a sign the wrong value was passed.
     before `cdk deploy` (the stack reads it) and before the API starts in Production (it is a required
     key). The host's `.env` picks it up with the rest of the path.
 - **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
-  Two alarms, both emailing `alertEmail` through an SNS topic (confirm the subscription email once):
+  Two alarms, both emailing `alertEmail` through an SNS topic. **Confirm the subscription email within
+  3 days of the deploy that creates it:** SNS silently deletes an unconfirmed subscription and
+  CloudFormation keeps reporting it as created, so the alarms email nobody (#133). **Detect drift** on the
+  stack in the CloudFormation console shows it — the topic reports `MODIFIED` on `/Subscription`.
   - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
     id, Elastic IP and volumes.
   - CPU credit balance below 20 → about to be throttled to baseline. Under `standard` credits this is
@@ -711,8 +714,9 @@ run from the command line.
   the same sign-in's ID token (`token_use` `id`) answers 401; no token answers 401.
 - [x] **2026-10-07** — `/marquee/prod/Jwt__Key` deleted from SSM once the above held; nothing reads it
   any more; the six parameters left under `/marquee/prod` are the ones listed under *SSM Parameter Store*.
-- [ ] An **expired** confirmation code is refused. Not run: sign-up codes stay valid for 24 hours, so it
-  needs a code left unused until the next day.
+- [x] **2026-10-15** — An **expired** confirmation code is refused: a sign-up code left unused for
+  about 26 hours was entered on the live site and refused with "That code has expired. Send a new one."
+  (the pool's `ExpiredCodeException`, not `CodeMismatchException`). *(operator)*
 
 ### 2a. User pool (#107 — deployed 2026-10-04)
 

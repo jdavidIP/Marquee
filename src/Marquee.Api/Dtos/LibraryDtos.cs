@@ -51,12 +51,12 @@ public sealed record LibraryQuery(
     int PageSize);
 
 /// <summary>
-/// The filter values that are actually worth offering for one user's library: the genres they own
-/// something in, and the years their films actually span.
+/// The filter values the library bar offers: every seeded genre and a fixed year range. The same for
+/// every account, so the bar keeps one shape whatever someone has collected (#140). That means some
+/// picks match nothing; the library's empty state covers that.
 ///
-/// Derived from the library rather than from the reference tables on purpose. A dropdown listing
-/// every genre TMDB knows about would mostly offer filters that return nothing, and hardcoding the
-/// list in the client would let it drift from the seeded rows.
+/// Served from the reference tables rather than hardcoded in the client, so it cannot drift from the
+/// seeded rows. The years stay nullable only so the wire shape is unchanged; both are always set.
 /// </summary>
 public sealed record LibraryFiltersDto(
     IReadOnlyList<GenreDto> Genres,

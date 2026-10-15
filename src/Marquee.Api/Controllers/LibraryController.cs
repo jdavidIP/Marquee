@@ -40,11 +40,12 @@ public class LibraryController(ILibraryService library) : ControllerBase
     }
 
     /// <summary>
-    /// The filter values worth offering for this library — the genres it actually contains and the
-    /// years it actually spans.
+    /// The filter values the library bar offers: every seeded genre and a fixed year range
+    /// (LibraryFilters:StartYear to this year). The same for every account, so the controls never
+    /// move or change between libraries (#140); a pick that matches nothing gets the empty state.
     ///
     /// Served from the API rather than built into the client so the controls cannot drift from the
-    /// seeded reference tables, and so a filter is never offered that would return nothing.
+    /// seeded reference tables.
     /// </summary>
     [HttpGet("filters")]
     public async Task<ActionResult<LibraryFiltersDto>> Filters(CancellationToken ct)
@@ -53,7 +54,7 @@ public class LibraryController(ILibraryService library) : ControllerBase
         if (userId is null)
             return Unauthorized();
 
-        return Ok(await library.GetFiltersAsync(userId.Value, ct));
+        return Ok(await library.GetFiltersAsync(ct));
     }
 
     /// <summary>

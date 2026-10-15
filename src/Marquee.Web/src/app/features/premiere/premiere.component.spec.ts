@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { Observable, of, throwError, Subject } from 'rxjs';
@@ -7,7 +7,7 @@ import { PremiereService } from '../../core/premiere.service';
 import { RealtimeService } from '../../core/realtime.service';
 import { AuthService } from '../../core/auth.service';
 import { AnonymousSessionService } from '../../core/anonymous-session.service';
-import { LobbyDto, PremiereDto, TodayScheduleDto, TodayScheduleSlotDto } from '../../core/models';
+import { ClapResponse, LobbyDto, PremiereDto, TodayScheduleDto, TodayScheduleSlotDto } from '../../core/models';
 
 /**
  * The redesigned Premiere screen's derived state (issue #32, "Neon & chrome, 1958"). No DOM
@@ -70,6 +70,8 @@ describe('PremiereComponent', () => {
 
   // Per-test hooks for the calls the reconnect tests (#95) need to steer; every other test leaves them.
   let getImpl: () => Observable<PremiereDto>;
+  /** One Subject per clap request sent, so a test answers each request itself (#136). */
+  let clapRequests: Subject<ClapResponse>[];
   let getActiveImpl: () => Observable<PremiereDto>;
   let lobbyImpl: () => Observable<LobbyDto>;
   let realtimeFake: {
@@ -84,6 +86,7 @@ describe('PremiereComponent', () => {
     todaySchedule: TodayScheduleDto | null = null,
   ) {
     getImpl = () => of(premiere());
+    clapRequests = [];
     getActiveImpl = () => of(premiere());
     lobbyImpl = () => of(lobby());
     realtimeFake = { reconnected: new Subject<void>(), premiereOpened: new Subject(), connected: signal(true) };
@@ -101,7 +104,11 @@ describe('PremiereComponent', () => {
               todaySchedule ? throwError(() => ({ status: 404 })) : getActiveImpl(),
             getToday: () => of(todaySchedule ?? schedule([])),
             lobby: () => lobbyImpl(),
-            clap: () => of(premiere()),
+            clap: () => {
+              const request = new Subject<ClapResponse>();
+              clapRequests.push(request);
+              return request;
+            },
             get: () => getImpl(),
           },
         },
@@ -238,6 +245,158 @@ describe('PremiereComponent', () => {
     expect(c['clapButtonState']()).toBe('off');
     expect(c['clapButtonLabel']()).toBe('No Premiere live');
   });
+
+  // --- Clap queue (#136) ---
+
+  function clapResponse(overrides: Partial<ClapResponse> = {}): ClapResponse {
+    return {
+      premiereId: 'p1',
+      status: 'Active',
+      totalClaps: 1,
+      threshold: 100,
+      myClaps: 1,
+      myCap: 6,
+      capReached: false,
+      opened: false,
+      movie: null,
+      ...overrides,
+    };
+  }
+
+  function answer(i: number, r: Partial<ClapResponse>): void {
+    clapRequests[i].next(clapResponse(r));
+    clapRequests[i].complete();
+  }
+
+  function fail(i: number, status: number, retryAfter: string | null = null): void {
+    clapRequests[i].error({ status, headers: { get: () => retryAfter } });
+  }
+
+  it('shows every tap at once and sends them one at a time, paced', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    c['clap']();
+    c['clap']();
+    expect(c['myClapsShown']()).toBe(3);
+    expect(clapRequests.length).toBe(1);
+
+    answer(0, { myClaps: 1 });
+    expect(c['myClapsShown']()).toBe(3); // 1 confirmed + 2 still queued
+    tick(299);
+    expect(clapRequests.length).toBe(1);
+    tick(1);
+    expect(clapRequests.length).toBe(2);
+
+    answer(1, { myClaps: 2 });
+    tick(300);
+    answer(2, { myClaps: 3 });
+    tick(300);
+    expect(clapRequests.length).toBe(3);
+    expect(c['myClapsShown']()).toBe(3);
+    expect(c['pendingTaps']()).toBe(0);
+    discardPeriodicTasks();
+  }));
+
+  it('resends a throttled clap after Retry-After without showing an error', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    fail(0, 429, '1');
+    expect(c['error']()).toBeNull();
+    expect(c['myClapsShown']()).toBe(1);
+    tick(999);
+    expect(clapRequests.length).toBe(1);
+    tick(1);
+    expect(clapRequests.length).toBe(2);
+    answer(1, { myClaps: 1 });
+    expect(c['pendingTaps']()).toBe(0);
+    discardPeriodicTasks();
+  }));
+
+  it('waits a second on a 429 whose Retry-After the browser cannot read', fakeAsync(() => {
+    make()['clap']();
+    fail(0, 429);
+    tick(999);
+    expect(clapRequests.length).toBe(1);
+    tick(1);
+    expect(clapRequests.length).toBe(2);
+    discardPeriodicTasks();
+  }));
+
+  it('ignores taps past the cap', fakeAsync(() => {
+    const c = make();
+    c['premiere'].set(premiere({ myCap: 2 }));
+    for (let i = 0; i < 5; i++) c['clap']();
+    expect(c['myClapsShown']()).toBe(2);
+    expect(c['clapButtonState']()).toBe('capped');
+    discardPeriodicTasks();
+  }));
+
+  it('drops the queue and says so when a clap really fails', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    c['clap']();
+    fail(0, 500);
+    expect(c['error']()).toBe('That clap did not register. Try again.');
+    expect(c['myClapsShown']()).toBe(0);
+    tick(1000);
+    expect(clapRequests.length).toBe(1);
+    discardPeriodicTasks();
+  }));
+
+  it('clears a clap error once the Premiere is revealed', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    fail(0, 500);
+    realtimeFake.premiereOpened.next({ premiereId: 'p1', status: 'Opened', totalClaps: 100, contributors: 1, openedAt: null, movie: null });
+    expect(c['error']()).toBeNull();
+    tick(1500); // the reveal's one-off emblem re-fetch
+    discardPeriodicTasks();
+  }));
+
+  it('ignores a late 409 for a clap that was out when the reveal landed', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    realtimeFake.premiereOpened.next({ premiereId: 'p1', status: 'Opened', totalClaps: 100, contributors: 1, openedAt: null, movie: null });
+    fail(0, 409);
+    expect(c['error']()).toBeNull();
+    tick(1500); // the reveal's one-off emblem re-fetch
+    discardPeriodicTasks();
+  }));
+
+  // The server's read already counts the clap still in flight; pendingTaps counts it too.
+  it('does not count an in-flight clap twice when a catch-up refresh lands', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    getImpl = () => of(premiere({ myClaps: 1 }));
+    c['refreshCurrent']();
+    expect(c['myClapsShown']()).toBe(1);
+    answer(0, { myClaps: 1 });
+    expect(c['myClapsShown']()).toBe(1);
+    discardPeriodicTasks();
+  }));
+
+  it('does not count an in-flight clap twice when the fallback poll lands', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    getActiveImpl = () => of(premiere({ myClaps: 1 }));
+    c['load'](false);
+    expect(c['myClapsShown']()).toBe(1);
+    discardPeriodicTasks();
+  }));
+
+  it('drops queued taps and ignores the late reply when a different Premiere loads', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    c['clap']();
+    getActiveImpl = () => of(premiere({ id: 'p2' }));
+    c['load'](false);
+    expect(c['myClapsShown']()).toBe(0);
+    answer(0, { premiereId: 'p1', myClaps: 1 });
+    expect(c['premiere']().myClaps).toBe(0);
+    tick(1000);
+    expect(clapRequests.length).toBe(1);
+    discardPeriodicTasks();
+  }));
 
   // --- Pips ---
 

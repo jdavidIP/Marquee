@@ -65,7 +65,7 @@ export class LibraryComponent implements OnDestroy {
   protected readonly profile = signal<ProfileDto | null>(null);
   protected readonly sendingRequest = signal(false);
 
-  /** Available filter values, as the API reports them for this library. */
+  /** Filter values from the API: every genre and the full year range, the same on every account (#140). */
   protected readonly genres = signal<GenreDto[]>([]);
   protected readonly years = signal<number[]>([]);
 
@@ -315,9 +315,9 @@ export class LibraryComponent implements OnDestroy {
   }
 
   /**
-   * Loaded once per username. The values describe the library as a whole, so narrowing the view
-   * must not narrow the controls — a genre dropdown that lost its other options the moment one was
-   * picked would leave no way back to them.
+   * Loaded once per username. The values are the same for every library (#140), and narrowing the
+   * view never narrows the controls — a genre dropdown that lost its other options the moment one
+   * was picked would leave no way back to them.
    */
   private loadFilters(): void {
     const username = this.username();
