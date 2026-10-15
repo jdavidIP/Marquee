@@ -17,6 +17,10 @@
   flex-direction: column;
   gap: 20px;
 }
+/* "Edit bio" sat in this column and stretched across it; it sizes to its label (#137). */
+.profile-main > .action {
+  align-self: flex-start;
+}
 
 .head {
   display: flex;
@@ -59,7 +63,7 @@
 .range-caption {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .bio {
@@ -71,7 +75,7 @@
   max-width: 520px;
 }
 .bio--empty {
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .editor {
@@ -114,9 +118,10 @@ a.action {
   color: var(--ink-cream);
   padding: 11px 16px;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   white-space: nowrap;
   text-decoration: none;
   display: inline-block;
@@ -162,7 +167,7 @@ a.action {
 .next-category__range {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--muted-3);
+  color: var(--muted-2);
   white-space: nowrap;
 }
 
@@ -193,7 +198,7 @@ a.action {
   color: var(--ink-steel);
 }
 .activity-strip__label .muted {
-  color: var(--muted-3);
+  color: var(--muted-2);
   text-transform: none;
   letter-spacing: normal;
 }
@@ -224,7 +229,7 @@ a.action {
   padding: 8px;
   text-align: center;
   background-image: repeating-linear-gradient(135deg, #1b2136 0 10px, #161c2e 10px 20px);
-  color: var(--muted-3);
+  color: var(--muted-2);
   font-family: var(--font-body);
   font-size: 10px;
 }
@@ -243,7 +248,7 @@ a.action {
 .activity-card__date {
   font-family: var(--font-body);
   font-size: 10px;
-  color: var(--muted-3);
+  color: var(--muted-2);
 }
 
 .full-width-block {
