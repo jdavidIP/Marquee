@@ -6,6 +6,7 @@ export const environment = {
   scopeId: 'global',
   fallbackPollIntervalMs: 10000,
   lobbyPollIntervalMs: 4000,
+  // Must stay above the API's ClapGuards:MinIntervalMs (250) — see environment.ts (#136).
   clapPacingMs: 300,
   // MarqueeAuthStack's pool (DEPLOYMENT.md §2a). Written here rather than injected at build time:
   // neither value is secret — the client id is public by design — and the pool is retained, so they

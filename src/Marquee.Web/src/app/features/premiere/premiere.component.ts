@@ -555,7 +555,15 @@ export class PremiereComponent implements OnInit, OnDestroy {
   private load(initial: boolean): void {
     this.premieres.getActive().subscribe({
       next: (p) => {
-        this.premiere.set(p);
+        const cur = this.premiere();
+        if (cur?.id !== p.id) {
+          // A different Premiere now: queued taps were for the old one and must not go to this one.
+          this.resetClapQueue();
+          this.premiere.set(p);
+        } else {
+          // Same one: as in refreshCurrent, a clap in flight sets myClaps itself (#136).
+          this.premiere.set(this.sending ? { ...p, myClaps: cur.myClaps } : p);
+        }
         this.todaySchedule.set(null);
         // A banner the fallback poll raised while the connection was down is stale now.
         this.error.set(null);
@@ -625,7 +633,9 @@ export class PremiereComponent implements OnInit, OnDestroy {
               ? {
                   ...fresh,
                   totalClaps: Math.max(c.totalClaps, fresh.totalClaps),
-                  myClaps: Math.max(c.myClaps, fresh.myClaps),
+                  // While a clap is out this read may already count it, and pendingTaps still
+                  // does too — that clap's own response sets myClaps instead (#136).
+                  myClaps: this.sending ? c.myClaps : Math.max(c.myClaps, fresh.myClaps),
                   contributors: Math.max(c.contributors, fresh.contributors),
                 }
               : c,

@@ -353,6 +353,41 @@ describe('PremiereComponent', () => {
     discardPeriodicTasks();
   }));
 
+  // The server's read already counts the clap still in flight; pendingTaps counts it too.
+  it('does not count an in-flight clap twice when a catch-up refresh lands', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    getImpl = () => of(premiere({ myClaps: 1 }));
+    c['refreshCurrent']();
+    expect(c['myClapsShown']()).toBe(1);
+    answer(0, { myClaps: 1 });
+    expect(c['myClapsShown']()).toBe(1);
+    discardPeriodicTasks();
+  }));
+
+  it('does not count an in-flight clap twice when the fallback poll lands', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    getActiveImpl = () => of(premiere({ myClaps: 1 }));
+    c['load'](false);
+    expect(c['myClapsShown']()).toBe(1);
+    discardPeriodicTasks();
+  }));
+
+  it('drops queued taps and ignores the late reply when a different Premiere loads', fakeAsync(() => {
+    const c = make();
+    c['clap']();
+    c['clap']();
+    getActiveImpl = () => of(premiere({ id: 'p2' }));
+    c['load'](false);
+    expect(c['myClapsShown']()).toBe(0);
+    answer(0, { premiereId: 'p1', myClaps: 1 });
+    expect(c['premiere']().myClaps).toBe(0);
+    tick(1000);
+    expect(clapRequests.length).toBe(1);
+    discardPeriodicTasks();
+  }));
+
   // --- Pips ---
 
   it('fills one pip per clap spent, up to the cap', () => {
