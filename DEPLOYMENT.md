@@ -821,9 +821,10 @@ and Lambda free tiers).
 
 - **Lambda `unconfirmed-user-cleanup`** (Node.js 22, 128 MB, 1 min, logs kept one month), code in
   `infra/lambda/unconfirmed-cleanup/`. It lists `UNCONFIRMED` users with `ListUsers` and deletes those
-  older than `MIN_AGE_DAYS` (7) with `AdminDeleteUser`. Its role holds only those two actions, on the
-  pool ARN. `CONFIRMED`, `FORCE_CHANGE_PASSWORD` and newer users are never touched (unit-tested in
-  `select.test.mjs`, which CI runs with `node --test "lambda/**/*.test.mjs"`).
+  older than `MIN_AGE_DAYS` (7) with `AdminDeleteUser`. Its role holds only those two Cognito actions,
+  on the pool ARN (plus the standard basic-execution policy for writing its logs). `CONFIRMED`,
+  `FORCE_CHANGE_PASSWORD` and newer users are never touched (unit-tested in `select.test.mjs`, which CI
+  runs with `node --test "lambda/**/*.test.mjs"`).
 - **Only an explicit `{"dryRun": false}` deletes.** Any other input — `{}`, a misspelled key, a console
   test with no body — is a dry run that reports what it would delete and deletes nothing. The rule was
   inverted after a console test with a misspelled key ran for real; the safe failure is now a nightly run
@@ -850,8 +851,11 @@ Checked live:
 - [x] **2026-10-14** — Alarm forced to `ALARM` (19:33 Toronto): the SNS action succeeded and the email
   arrived. *(operator)*
 - [ ] **On or after 2026-10-21, ~17:00 Toronto** — Live run: the unconfirmed `test_throw` (created
-  2026-10-14 20:54 UTC) is selected by a dry run and deleted by a real one (`deleted: 1`); `admin` and
-  `j_david_ip` are still in the pool.
+  2026-10-14 20:54 UTC, so past 7 days from 16:54 Toronto on 2026-10-21) is deleted (`deleted: 1`);
+  `admin` and `j_david_ip` are still in the pool. Two ways it can happen, and the record says which:
+  a manual dry run that selects it and then a manual `{"dryRun": false}` run, between 16:54 on
+  2026-10-21 and 04:00 on 2026-10-22; or, if nobody runs it first, the scheduled 04:00 run on
+  2026-10-22, read back from its CloudWatch log line and the Cognito user list.
 
 ---
 
