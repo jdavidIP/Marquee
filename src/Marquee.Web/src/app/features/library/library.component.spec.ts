@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
@@ -24,6 +24,8 @@ import {
  */
 describe('LibraryComponent', () => {
   let mineSpy: jasmine.Spy;
+  /** The fixture behind the latest make(), for the few tests that check what actually renders. */
+  let lastFixture: ComponentFixture<LibraryComponent>;
 
   function entry(title: string, movieId = title): LibraryEntryDto {
     return {
@@ -119,6 +121,7 @@ describe('LibraryComponent', () => {
 
     const fixture = TestBed.createComponent(LibraryComponent);
     fixture.detectChanges();
+    lastFixture = fixture;
     return fixture.componentInstance as unknown as Record<string, any>;
   }
 
@@ -207,6 +210,32 @@ describe('LibraryComponent', () => {
 
     c['onSortChange']('ReleaseYear');
     expect(c['descending']()).toBe(true);
+  });
+
+  // #140: the bar keeps one shape on every account, whatever the filter values turn out to be.
+  it('always renders the genre and year controls, even with no filter values to offer', () => {
+    make(page([]), { genres: [], minYear: null, maxYear: null });
+    const el = lastFixture.nativeElement as HTMLElement;
+
+    for (const id of ['library-genre', 'library-min-year', 'library-max-year']) {
+      expect(el.querySelector(`#${id}`)).withContext(id).not.toBeNull();
+    }
+  });
+
+  it('keeps Clear filters in place, disabled until something narrows the list', () => {
+    const c = make();
+    const clear = () => (lastFixture.nativeElement as HTMLElement).querySelector('button.clear') as HTMLButtonElement;
+
+    expect(clear()).not.toBeNull();
+    expect(clear().disabled).toBe(true);
+
+    c['onGenreChange']('18');
+    lastFixture.detectChanges();
+    expect(clear().disabled).toBe(false);
+
+    c['clearFilters']();
+    lastFixture.detectChanges();
+    expect(clear().disabled).toBe(true);
   });
 
   it('reports an empty result as filtered out rather than as an empty library', () => {
