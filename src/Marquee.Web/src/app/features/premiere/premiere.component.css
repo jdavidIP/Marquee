@@ -776,7 +776,9 @@
 }
 .last-showing-action {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-steel);
   border: 1px solid var(--border);

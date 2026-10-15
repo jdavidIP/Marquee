@@ -529,8 +529,9 @@ h2 {
 
 .pager__button {
   font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   background: var(--panel);
   border: 1px solid var(--border);
