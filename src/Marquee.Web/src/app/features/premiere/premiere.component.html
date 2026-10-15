@@ -342,10 +342,7 @@
               >Create account</a
             >
           } @else if (premiere()!.myEmblemTier; as tier) {
-            <div class="emblem-badge">
-              <span class="emblem-dot"></span>
-              <span>Emblem tier {{ tier }}</span>
-            </div>
+            <app-emblem-ticket class="reveal-ticket" [tier]="tier" />
           }
         </div>
         @if (auth.isLoggedIn() && premiere()!.myClaps > 0) {
