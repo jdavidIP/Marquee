@@ -493,27 +493,10 @@
   font-size: 13px;
   color: #93a0b8;
 }
-.emblem-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid var(--accent-amber);
-  padding: 9px 14px;
-  white-space: nowrap;
-}
-.emblem-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--accent-amber);
-  box-shadow: 0 0 10px var(--accent-amber);
-}
-.emblem-badge span:last-child {
-  font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent-amber);
+/* Same width as the last-showing stub, so the ticket reads identically on both screens. */
+.reveal-ticket {
+  width: 210px;
+  flex: none;
 }
 
 .createAccount {
