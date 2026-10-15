@@ -1,11 +1,11 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { AdminService } from '../../core/api/admin.service';
-import { AuthService } from '../../core/auth/auth.service';
-import { apiError } from '../../core/api/http-error';
-import { AdminUserDto } from '../../core/models';
-import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
+import { AdminService } from '../../../core/api/admin.service';
+import { AuthService } from '../../../core/auth/auth.service';
+import { apiError } from '../../../core/api/http-error';
+import { AdminUserDto } from '../../../core/models';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -15,7 +15,7 @@ const SEARCH_DEBOUNCE_MS = 300;
   standalone: true,
   imports: [CommonModule, ConfirmDialogComponent],
   templateUrl: './admin-users.component.html',
-  styleUrls: ['./admin-tables.css', './admin-users.component.css'],
+  styleUrls: ['../admin-tables.css', './admin-users.component.css'],
 })
 export class AdminUsersComponent {
   private readonly admin = inject(AdminService);

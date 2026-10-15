@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AdminService } from '../../core/api/admin.service';
-import { AdminMetricsDto } from '../../core/models';
+import { AdminService } from '../../../core/api/admin.service';
+import { AdminMetricsDto } from '../../../core/models';
 
 /**
  * Live operational view: queue depth, connected watchers, clap rate (Iteration 6).

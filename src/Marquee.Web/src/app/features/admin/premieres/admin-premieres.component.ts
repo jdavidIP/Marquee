@@ -2,11 +2,11 @@ import { Component, computed, effect, inject, input, signal, untracked } from '@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AdminService } from '../../core/api/admin.service';
-import { apiError } from '../../core/api/http-error';
-import { AdminPremiereDto, PremiereEditOptionsDto, PremiereStatus } from '../../core/models';
-import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
-import { AdminMoviePickerComponent } from './admin-movie-picker.component';
+import { AdminService } from '../../../core/api/admin.service';
+import { apiError } from '../../../core/api/http-error';
+import { AdminPremiereDto, PremiereEditOptionsDto, PremiereStatus } from '../../../core/models';
+import { ConfirmDialogComponent } from '../../../shared/confirm-dialog.component';
+import { AdminMoviePickerComponent } from '../movie-picker/admin-movie-picker.component';
 
 const PAGE_SIZE = 25;
 
@@ -34,7 +34,7 @@ const LATE_START_THRESHOLD_MINUTES = 5;
   standalone: true,
   imports: [CommonModule, FormsModule, ConfirmDialogComponent, AdminMoviePickerComponent],
   templateUrl: './admin-premieres.component.html',
-  styleUrls: ['./admin-tables.css', './admin-premieres.component.css'],
+  styleUrls: ['../admin-tables.css', './admin-premieres.component.css'],
 })
 export class AdminPremieresComponent {
   private readonly admin = inject(AdminService);
