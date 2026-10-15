@@ -279,7 +279,7 @@
               <span class="pip-label">
                 Your claps
                 @if (pipsScaled()) {
-                  <span class="pip-count">· {{ premiere()!.myClaps }} / {{ premiere()!.myCap }}</span>
+                  <span class="pip-count">· {{ myClapsShown() }} / {{ premiere()!.myCap }}</span>
                 }
               </span>
               <div class="pip-row" role="img" [attr.aria-label]="pipsLabel()">
@@ -298,7 +298,7 @@
               [class.clap-btn--capped]="clapButtonState() === 'capped'"
               [class.clap-btn--off]="clapButtonState() === 'off'"
               (click)="clap()"
-              [disabled]="clapButtonState() !== 'on' || clapping()"
+              [disabled]="clapButtonState() !== 'on'"
             >
               {{ clapButtonLabel() }}
             </button>
