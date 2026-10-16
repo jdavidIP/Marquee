@@ -1,8 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { authError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { authError } from '../../core/auth/cognito';
 
 type ConfirmStatus = 'form' | 'confirmed';
 

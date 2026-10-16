@@ -2,12 +2,12 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Observable, forkJoin } from 'rxjs';
-import { FriendsService } from '../../core/friends.service';
-import { UsersService } from '../../core/users.service';
-import { AuthService } from '../../core/auth.service';
-import { apiError } from '../../core/http-error';
+import { FriendsService } from '../../core/api/friends.service';
+import { UsersService } from '../../core/api/users.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { apiError } from '../../core/api/http-error';
 import { FriendDto, FriendRequestDto, UserSearchResultDto } from '../../core/models';
-import { initialsOf, monogramColor } from '../../core/avatar';
+import { initialsOf, monogramColor } from '../../core/util/avatar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 

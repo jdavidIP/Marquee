@@ -1,8 +1,8 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '../../core/auth.service';
-import { CognitoError, authError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { CognitoError, authError } from '../../core/auth/cognito';
 import { PasswordRulesDto } from '../../core/models';
 
 @Component({

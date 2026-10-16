@@ -208,8 +208,9 @@ the developer's **local Postgres** instead of the container — and passed. A gr
 
 Fixed by supplying settings as environment variables, which are in configuration from the first line
 of `Program.cs`. `FixtureSanityTests` now asserts the resolved connection string really is the
-container's and that the database holds only the seeded admin, so a regression fails loudly instead
-of passing against real data.
+container's and that no row in the database predates the test run (a real database always holds older
+rows), so a regression fails loudly instead of passing against real data. It checks by age rather than
+by count so it holds whatever order the test classes run in (#146).
 
 ---
 

@@ -1,13 +1,13 @@
 import { Component, OnDestroy, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LibraryService } from '../../core/library.service';
-import { UsersService } from '../../core/users.service';
-import { FriendsService } from '../../core/friends.service';
-import { apiError, isForbidden } from '../../core/http-error';
+import { LibraryService } from '../../core/api/library.service';
+import { UsersService } from '../../core/api/users.service';
+import { FriendsService } from '../../core/api/friends.service';
+import { apiError, isForbidden } from '../../core/api/http-error';
 import { GenreDto, LibraryEntryDto, LibraryQuery, LibrarySort, ProfileDto, isFullProfile } from '../../core/models';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
-import { initialsOf } from '../../core/avatar';
+import { initialsOf } from '../../core/util/avatar';
 
 const SEARCH_DEBOUNCE_MS = 300;
 

@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
-import { requirePermission } from '../../core/admin.guard';
-import { Permissions } from '../../core/auth.service';
-import { AdminShellComponent } from './admin-shell.component';
+import { requirePermission } from '../../core/auth/admin.guard';
+import { Permissions } from '../../core/auth/auth.service';
+import { AdminShellComponent } from './shell/admin-shell.component';
 
 /**
  * The operations area. The shell is loaded eagerly with this chunk — it is a heading and a tab bar —
@@ -18,18 +18,18 @@ export const ADMIN_ROUTES: Routes = [
         path: 'overview',
         canActivate: [requirePermission(Permissions.ViewUsers)],
         loadComponent: () =>
-          import('./admin-dashboard.component').then((m) => m.AdminDashboardComponent),
+          import('./dashboard/admin-dashboard.component').then((m) => m.AdminDashboardComponent),
       },
       {
         path: 'users',
         canActivate: [requirePermission(Permissions.ViewUsers)],
-        loadComponent: () => import('./admin-users.component').then((m) => m.AdminUsersComponent),
+        loadComponent: () => import('./users/admin-users.component').then((m) => m.AdminUsersComponent),
       },
       {
         path: 'premieres',
         canActivate: [requirePermission(Permissions.ManagePremieres)],
         loadComponent: () =>
-          import('./admin-premieres.component').then((m) => m.AdminPremieresComponent),
+          import('./premieres/admin-premieres.component').then((m) => m.AdminPremieresComponent),
       },
       // An unknown operations path lands on the overview rather than bouncing the admin out of the
       // area entirely, which the app-level wildcard would do.

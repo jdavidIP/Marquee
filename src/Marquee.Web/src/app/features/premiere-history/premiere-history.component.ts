@@ -10,10 +10,10 @@ import {
 } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { PremiereHistoryService } from '../../core/premiere-history.service';
-import { apiError, isForbidden } from '../../core/http-error';
+import { PremiereHistoryService } from '../../core/api/premiere-history.service';
+import { apiError, isForbidden } from '../../core/api/http-error';
 import { PremiereHistoryEntryDto, PremiereHistorySort } from '../../core/models';
-import { AuthService } from '../../core/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;

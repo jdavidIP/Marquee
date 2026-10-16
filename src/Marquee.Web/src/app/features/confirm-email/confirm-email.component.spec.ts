@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
 import { ConfirmEmailComponent } from './confirm-email.component';
-import { AuthService } from '../../core/auth.service';
-import { CognitoError } from '../../core/cognito';
+import { AuthService } from '../../core/auth/auth.service';
+import { CognitoError } from '../../core/auth/cognito';
 
 describe('ConfirmEmailComponent', () => {
   let confirmSpy: jasmine.Spy;
