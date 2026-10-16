@@ -145,27 +145,14 @@ stacks:
 - The deploy role is created with **no permissions**. Each stack that owns a resource grants the role
   access to that resource's ARN — never a broad `*`.
 
-Running it, signed in with `aws login` and with `aws configure set region ca-central-1` done once, from
-`infra/` in Git Bash:
-
-```
-eval "$(aws configure export-credentials --format env)"   # per shell; see below
-cdk bootstrap aws://<account-id>/ca-central-1              # once per account and region
-cdk deploy MarqueeCiStack -c alertEmail=<address>
-cdk deploy MarqueeStack -c alertEmail=<address>
-```
-
-The CDK CLI cannot yet read the `login_session` credentials `aws login` stores, so the first line hands
-it short-lived credentials through environment variables for that shell. In PowerShell the equivalent
-is `aws configure export-credentials --format powershell | Out-String | Invoke-Expression`. Claude
-Code's `!` prompt cannot answer `cdk deploy`'s approval question: review `cdk diff` first, then pass
-`--require-approval never`.
+Deploying the stacks by hand, and the CLI credentials CDK needs: [runbook](docs/deployment/runbook.md#cdk-credentials-diff-and-deploy).
 
 The account comes from the signed-in CLI and the alert address from the command line, so neither is
 committed; synth refuses to run without `alertEmail`, which receives both the budget and the
 CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows. **Pass the same address
 on every deploy:** a different one replaces the SNS subscription rather than adding to it, and the new
-address has to confirm (within 3 days, see below) before any alarm reaches it. `cdk diff` shows this as
+address has to confirm (within 3 days, see the
+[runbook](docs/deployment/runbook.md#confirm-an-alarm-subscription)) before any alarm reaches it. `cdk diff` shows this as
 a subscription destroyed and another created — a sign the wrong value was passed.
 
 **`MarqueeStack`** — everything the app runs on:
@@ -176,8 +163,9 @@ a subscription destroyed and another created — a sign the wrong value was pass
     throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
     the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
-    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a, and the
-    Cutover checklist): re-check it after any AMI change or instance replacement.
+    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a): re-check
+    it after any AMI change or instance replacement
+    ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)).
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
   - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
     than OOM-killing a container.
@@ -232,8 +220,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
   - Outputs: `SiteUrl`, `SiteBucket`, `DistributionId`.
 - **SSM Parameter Store** (standard tier, free): `SecureString`s under `/marquee/prod/`, created by
   hand once (CDK should not hold secret values), named after the `.env` key each becomes. **Use only
-  letters and digits in every value** (`openssl rand -hex 24` for the random ones): the manual deploy
-  below writes them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
+  letters and digits in every value** (`openssl rand -hex 24` for the random ones): `deploy.sh` and the
+  manual deploy (runbook) write them into `.env` unquoted, and Compose treats `$` as interpolation and ` #` as a comment
   there, so a value containing either would be silently corrupted.
   - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` — random; the app never sees anything else.
   - `AnonymousSession__SigningKey` — random, **at least 32 characters** (the API checks this at startup
@@ -252,8 +240,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
 - **CloudWatch**: one log group, `/marquee/prod`, with a stream per container, 14-day retention.
   Two alarms, both emailing `alertEmail` through an SNS topic. **Confirm the subscription email within
   3 days of the deploy that creates it:** SNS silently deletes an unconfirmed subscription and
-  CloudFormation keeps reporting it as created, so the alarms email nobody (#133). **Detect drift** on the
-  stack in the CloudFormation console shows it — the topic reports `MODIFIED` on `/Subscription`.
+  CloudFormation keeps reporting it as created, so the alarms email nobody (#133). How to confirm it and
+  how to spot a lost one: [runbook](docs/deployment/runbook.md#confirm-an-alarm-subscription).
   - EC2 system status check failed → the instance is **recovered** onto healthy hardware, keeping its
     id, Elastic IP and volumes.
   - CPU credit balance below 20 → about to be throttled to baseline. Under `standard` credits this is
@@ -266,77 +254,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
 
 ### 1b-ops. Manual deploy (fallback)
 
-The pipeline in 1c is the normal path. This is what it automates, for when GitHub Actions is
-unavailable or a step needs doing by hand. From `infra/` with the CLI signed in:
-
-```
-aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
-```
-
-gives `HostInstanceId`, `HostPublicDns`, `ArtifactsBucket`, `SiteUrl`, `SiteBucket` and
-`DistributionId`. Then, from the repository root:
-
-```
-TAG=$(git rev-parse --short HEAD)
-REGISTRY=<account-id>.dkr.ecr.ca-central-1.amazonaws.com   # aws sts get-caller-identity for the id
-aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
-docker build --target api -t $REGISTRY/marquee-api:$TAG . && docker push $REGISTRY/marquee-api:$TAG
-docker build --target worker -t $REGISTRY/marquee-worker:$TAG . && docker push $REGISTRY/marquee-worker:$TAG
-aws s3 cp docker-compose.prod.yml s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml
-```
-
-Then on the host — no SSH, everything through SSM Run Command (`AWS-RunShellScript`) or, for a shell,
-`aws ssm start-session --target <HostInstanceId>` (needs the Session Manager plugin locally):
-
-```bash
-TAG=<the tag from above>
-REGISTRY=<the same registry host>
-mkdir -p /opt/marquee && cd /opt/marquee
-aws s3 cp s3://<ArtifactsBucket>/$TAG/docker-compose.prod.yml .
-umask 077
-aws ssm get-parameters-by-path --path /marquee/prod --with-decryption --query 'Parameters[].[Name,Value]' \
-  --output text | while IFS=$'\t' read -r name value; do echo "$(basename "$name")=$value"; done > .env
-echo "REGISTRY=$REGISTRY" >> .env
-echo "IMAGE_TAG=$TAG" >> .env
-echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
-echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
-chmod 600 .env
-aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d --wait
-docker inspect --format '{{.State.Health.Status}}' marquee-prod-api-1
-```
-
-The `.env` file is written `600`, owned by root; nothing in it is ever echoed back through SSM output.
-`curl http://localhost/...` on the host returns 403 for every path, `/health` included: it lacks the
-origin header, and through Docker's port mapping it does not arrive from loopback inside the container.
-That is the check working — read health from Docker (`docker inspect` above), which runs the
-container's own in-container healthcheck.
-
-Then the frontend, from `src/Marquee.Web` locally. Only `index.html` and `favicon.ico` are unhashed;
-everything else is content-hashed and can be cached for good:
-
-```
-npx ng build --configuration production
-cd dist/marquee-web/browser
-aws s3 sync . s3://<SiteBucket> --delete --exclude index.html --exclude favicon.ico \
-  --cache-control "public,max-age=31536000,immutable"
-aws s3 cp index.html s3://<SiteBucket>/index.html --cache-control "no-cache"
-aws s3 cp favicon.ico s3://<SiteBucket>/favicon.ico --cache-control "public,max-age=86400"
-aws cloudfront create-invalidation --distribution-id <DistributionId> --paths "/index.html"
-```
-
-From Git Bash on Windows, prefix the invalidation with `MSYS_NO_PATHCONV=1`, or `/index.html` is
-rewritten into a Windows path and rejected as invalid.
-
-**Rotating the origin secret.** CloudFront and the host each hold a copy, updated separately, so every
-`/api` and `/hubs` request gets 403 between the two steps — minutes, not seconds, because the
-distribution change takes a few minutes to propagate. Do it when nobody is on:
-
-1. `aws ssm put-parameter --name /marquee/prod/OriginVerify__Secret --type String --overwrite --value "$(openssl rand -hex 32)"`
-2. `cdk deploy MarqueeStack` — CloudFront starts sending the new value.
-3. Redeploy the running tag so the host rewrites `.env` from SSM: `gh workflow run deploy.yml -f
-   tag=<running tag>` (the host's `/opt/marquee/last-healthy-tag`).
+The manual deploy and the origin-secret rotation are in the
+[runbook](docs/deployment/runbook.md#manual-deploy-fallback).
 
 ### 1c. Deploy pipeline (GitHub Actions, no long-lived AWS keys)
 
@@ -365,26 +284,9 @@ tests but must never interrupt a deploy). Deploys share a concurrency group and 
 sync` with the cache headers from 1b-ops → CloudFront invalidation of `/index.html`. A failed backend
 therefore never ships a frontend ahead of its API.
 
-**Rollback** is the same workflow run by hand with an existing tag — backend only, no build:
-
-```
-gh workflow run deploy.yml -f tag=<last healthy tag>
-```
-
-The tag is validated against `[A-Za-z0-9._-]` before it reaches the host's shell. The frontend is left
-alone: a backend failure stops before it, so it still matches the last healthy tag. Single instance,
-so a failed deploy means downtime until the rollback finishes — accepted for phase 1.
-
-A tag stays deployable only while its pieces exist: ECR keeps the **last 10 images** per repository and
-the artifacts bucket expires objects after **30 days**, so roll back promptly — the last healthy tag
-is normally the previous deploy, well inside both. Tags from before the pipeline (no `deploy.sh` in
-the bucket) cannot be redeployed this way; use 1b-ops.
-
-**The phase 2 cutover (#113) cannot be rolled back this way.** Its migration (`RemovePasswordAuth`) drops
-`users.PasswordHash`, which every earlier image still requires, and those images also need the old
-`Jwt__Key`. A failed cutover is undone by restoring the data volume from a snapshot taken immediately
-before the cutover deploy (the daily 08:00 UTC one can be a day old) and then redeploying the old tag.
-Rolling back between tags built after the cutover works as above.
+**Rollback** is the same workflow run by hand with an existing tag, backend only: see the
+[runbook](docs/deployment/runbook.md#rollback), including why the phase 2 cutover cannot be rolled
+back that way.
 
 A failed deploy prints only container states to the Actions log, never log lines — the repository is
 public, and so are its workflow logs. The containers' logs are in CloudWatch, log group
@@ -396,108 +298,7 @@ Automating `cdk deploy` is a later step.
 
 ### 1d. Verification
 
-Entries are dated in Toronto time (the audience's day, and the scheduler's); clock times inside an
-entry say which zone they are in.
-
-- [x] **2026-09-28** — `docker compose -f docker-compose.prod.yml up -d --wait` on the host: all five
-  containers reach `healthy`/running, `/health/ready` returns 200, and the worker's MassTransit
-  consumers register against RabbitMQ with no errors.
-- [x] **2026-09-28** — Reboot survival: wrote a marker row into Postgres, `aws ec2 reboot-instances`,
-  confirmed via `uptime -s` that the host actually rebooted (not just SSM reconnecting), then confirmed
-  the data volume and swap remounted from `/etc/fstab`, Docker and all five containers restarted on
-  their own (`restart: unless-stopped` survives a daemon restart), `/health/ready` returned 200 again,
-  and the marker row was still there with its original timestamp.
-- [x] **2026-09-28** — Nothing reachable inbound except from CloudFront: direct TCP connection attempts
-  to the host's public DNS name on ports 80, 22, 5432, 6379 and 15672, run from outside AWS, all got no
-  response.
-- [x] **2026-09-29** — Snapshot restore: created a scratch gp3 volume from the first DLM snapshot of
-  the data volume, attached it to the host and mounted it read-only (`ro,nouuid,norecovery`, since the
-  XFS clone shares the live volume's UUID). All three named volumes were present, and `pg_controldata`
-  run on the restored Postgres directory read it cleanly and returned the same database system
-  identifier as the live cluster. Its cluster state was `in production`, which is expected for a
-  crash-consistent snapshot, and Postgres replays WAL for that on start. Unmounted, detached and
-  deleted the scratch volume afterwards.
-- [x] **2026-09-29** — CloudFront (#76), at `SiteUrl` with the host on the origin-checking image:
-  - The app loads, and refreshing deep links serves the SPA: `/`, `/library`, `/u/someone/friends` and
-    `/u/john.doe` (a username with a dot) all return `index.html` with a 200.
-  - An unknown `/api/...` path returns the API's own 404, not `index.html`.
-  - `index.html` is served `Cache-Control: no-cache`; hashed bundles `max-age=31536000, immutable`.
-  - SignalR over **WebSockets** through CloudFront: in a browser on the site, negotiate offered
-    WebSockets, a `wss://` connection opened with the connection token, and the server answered the
-    JSON protocol handshake with `{}`. The app's own hub client made no long-polling or SSE requests.
-  - The host is unreachable directly: a direct request to port 80 times out (security group). On the
-    host itself, requests without the origin header get 403 — `/health/ready` included, since through
-    Docker's port mapping it does not arrive from loopback — while the in-container healthcheck gets
-    200 and Docker reports the API `healthy`. Through CloudFront the same `/api` request gets through,
-    including when the viewer sends its own `X-Origin-Verify` (overwritten by CloudFront). `/health`
-    is not routed to the API at all: through CloudFront it is just another SPA path.
-  - `/u/bob.js` and `/u/x.json` — usernames ending in a static-file extension — also serve the SPA.
-- [x] **2026-09-29** — `deploy.sh` (#77) run for real on the host through SSM, before merge, with the
-  tag already running (`8df159c`): artifacts fetched, `.env` rewritten (still 600/root, no `.env.new`
-  left), images pulled, `up -d --wait` healthy, `last-healthy-tag` written. A no-op as intended — no
-  container was recreated.
-- [x] **2026-09-29** — Pipeline (#77): merging PR #92 (`b14c689`) deployed backend and frontend with no
-  manual step. CI passed on `main`, Deploy started from it on its own, both jobs passed on the first
-  run, and the host came up on `b14c689` with `last-healthy-tag` recorded.
-- [x] **2026-09-29** — Pipeline (#77): a deliberately unhealthy image fails the workflow at the health
-  check, and redeploying the last healthy tag restores service. The worker image, pushed as
-  `marquee-api:unhealthy-test`, never answers HTTP. `gh workflow run deploy.yml -f tag=unhealthy-test`
-  failed at the SSM step (`Error dependency api failed to start`), printed the last healthy tag and
-  the rollback command, listed the API as `unhealthy`, printed no log lines, and skipped the frontend.
-  `/api` through CloudFront returned 504 meanwhile. `-f tag=b14c689` then passed and the site and API
-  returned 200. The test images and artifacts were deleted afterwards.
-- [x] **2026-09-29** — Pipeline (#77): the repository holds no AWS credentials. No access-key-shaped
-  string in any commit's tree, no secret-key assignments, no GitHub repository secrets; the only
-  setting is the role ARN variable.
-- [x] **2026-09-29** — Phase 1 gate (#78): a restored backup **starts**. The data-volume snapshot
-  restored into a scratch volume, mounted read-write on the host, and a throwaway `postgres:16`
-  (no network) started on it: it reported the unclean shutdown, replayed WAL in milliseconds and
-  accepted connections. Its contents matched the live database row for row (10 Premieres, 1 user,
-  10 movies, same last scheduled Premiere). Container, mount and volume removed afterwards.
-- [x] **2026-09-29** — Phase 1 gate (#78): the rate limiter sees distinct client IPs, checked by
-  behaviour rather than by logging IPs (an IP is personal data, and nothing else needs it logged).
-  One IP exhausted `SessionIssue` (10 per 5 minutes: ten 200s, then 429s at 23:55:30 UTC); a phone on
-  mobile data — another IP, same CloudFront — was issued a session at 23:57:25; the first IP was still
-  refused at 23:58:04. **Read the result from the request log** (`/marquee/prod`, filter
-  `sessions/anonymous`), not from the page: the SPA deliberately hides a refused session and renders
-  normally without one, and it skips the call entirely when it already holds a session.
-- [x] **2026-09-29** — Phase 1 gate (#78): the schedule runs in Toronto time. The day's four
-  Premieres fell at 09:25, 14:56, 18:00 and 20:51 EDT — inside 07:00–23:00, gaps 5h31/3h04/2h51, all
-  over the 2-hour minimum — and the 20:51 slot (`00:51Z` the next UTC day) is listed under the local
-  day.
-- [x] **2026-09-29** — Phase 1 gate (#78): k6 against the CloudFront URL (`capacity.js`), inside a
-  deliberate window with `RateLimiting__Enabled=false` set in SSM and redeployed — every k6 request
-  comes from one IP, so with limits on it would have measured the limiter. The parameter was deleted
-  and redeployed afterwards, and 429s confirmed back (ten 200s, then 429). Results replace the estimate
-  in "Measured capacity" below.
-- [x] **2026-09-29** — Phase 1 gate (#78): budget. Free plan credits **$159.58** remaining, plan ends
-  **2027-03-24** (`aws freetier get-account-plan-state`). Cost Explorer cannot forecast yet (too little
-  history), so the answer is a range: the credits outlast the plan (~5.8 months away) only at
-  **≤ ~$27/month**. At the table's ~$25 they last ~6.4 months; at its ~$30, ~5.3 months — running
-  out around early March. The first days' actual rate sits at the low end, but that is not yet
-  proof: **recheck once Cost Explorer has a month of history** (it can then forecast).
-- [x] **2026-09-29** — Phase 1 gate (#78): a real Premiere (20:51 EDT, threshold 48) clapped from
-  several browsers through CloudFront — an admin browser, a scripted anonymous browser and a tester's
-  phone. Counts moved live between them (21 on every screen without a refresh), over WebSockets: the
-  scripted browser's only hub HTTP request was the negotiate, no long-polling or SSE.
-- [x] **2026-09-29** — Phase 1 gate (#78): reboot mid-Premiere. **Reboot 1**, while Active at 21 of
-  48: `uptime -s` confirmed a real reboot (00:53:39 UTC), the site was back in ~40 s, every container
-  restarted on its own, and the Premiere came back Active with the same 21 claps, 3 contributors,
-  `ExpiresAt` and day schedule (Redis AOF + Postgres). **Reboot 2**, with a fan-out message waiting:
-  the worker was stopped, the Premiere clapped open (48 claps; `marquee-premiere-fanout` then held 1
-  message, 0 consumers; 0 library entries), and the host rebooted (00:56:53 UTC). The message was
-  still there afterwards — the worker, stopped by hand, stays stopped across a reboot, which is what
-  made this checkable — and starting the worker delivered it: queue at 0, 1 library entry, the film in
-  the admin's library.
-  - Found along the way, filed as follow-ups rather than fixed here: a page reconnecting at the moment
-    the reveal is broadcast never learns the Premiere opened (#95) — the reveal waits for the
-    worker's fan-out (`PremiereRevealReady`), so it can arrive well after the open; the clap pips
-    overflow the card at a large cap (#96 — one confirmed user makes the cap the whole threshold,
-    48 here); and the Premiere card has no phone layout (#97).
-  - After a reboot the API starts before RabbitMQ is ready (compose `depends_on` applies to `up`, not
-    to Docker restarting containers at boot) and logs `BrokerUnreachable` for a few seconds until
-    MassTransit's retry connects. Harmless — the outbox holds anything published meanwhile — but it
-    looks alarming in the log.
+Recorded in the [verification log](docs/deployment/verification-log.md#1d-phase-1-verification) (phase 1 checks, 2026-09-28 to 2026-09-29).
 
 ---
 
@@ -506,8 +307,7 @@ entry say which zone they are in.
 **This phase changes domain rules** (CLAUDE.md §4.1/§4.2 are written around `EmailConfirmedAt` in
 Postgres). Must land before real users sign up: existing password hashes cannot be imported into
 Cognito, so switching later would need a User Migration Lambda. The decisions below were settled on
-2026-10-04; the replacement CLAUDE.md wording is written out under *Domain rule changes* and is
-applied to CLAUDE.md in #112.
+2026-10-04; the domain-rule wording they implied went into CLAUDE.md §3, §4.1 and §4.2 in #112.
 
 What changes:
 
@@ -624,99 +424,21 @@ or decision 5's seeding fails — nothing at startup checks it today beyond pres
 routing every auth call through the API with a client-secret app client to keep #27 server-side — it
 reverses decision 6 to protect only an account owner from their own choice.
 
-### Domain rule changes (applied to CLAUDE.md in #112)
+### Domain rule changes (#112)
 
-- **§3 User:** `PasswordHash` is removed; `Id` is the Cognito `sub`; `EmailConfirmedAt` is set when the
-  row is created (rows only exist for confirmed users).
-- **§4.1:** the "counts only confirmed accounts" paragraph is replaced by: *"**`totalRegisteredUsers`
-  counts every `User` row.** A row is created on an account's first authenticated request, and the
-  identity provider only issues tokens to accounts that have confirmed their email, so every row is a
-  confirmed account by construction. An account that never confirms never reaches the app at all: it
-  cannot move the threshold or the caps in §4.2, and it participates the same way a visitor without an
-  account does. This matters specifically because it is the one count in this section an attacker can
-  inflate for free — a wave of throwaway sign-ups moves nothing here, unlike claps, which are already
-  guarded (Iteration 5)."*
-- **§4.2:** the four-bullet "unconfirmed account" block and the "no re-login required" line are replaced
-  by: *"An account that has not confirmed its email cannot sign in (the identity provider refuses it), so
-  it never reaches the app as a registered participant. Until it confirms, the person is an ordinary
-  visitor with an anonymous session: anonymous cap, no emblems, no library entries, no friendships.
-  Confirming does not retroactively credit claps made as a visitor; it only makes every clap after the
-  first sign-in a registered one."*
+The replacement wording for CLAUDE.md §3 (User), §4.1 and §4.2 was applied in #112; CLAUDE.md is
+now the source. The proposed text lives in that PR and in this file's history.
 
-### Cutover checklist (#113)
+### Cutover (#113)
 
-The one merge of `feat/phase2-cognito` into `main`. In this order; each item that breaks prod if missed
-says why. Rolling back past the migration is a snapshot restore, not a tag redeploy (Rollback, 1c).
-
-**Before the merge**
-
-1. SSM `/marquee/prod/AnonymousSession__SigningKey` exists, at least 32 letters and digits — without it
-   the API refuses to start, before migrating. (Created 2026-10-07.) **Leave `Jwt__Key` where it is.**
-2. `Admin__Password` meets the pool's policy (at least 10 characters, a digit). If it does not, seeding
-   fails *quietly*: the deploy still goes green and the API has no admin.
-3. The host's metadata hop limit is 2 — the API container reaches its role credentials only through it
-   (2a):
-   `aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'`
-4. No Premiere is `Active` and none is `Scheduled` within about 30 minutes (times are UTC): one that
-   opened after step 6 would write contributions for users that no longer exist. In Session Manager on
-   the host (`sudo -i`, then `cd /opt/marquee`):
-   `docker compose -f docker-compose.prod.yml exec -T postgres psql -U marquee -d marquee -c "select \"Status\", \"ScheduledFor\" from premieres where \"Status\" in ('Active','Scheduled') order by \"ScheduledFor\" limit 6;"`
-5. **Snapshot the data volume now** (the daily 08:00 UTC one can be a day old): EC2 → Volumes → the
-   data volume → Actions → Create snapshot, description `pre-cutover #113`; wait for *Completed*.
-6. **Reset the user-linked data** (destructive; old rows have random GUIDs that never match a Cognito
-   `sub`, and a leftover admin row stops the new admin being seeded). Same session, same directory:
-   - count first: `... psql ... -c "select (select count(*) from users) users, (select count(*) from contributions) contributions, (select count(*) from library_entries) library, (select count(*) from friendships) friendships;"`
-   - `... psql ... -c "truncate table users cascade;"` — cascades to contributions, library entries,
-     friendships and reset tokens; Premieres and Movies are kept (the film cooldown reads them).
-   - `docker compose -f docker-compose.prod.yml exec -T redis sh -c "redis-cli --scan --pattern 'user:*' | xargs -r redis-cli del"`
-   - re-run the count; every number should be 0. Record the before and after on #113.
-7. Merge the PR; watch CI, then the Deploy workflow (the first run of the five-argument `deploy.sh`).
-
-**After the deploy**
-
-8. CloudWatch log group `/marquee/prod`: the API logged `Seeded admin 'admin'`, and not "starting without
-   it" (a hop limit of 1, a password the pool refused, or a leftover row). Sign in as `admin` on the site.
-   If seeding failed, fix the cause and redeploy; the seeder retries on every start.
-9. Run *Verification against the real pool*, below, and record the dates. It sends sign-up emails
-   against Cognito's 50-a-day-per-account quota.
-10. Once stable: delete `/marquee/prod/Jwt__Key`; remove `feat/phase2-cognito` from the `pull_request`
-    branches in `.github/workflows/ci.yml` and delete the branch; file any cognito-local fidelity gap
-    found; close #113.
-
-For a few minutes after step 7 the frontend lags the backend: a browser with the old cached page calls
-the new API, gets a 401 or 404 on its old session, and falls back to a visitor session by itself.
+The one merge of `feat/phase2-cognito` into `main` (PR #125, `06cac2e`, 2026-10-07). Its ordered
+checklist was executed and is kept in #113, PR #125 and this file's history; why it cannot be
+rolled back with a tag redeploy is in the [runbook](docs/deployment/runbook.md#rollback).
 
 ### Verification against the real pool (once, after the first prod deploy)
 
-`cognito-local` stands in for Cognito everywhere but prod, so these are checked live and recorded here
-with dates, as §1d was: sign-up → code email arrives → confirm → auto sign-in creates the row; wrong and
-expired code; resend; sign-in while unconfirmed routes to code entry; password reset end to end; a
-9-character and a digit-less password are refused, and an all-lowercase password with a digit is
-accepted; an ID token presented to the API is refused; the seeded admin can sign in and is Admin; a role
-change and a block take effect on the next request.
-
-Recorded after the cutover deploy (#113, `06cac2e`), against pool `ca-central-1_4mv04X3ap` and the live
-site. The checks marked *operator* were done by hand in the browser and reported back; the rest were
-run from the command line.
-
-- [x] **2026-10-07** — Deploy: CI and the Deploy workflow green on the merge commit; the new route
-  `/api/auth/password-rules` answers 200 and the removed `/api/auth/login` answers 404 through
-  CloudFront; `Seeded admin 'admin' as cc8d1508-70a1-7086-6506-ad593f2e499b` in `/marquee/prod`.
-- [x] **2026-10-07** — The seeded admin signs in on the site. *(operator)*
-- [x] **2026-10-07** — Sign-up with a real address → code email arrives → confirm → signed in
-  automatically; a wrong code is refused; "Send a new code" works; signing in before confirming routes
-  to code entry; password reset end to end. *(operator)*
-- [x] **2026-10-07** — A 9-character and a digit-less password are refused; a lowercase-only password of
-  at least 10 characters with a digit is accepted. *(operator)*
-- [x] **2026-10-07** — A role change and a block take effect on the user's next request. *(operator)*
-- [x] **2026-10-07** — Access token versus ID token, sent to `GET /api/auth/me` on the live site: the
-  pool's access token (`token_use` `access`, `client_id` our app client) answers 200 with the account;
-  the same sign-in's ID token (`token_use` `id`) answers 401; no token answers 401.
-- [x] **2026-10-07** — `/marquee/prod/Jwt__Key` deleted from SSM once the above held; nothing reads it
-  any more; the six parameters left under `/marquee/prod` are the ones listed under *SSM Parameter Store*.
-- [x] **2026-10-15** — An **expired** confirmation code is refused: a sign-up code left unused for
-  about 26 hours was entered on the live site and refused with "That code has expired. Send a new one."
-  (the pool's `ExpiredCodeException`, not `CodeMismatchException`). *(operator)*
+What `cognito-local` cannot stand in for was checked once against the real pool after the cutover.
+Recorded in the [verification log](docs/deployment/verification-log.md#phase-2-verification-against-the-real-pool) (from 2026-10-07).
 
 ### 2a. User pool (#107 — deployed 2026-10-04)
 
@@ -752,7 +474,7 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   The seeder calls those from **inside the API container**, which reaches the instance role through
   IMDSv2 only because the instance's metadata hop limit is 2 (one hop for the instance, one for Docker's
   bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
-  it — so check `aws ec2 describe-instances --query '...MetadataOptions'` after any AMI change: at 1,
+  it — so re-check it after any AMI change ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)): at 1,
   seeding fails (logged) and the API starts with no admin.
   **Do not pin it in CDK as things stand** (`cdk diff`, 2026-10-07): CDK refuses `RequireImdsv2` together
   with the individual metadata options, and switching to `HttpTokens` plus `HttpPutResponseHopLimit`
@@ -765,12 +487,7 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   container, profile photo uploads (#63) being the planned case, so #128 tracks setting it in the stack
   before then.
 
-Checked live 2026-10-04: `SignUp` with a 9-character password → `InvalidPasswordException` (not long
-enough); with no digit → `InvalidPasswordException` (numeric characters); an all-lowercase password
-with a digit accepted (via `AdminCreateUser` + `AdminSetUserPassword --permanent`, so no email was sent
-— status `CONFIRMED`); `InitiateAuth` with `USER_PASSWORD_AUTH` signed in using the username in upper
-case (case-insensitive) and returned a 24h token; test user deleted, pool left empty. Host role policy
-read back from IAM with exactly the three actions on the pool ARN.
+Recorded in the [verification log](docs/deployment/verification-log.md#2a-user-pool) (deployed and checked 2026-10-04).
 
 ### 2b. Local stand-in: `cognito-local` (#108)
 
@@ -834,28 +551,12 @@ and Lambda free tiers).
 - **Alarm**: Lambda `Errors` ≥ 1 within an hour → the stack's own SNS topic → `alertEmail`. The same
   caveat as `MarqueeStack`'s alarms applies (§1b): **confirm the subscription email within 3 days of
   the deploy that creates it**, or SNS silently deletes the subscription and the alarm emails nobody.
-- **Deploys by hand**, like the other stacks (it is not part of the Deploy workflow):
-  `cd infra && eval "$(aws configure export-credentials --format env)" && npx cdk deploy MarqueeCleanupStack -c alertEmail=<address>`.
+- **Deploys by hand**, like the other stacks (it is not part of the Deploy workflow; commands in the
+  [runbook](docs/deployment/runbook.md#cdk-credentials-diff-and-deploy)).
   The pool id comes from `MarqueeAuthStack`, so this stack depends on it; the first deploy added an
   auto-named output to the auth stack (§2a explains why), so deploy both from the same commit.
 
-Checked live:
-
-- [x] **2026-10-14** — Deployed; the SNS subscription confirmed (status **Confirmed** in the console).
-  *(operator)*
-- [x] **2026-10-14** — Console tour matches the stack: the function's memory, timeout and environment;
-  the role's two Cognito actions on the pool ARN; the schedule's cron, time zone and
-  `{"dryRun": false}` input; the alarm's threshold and SNS action. *(operator)*
-- [x] **2026-10-14** — Dry runs with `{"dryRun": true}` and with `{}`: both `dryRun: true`, one user
-  scanned, nothing selected (the only unconfirmed user was under 7 days old). *(operator)*
-- [x] **2026-10-14** — Alarm forced to `ALARM` (19:33 Toronto): the SNS action succeeded and the email
-  arrived. *(operator)*
-- [ ] **On or after 2026-10-21, ~17:00 Toronto** — Live run: the unconfirmed `test_throw` (created
-  2026-10-14 20:54 UTC, so past 7 days from 16:54 Toronto on 2026-10-21) is deleted (`deleted: 1`);
-  `admin` and `j_david_ip` are still in the pool. Two ways it can happen, and the record says which:
-  a manual dry run that selects it and then a manual `{"dryRun": false}` run, between 16:54 on
-  2026-10-21 and 04:00 on 2026-10-22; or, if nobody runs it first, the scheduled 04:00 run on
-  2026-10-22, read back from its CloudWatch log line and the Cognito user list.
+Recorded in the [verification log](docs/deployment/verification-log.md#2c-unconfirmed-user-cleanup-30) (deploy checks 2026-10-14; the live deletion run is still open).
 
 ---
 

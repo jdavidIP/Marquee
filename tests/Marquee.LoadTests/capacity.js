@@ -10,7 +10,8 @@
 //                         Finds the request rate at which latency climbs and the box saturates.
 //
 // Every request comes from one IP, so production's per-IP rate limits would measure the limiter, not
-// the box: run it only inside a deliberate window with RateLimiting__Enabled=false (DEPLOYMENT.md §1d).
+// the box: run it only inside a deliberate window with RateLimiting__Enabled=false (see the 1d k6 entry
+// in docs/deployment/verification-log.md).
 //
 //   docker run --rm -i -e SITE=https://<SiteUrl> -e SCENARIO=connections grafana/k6 run - < capacity.js
 //
