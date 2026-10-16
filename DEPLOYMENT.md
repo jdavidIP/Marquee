@@ -151,7 +151,8 @@ The account comes from the signed-in CLI and the alert address from the command 
 committed; synth refuses to run without `alertEmail`, which receives both the budget and the
 CloudWatch alarm emails. The stack outputs `DeployRoleArn` for the workflows. **Pass the same address
 on every deploy:** a different one replaces the SNS subscription rather than adding to it, and the new
-address has to confirm (within 3 days, see below) before any alarm reaches it. `cdk diff` shows this as
+address has to confirm (within 3 days, see the
+[runbook](docs/deployment/runbook.md#confirm-an-alarm-subscription)) before any alarm reaches it. `cdk diff` shows this as
 a subscription destroyed and another created — a sign the wrong value was passed.
 
 **`MarqueeStack`** — everything the app runs on:
