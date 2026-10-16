@@ -486,7 +486,7 @@ Each 🟦 step is the user's, in the console unless stated; stop and wait for th
 
 - [ ] **Step 6: 🟦 Live run (on or after 2026-10-21, 20:54 UTC)** — **Cognito → User pools → `marquee` → Users**: `test_throw` is Unconfirmed. Dry run (Step 4): `selected` lists `test_throw`. Then a real run: a new test event `{"dryRun": false}` → **Test** (or wait for 04:00). Expected: `deleted: 1`. Cognito Users: `test_throw` gone; `admin` and `j_david_ip` still there.
 
-- [ ] **Step 7: Record it** — in `DEPLOYMENT.md`, add a `MarqueeCleanupStack` description next to the other stacks (what it holds, that it deploys by hand like the others, the confirm-the-email caveat) and a dated checklist of Steps 2, 4, 5 (if done) and 6 with the observed results.
+- [ ] **Step 7: Record it** — in `DEPLOYMENT.md`, add a `MarqueeCleanupStack` description next to the other stacks (what it holds, that it deploys by hand like the others, the confirm-the-email caveat) and a dated checklist of Steps 2, 4, 5 (if done) and 6 with the observed results. *Since #145 the dated checklist lives in `docs/deployment/verification-log.md` (section 2c); record Step 6 there.*
 
 - [ ] **Step 8: Commit (after the user confirms)**
 

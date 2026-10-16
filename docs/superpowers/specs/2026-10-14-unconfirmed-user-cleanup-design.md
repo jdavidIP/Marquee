@@ -109,7 +109,7 @@ check is the one the unit test pins down.
 - `parseMinAgeDays`: `"7"` → 7; missing, empty, `0`, negative, fractional or non-numeric → throws.
 
 The handler is not unit-tested: mocking the SDK client would mostly test the mock. It is proven by the
-dry run and the live run against the real pool, recorded in DEPLOYMENT.md.
+dry run and the live run against the real pool, recorded in `docs/deployment/verification-log.md` (#145).
 
 **CI:** the existing `CDK synth` job (Node already set up) runs `node --test lambda/` before synth. CI
 uses Node 24, the function runs on Node 22; nothing used differs between them.
@@ -132,9 +132,10 @@ uses Node 24, the function runs on Node 22; nothing used differs between them.
 7. 🟦 On or after 2026-10-21: `test_throw` (created 2026-10-14 20:54 UTC, kept `UNCONFIRMED`) shows in
    **Cognito → Users**; a dry run lists it; a real invoke (`{"dryRun": false}`, or the 04:00 run) deletes it; `admin`
    and `j_david_ip` are untouched.
-8. Record steps 5–7 in DEPLOYMENT.md with dates; reviewer; PR (`Closes #30`); closing comment.
+8. Record steps 5–7 with dates in `docs/deployment/verification-log.md` (§2c of `DEPLOYMENT.md`
+   before #145); reviewer; PR (`Closes #30`); closing comment.
 
-The expired-code check (DEPLOYMENT.md, phase 2 record) also uses `test_throw`, on 2026-10-15, without
+The expired-code check (the phase 2 real-pool record, now in `docs/deployment/verification-log.md`) also uses `test_throw`, on 2026-10-15, without
 resending a code; it does not conflict with step 7.
 
 ## Cost
