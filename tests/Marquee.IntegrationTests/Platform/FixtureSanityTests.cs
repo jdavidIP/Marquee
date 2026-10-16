@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using FluentAssertions;
+using Marquee.Domain.Enums;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,13 +34,18 @@ public class FixtureSanityTests(MarqueeAppFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
 
-        // Migrations ran: querying a table added in a later iteration would throw otherwise.
-        var friendships = await db.Friendships.CountAsync();
-        friendships.Should().Be(0);
+        // A container database starts empty, so nothing in it can predate this test run. Checked by
+        // age rather than by count: other classes share the database and may already have added rows
+        // by the time this runs (class order follows file layout, #146). A real database always holds
+        // older rows, which is what this makes loud. The margin absorbs clock skew with the container.
+        var runStarted = Process.GetCurrentProcess().StartTime.ToUniversalTime().AddMinutes(-5);
 
-        // A container database starts empty, so the only account is the seeded admin. If this ever
-        // reports a crowd, the suite is talking to somebody's real database again.
-        var users = await db.Users.CountAsync();
-        users.Should().Be(1, "a throwaway database should contain only the seeded admin");
+        // Migrations ran: querying a table added in a later iteration would throw otherwise.
+        (await db.Friendships.AnyAsync(f => f.CreatedAt < runStarted)).Should().BeFalse(
+            "a throwaway database holds no friendships from before this run");
+
+        (await db.Users.AnyAsync(u => u.CreatedAt < runStarted)).Should().BeFalse(
+            "a throwaway database holds no accounts from before this run");
+        (await db.Users.AnyAsync(u => u.Role == UserRole.Admin)).Should().BeTrue("the admin is seeded at startup");
     }
 }

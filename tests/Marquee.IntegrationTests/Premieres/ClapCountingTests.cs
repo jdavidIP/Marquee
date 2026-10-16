@@ -25,7 +25,7 @@ public class ClapCountingTests(MarqueeAppFactory factory)
         Guid PremiereId, string Status, int TotalClaps, int Threshold,
         int MyClaps, int MyCap, bool CapReached, bool Opened);
 
-    private sealed record PremiereBody(Guid Id, string Status, int Threshold, int TotalClaps);
+    private sealed record PremiereBody(Guid Id, string Status, int Threshold, int TotalClaps, int RegisteredClapCap);
 
     private async Task<HttpClient> AuthedClientAsync()
     {
@@ -56,22 +56,29 @@ public class ClapCountingTests(MarqueeAppFactory factory)
     public async Task Concurrent_claps_are_counted_exactly_and_open_the_Premiere_once()
     {
         factory.Tmdb.IsDown = false;
-        var client = await AuthedClientAsync();
-        var premiere = await CreatePremiereAsync(client);
+        var premiere = await CreatePremiereAsync(await AuthedClientAsync());
 
-        // With a near-empty user table the participant cap works out to the whole threshold, so one
-        // account can drive a Premiere to its open. Overshooting deliberately: the surplus claps are
-        // what prove the cap holds under contention rather than merely being checked.
-        var attempts = premiere.Threshold + 25;
+        // The per-person cap shrinks as the user table grows (§4.2), and other classes in this
+        // collection add users before or after this one depending on file layout (#146). So enough
+        // accounts to reach the threshold at their caps all clap at once, each overshooting its cap:
+        // the surplus is what proves the cap holds under contention rather than merely being checked.
+        var cap = premiere.RegisteredClapCap;
+        var participants = (premiere.Threshold + cap - 1) / cap;
+        var clients = new List<HttpClient>();
+        for (var i = 0; i < participants; i++)
+            clients.Add((await TestAuth.NewUserAsync(factory, "clap")).Client);
 
-        var responses = await Task.WhenAll(Enumerable.Range(0, attempts).Select(async _ =>
-        {
-            var response = await client.PostAsync($"/api/premieres/{premiere.Id}/clap", null);
-            return (response.StatusCode, Body: await ReadClapAsync(response));
-        }));
+        var responses = await Task.WhenAll(clients.SelectMany((client, who) =>
+            Enumerable.Range(0, cap + 5).Select(async _ =>
+            {
+                var response = await client.PostAsync($"/api/premieres/{premiere.Id}/clap", null);
+                return (Who: who, response.StatusCode, Body: await ReadClapAsync(response));
+            })));
 
         var accepted = responses.Where(r => r.StatusCode == HttpStatusCode.OK && r.Body is not null).ToList();
-        var counted = accepted.Where(r => !r.Body!.CapReached || r.Body.MyClaps <= premiere.Threshold).ToList();
+        // Each account's final count is the highest MyClaps any of its responses reported.
+        var finalCounts = accepted.GroupBy(r => r.Who).Select(g => g.Max(r => r.Body!.MyClaps)).ToList();
+        finalCounts.Should().OnlyContain(n => n <= cap, "the per-person cap holds under contention");
 
         // Exactly one caller may see opened=true. This is the exactly-once open: the increment is
         // atomic, so only the clap whose INCR landed on the threshold triggers it.
@@ -84,9 +91,11 @@ public class ClapCountingTests(MarqueeAppFactory factory)
         var stored = await db.Premieres.AsNoTracking().FirstAsync(p => p.Id == premiere.Id);
 
         stored.Status.Should().Be(PremiereStatus.Opened);
-        stored.TotalClaps.Should().Be(premiere.Threshold,
-            "the cap stops the surplus claps, so the final count is exactly the threshold");
-        counted.Should().NotBeEmpty();
+        // Claps that land between the threshold-crossing one and the open's cutoff are real and
+        // counted (docs/concurrency-findings.md), so the total may overshoot — but never lose one.
+        stored.TotalClaps.Should().BeGreaterThanOrEqualTo(premiere.Threshold);
+        stored.TotalClaps.Should().Be(finalCounts.Sum(),
+            "every clap an account was told it made is in the authoritative total");
     }
 
     [Fact]
