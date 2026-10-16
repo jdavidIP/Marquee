@@ -12,8 +12,6 @@ namespace Marquee.IntegrationTests;
 /// Issue #109 / DEPLOYMENT.md § Phase 2 decision 9: the API accepts a Cognito access token from our
 /// app client and nothing else the pool issues. Tokens come from a real cognito-local, so signature,
 /// issuer and claim shapes are the pool's, not a hand-built imitation.
-///
-/// Named to sort after FixtureSanityTests: signing in with Cognito creates a user row (decision 2).
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public class TokenAuthenticationTests(MarqueeAppFactory factory)

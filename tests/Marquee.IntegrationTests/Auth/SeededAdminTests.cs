@@ -21,8 +21,6 @@ namespace Marquee.IntegrationTests;
 /// Issue #110 / DEPLOYMENT.md § Phase 2 decision 5: the startup seeder creates the admin in Cognito
 /// first and gives its Postgres row the Cognito <c>sub</c> as its id. The factory's host has already
 /// run it against cognito-local by the time any test here starts.
-///
-/// Named to sort after FixtureSanityTests, with the other suites that touch user rows.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public class SeededAdminTests(MarqueeAppFactory factory)

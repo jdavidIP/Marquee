@@ -16,8 +16,6 @@ namespace Marquee.IntegrationTests;
 /// Issue #109 / DEPLOYMENT.md § Phase 2 decisions 2 and 7: a Cognito account's first request creates
 /// its user row, and what any request may do — blocked or not, which permissions — is read from that
 /// row on every request rather than from the token.
-///
-/// Named to sort after FixtureSanityTests: every test here creates user rows.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public class UserAccessTests(MarqueeAppFactory factory)
