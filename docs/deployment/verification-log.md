@@ -161,9 +161,8 @@ read back from IAM with exactly the three actions on the pool ARN.
   scanned, nothing selected (the only unconfirmed user was under 7 days old). *(operator)*
 - [x] **2026-10-14** — Alarm forced to `ALARM` (19:33 Toronto): the SNS action succeeded and the email
   arrived. *(operator)*
-- [ ] **On or after 2026-10-21, ~17:00 Toronto** — Live run: the unconfirmed `test_throw` (created
-  2026-10-14 20:54 UTC, so past 7 days from 16:54 Toronto on 2026-10-21) is deleted (`deleted: 1`);
-  `admin` and `j_david_ip` are still in the pool. Two ways it can happen, and the record says which:
-  a manual dry run that selects it and then a manual `{"dryRun": false}` run, between 16:54 on
-  2026-10-21 and 04:00 on 2026-10-22; or, if nobody runs it first, the scheduled 04:00 run on
-  2026-10-22, read back from its CloudWatch log line and the Cognito user list.
+- [x] **2026-10-22** — Live run, by the **scheduled 04:00 run** (no manual run first): the
+  unconfirmed `test_throw` (created 2026-10-14 20:54 UTC) was deleted. Its CloudWatch log line at
+  08:00:30 UTC reads `{"dryRun":false,"scanned":1,"selected":[{"username":"test_throw",…}],"deleted":1,"failed":[]}`.
+  Read back on 2026-10-25: the pool lists only `admin` and `j_david_ip`, both `CONFIRMED`, and
+  the runs on 10-23, 10-24 and 10-25 each logged `scanned: 0, deleted: 0`.
