@@ -161,6 +161,17 @@ public class MarqueeStack : Stack
             UserData = HostUserData(data),
         });
 
+        // Containers reach the instance role through IMDSv2 only with a hop limit of 2: one hop for the
+        // instance, one for Docker's bridge. Stated here rather than left to the AMI's default (#128).
+        // Set on the instance itself, not through RequireImdsv2's launch template: a new template
+        // version replaces the host, while the instance's own MetadataOptions update in place.
+        host.Instance.AddPropertyOverride("MetadataOptions", new Dictionary<string, object>
+        {
+            ["HttpEndpoint"] = "enabled",
+            ["HttpTokens"] = "required",
+            ["HttpPutResponseHopLimit"] = 2,
+        });
+
         new CfnVolumeAttachment(this, "DataAttachment", new CfnVolumeAttachmentProps
         {
             InstanceId = host.InstanceId,

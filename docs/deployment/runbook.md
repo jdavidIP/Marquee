@@ -147,12 +147,12 @@ Rolling back between tags built after the cutover works as above.
 ## After an AMI change or instance replacement
 
 The API container reaches the instance role through IMDSv2 only while the metadata hop limit is 2
-(`DEPLOYMENT.md` §2a). The pinned AMI supplies that value, not the stack, so check it after any AMI
-change or instance replacement:
+(`DEPLOYMENT.md` §2a). `MarqueeStack` sets it on the instance (#128), so a replacement keeps it; this
+confirms the stack's value actually reached the host:
 
 ```
 aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'
 ```
 
-It must print `2`. At `1`, the admin seeder fails (logged in `/marquee/prod`) and the API starts
-with no admin.
+It must print `2`. At `1`, every AWS call from the container fails: the admin seeder logs it in
+`/marquee/prod` and the API starts with no admin.

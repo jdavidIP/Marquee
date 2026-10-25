@@ -163,9 +163,8 @@ a subscription destroyed and another created — a sign the wrong value was pass
     throttles the host instead of billing surplus credits against the Free plan.
   - **AMI pinned**, not looked up fresh on every synth: a new AMI version would otherwise *replace*
     the instance on the next deploy. Moving to a newer one is a deliberate edit in `MarqueeStack.cs`.
-    The AMI also decides the metadata hop limit, which the API container needs to be 2 (2a): re-check
-    it after any AMI change or instance replacement
-    ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)).
+    The metadata hop limit the API container needs (2, see 2a) is set by the stack on the instance
+    itself (#128), so an AMI change no longer decides it.
   - IMDSv2 required, no key pair, **no port 22** — shell access through SSM Session Manager.
   - Encrypted 20 GB gp3 root volume, with a 2 GB swap file so a memory spike slows the host rather
     than OOM-killing a container.
@@ -473,19 +472,14 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   ARN only; the deploy role can `DescribeStacks` on `MarqueeAuthStack` to read its outputs.
   The seeder calls those from **inside the API container**, which reaches the instance role through
   IMDSv2 only because the instance's metadata hop limit is 2 (one hop for the instance, one for Docker's
-  bridge). That 2 comes from the pinned Amazon Linux 2023 AMI's defaults — `MarqueeStack` does not set
-  it — so re-check it after any AMI change ([runbook](docs/deployment/runbook.md#after-an-ami-change-or-instance-replacement)): at 1,
-  seeding fails (logged) and the API starts with no admin.
-  **Do not pin it in CDK as things stand** (`cdk diff`, 2026-10-07): CDK refuses `RequireImdsv2` together
-  with the individual metadata options, and switching to `HttpTokens` plus `HttpPutResponseHopLimit`
-  drops the instance's launch template, which the diff reports as **replacing the host** (and its data
-  volume attachment, Elastic IP association and alarms). Replacing it is the known-fragile operation
-  (the retained data volume's attach-before-detach ordering), so the hop limit stays an operational check.
-  Revisit only if a later CDK can set it without dropping the launch template, and run `cdk diff` first.
-  Today the cost of a wrong value is small: only `AdminSeeder` uses the credentials, and an admin that
-  already exists keeps working. That changes as soon as the API calls AWS for anything else from the
-  container, profile photo uploads (#63) being the planned case, so #128 tracks setting it in the stack
-  before then.
+  bridge). At 1, every AWS call from the container fails.
+  **`MarqueeStack` states it (#128)** with a property override on the instance's own `MetadataOptions`
+  (`HttpTokens` required, `HttpPutResponseHopLimit` 2), leaving `RequireImdsv2`'s launch template alone.
+  The obvious route does not work: CDK refuses `RequireImdsv2` together with the individual metadata
+  options, and dropping `RequireImdsv2` for them drops the launch template, which `cdk diff` (2026-10-07)
+  reported as **replacing the host**, the known-fragile operation. An instance's `MetadataOptions`
+  update in place: the change-set `cdk diff` of 2026-10-25 shows only that property changing, with no
+  replacement. Until #128 is deployed the value still comes from the pinned AMI's default.
 
 Recorded in the [verification log](docs/deployment/verification-log.md#2a-user-pool) (deployed and checked 2026-10-04).
 
