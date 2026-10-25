@@ -336,3 +336,8 @@ header.
 
 Only public aggregates are ever broadcast. Per-viewer data (your own clap count) stays on the request
 path — nothing personalised goes to a group.
+
+## Credits
+
+Movie data and posters come from [TMDB](https://www.themoviedb.org/). This product uses TMDB and the
+TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
