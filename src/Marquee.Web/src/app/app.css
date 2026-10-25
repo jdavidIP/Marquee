@@ -1,7 +1,13 @@
 /* The picture-palace glow: a soft navy wash falling from the top of the page. Fixed so it stays
    with the marquee rather than scrolling away with the content beneath it. */
 :host {
-  display: block;
+  /* Topbar, content, credits: the middle row takes the slack, so the credits sit at the bottom
+     of a short page instead of halfway up it. */
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  /* One column the width of the viewport: an auto column would grow to fit an overflowing page
+     and drag the topbar and credits out with it. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
   background-color: var(--bg-page);
   background-image: radial-gradient(120% 80% at 50% 0%, var(--bg-glow) 0%, var(--bg-page) 60%);
@@ -149,9 +155,31 @@
 
 /* Wide enough for the Library's four-poster grid; the Premiere narrows its own column further. */
 .content {
+  width: 100%;
   max-width: 1040px;
   margin: 0 auto;
   padding: 40px 40px 48px;
+}
+
+.credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  padding: 18px 26px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted-2);
+  text-align: center;
+}
+
+.credits p { margin: 0; }
+
+/* Well under the 26px wordmark, as the terms require. */
+.credits__logo {
+  display: block;
+  height: 12px;
 }
 
 @media (max-width: 760px) {
