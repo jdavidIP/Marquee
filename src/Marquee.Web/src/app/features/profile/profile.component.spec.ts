@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { ProfileComponent } from './profile.component';
 import { UsersService } from '../../core/api/users.service';
 import { FriendsService } from '../../core/api/friends.service';
@@ -221,5 +221,86 @@ describe('isFullProfile', () => {
 
     expect(isFullProfile(privateButEntitled)).toBe(true);
     expect(isFullProfile(limitedProfile)).toBe(false);
+  });
+});
+
+describe('ProfileComponent photo (#63)', () => {
+  const me = 'me-id';
+  const updated = { id: me, username: 'me', avatarUrl: 'https://x.test/new.webp' };
+
+  function profileOf(id: string): FullProfileDto {
+    return {
+      id,
+      username: 'me',
+      bio: null,
+      avatarUrl: null,
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      moviesCollected: 0,
+      premieresAttended: 0,
+      friendCount: 0,
+      friendshipStatus: null,
+      friendRequestOutgoing: null,
+      sharedPremieresAttended: null,
+    };
+  }
+
+  function make(profileId: string, upload = jasmine.createSpy('uploadAvatar').and.returnValue(of(updated))) {
+    TestBed.resetTestingModule();
+    const applyProfileUpdate = jasmine.createSpy('applyProfileUpdate');
+    TestBed.configureTestingModule({
+      imports: [ProfileComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: UsersService,
+          useValue: {
+            profile: () => of(profileOf(profileId)),
+            uploadAvatar: upload,
+            removeAvatar: () => of(updated),
+          },
+        },
+        { provide: FriendsService, useValue: {} },
+        {
+          provide: PremiereHistoryService,
+          useValue: { forUser: () => of({ items: [], total: 0, page: 1, pageSize: 4 }) },
+        },
+        {
+          provide: AuthService,
+          useValue: { user: signal({ id: me, username: 'me' }), applyProfileUpdate },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProfileComponent);
+    fixture.componentRef.setInput('username', 'me');
+    fixture.detectChanges();
+    return { fixture, c: fixture.componentInstance as unknown as Record<string, any>, upload, applyProfileUpdate };
+  }
+
+  const badge = (fixture: { debugElement: any }) =>
+    fixture.debugElement.query((d: any) => d.name === 'app-id-badge').componentInstance;
+
+  it("makes your own badge editable, and nobody else's", () => {
+    expect(badge(make(me).fixture).editable()).toBeTrue();
+    expect(badge(make('other-id').fixture).editable()).toBeFalse();
+  });
+
+  it('hands the saved user to AuthService so the topbar face updates at once', () => {
+    const { c, applyProfileUpdate } = make(me);
+
+    c['uploadPhoto'](new Blob(['x'], { type: 'image/webp' }));
+
+    expect(applyProfileUpdate).toHaveBeenCalledWith(updated);
+  });
+
+  it('sends one upload however many times Save is pressed while it is in flight', () => {
+    const pending = new Subject<unknown>();
+    const { c, upload } = make(me, jasmine.createSpy('uploadAvatar').and.returnValue(pending));
+
+    c['uploadPhoto'](new Blob(['x']));
+    c['uploadPhoto'](new Blob(['x']));
+
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(c['photoBusy']()).toBeTrue();
   });
 });

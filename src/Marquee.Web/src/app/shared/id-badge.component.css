@@ -81,6 +81,7 @@
 }
 
 .badge__portrait-frame {
+  position: relative;
   padding: 14px;
 }
 .badge__portrait {
@@ -95,6 +96,76 @@
 .badge--unissued .badge__portrait {
   border-color: #a8a191;
 }
+.badge__portrait--editable {
+  position: relative;
+  padding: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* "Change" over the portrait, only while it is pointed at or focused. */
+.badge__change {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 13, 22, 0.62);
+  color: var(--ink-cream);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.badge__portrait--editable:hover .badge__change,
+.badge__portrait--editable:focus-visible .badge__change {
+  opacity: 1;
+}
+
+.badge__portrait--editable:focus-visible {
+  outline: 2px solid var(--accent-teal);
+  outline-offset: 2px;
+}
+
+.badge__menu {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.badge__menu button {
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.badge__menu button:hover,
+.badge__menu button:focus-visible {
+  background: var(--panel-2);
+}
+
+.badge__menu .badge__menu-remove {
+  color: var(--accent-red);
+}
+
 .badge__portrait img {
   width: 100%;
   height: 100%;

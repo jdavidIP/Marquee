@@ -13,14 +13,47 @@
       </span>
     </div>
 
-    <div class="badge__portrait-frame">
-      <div class="badge__portrait">
-        @if (profile().avatarUrl; as url) {
-          <img [src]="url" alt="" />
-        } @else {
-          <span class="badge__monogram">{{ initials() }}</span>
+    <ng-template #face>
+      @if (profile().avatarUrl; as url) {
+        <img [src]="url" alt="" />
+      } @else {
+        <span class="badge__monogram">{{ initials() }}</span>
+      }
+    </ng-template>
+
+    <!-- On your own badge the portrait is the way to your photo (#63): hover or focus says so, a
+         click opens the choices. Nobody else's badge has any of this. -->
+    <div class="badge__portrait-frame" (keydown.escape)="menuOpen.set(false)">
+      @if (editable()) {
+        <button
+          type="button"
+          class="badge__portrait badge__portrait--editable"
+          [attr.aria-label]="profile().avatarUrl ? 'Change your photo' : 'Add a photo'"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="menuOpen()"
+          (click)="menuOpen.set(!menuOpen())"
+        >
+          <ng-container [ngTemplateOutlet]="face" />
+          <span class="badge__change" aria-hidden="true">{{ profile().avatarUrl ? 'Change' : 'Add' }}</span>
+        </button>
+
+        @if (menuOpen()) {
+          <div class="badge__menu" role="menu">
+            @if (profile().avatarUrl) {
+              <button type="button" role="menuitem" (click)="pick('change')">Change photo</button>
+              <button type="button" role="menuitem" class="badge__menu-remove" (click)="pick('remove')">
+                Remove photo
+              </button>
+            } @else {
+              <button type="button" role="menuitem" (click)="pick('change')">Add photo</button>
+            }
+          </div>
         }
-      </div>
+      } @else {
+        <div class="badge__portrait">
+          <ng-container [ngTemplateOutlet]="face" />
+        </div>
+      }
     </div>
 
     <div class="badge__name-block">

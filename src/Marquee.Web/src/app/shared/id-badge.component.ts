@@ -1,5 +1,5 @@
-import { Component, computed, input } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { Component, computed, input, output, signal } from '@angular/core';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { initialsOf } from '../core/util/avatar';
 import { FullProfileDto, ProfileDto, isFullProfile } from '../core/models';
 import { AccessCategory, accessCategoryFor } from '../core/util/access-category';
@@ -40,12 +40,19 @@ function barcodePatternFor(seed: string): string {
 @Component({
   selector: 'app-id-badge',
   standalone: true,
-  imports: [DatePipe],
+  imports: [DatePipe, NgTemplateOutlet],
   templateUrl: './id-badge.component.html',
   styleUrl: './id-badge.component.css',
 })
 export class IdBadgeComponent {
   readonly profile = input.required<ProfileDto>();
+  /** Your own badge (#63): the portrait opens Add / Change / Remove photo. The screen does the work. */
+  readonly editable = input(false);
+  /** Add or change — either way the screen picks a file next. */
+  readonly changePhoto = output<void>();
+  readonly removePhoto = output<void>();
+
+  protected readonly menuOpen = signal(false);
 
   protected readonly passYear = new Date().getFullYear();
 
@@ -69,4 +76,10 @@ export class IdBadgeComponent {
   });
 
   protected readonly barcode = computed(() => barcodePatternFor(this.profile().username));
+
+  protected pick(choice: 'change' | 'remove'): void {
+    this.menuOpen.set(false);
+    if (choice === 'change') this.changePhoto.emit();
+    else this.removePhoto.emit();
+  }
 }

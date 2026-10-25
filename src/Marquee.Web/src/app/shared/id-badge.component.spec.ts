@@ -87,4 +87,52 @@ describe('IdBadgeComponent', () => {
     const unissued = make(limited({ username: 'zed', avatarUrl: null }));
     expect(unissued.nativeElement.querySelector('.badge__monogram')?.textContent?.trim()).toBe('ZE');
   });
+
+  describe('photo controls (#63)', () => {
+    function editable(profile: FullProfileDto) {
+      const fixture = make(profile);
+      fixture.componentRef.setInput('editable', true);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    const menuItems = (el: HTMLElement) =>
+      [...el.querySelectorAll('.badge__menu button')].map((b) => b.textContent?.trim());
+
+    it("offers nothing on someone else's badge", () => {
+      const el = make(full({ avatarUrl: 'https://x.test/a.webp' })).nativeElement as HTMLElement;
+
+      expect(el.querySelector('.badge__portrait button, button.badge__portrait')).toBeNull();
+      expect(el.textContent).not.toContain('Change');
+    });
+
+    it('offers only to add a photo when there is none', () => {
+      const fixture = editable(full({ avatarUrl: null }));
+      const el = fixture.nativeElement as HTMLElement;
+
+      (el.querySelector('button.badge__portrait') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(menuItems(el)).toEqual(['Add photo']);
+    });
+
+    it('offers to change or remove an existing photo, and says which was picked', () => {
+      const fixture = editable(full({ avatarUrl: 'https://x.test/a.webp' }));
+      const el = fixture.nativeElement as HTMLElement;
+      let changed = 0;
+      let removed = 0;
+      fixture.componentInstance.changePhoto.subscribe(() => changed++);
+      fixture.componentInstance.removePhoto.subscribe(() => removed++);
+
+      (el.querySelector('button.badge__portrait') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(menuItems(el)).toEqual(['Change photo', 'Remove photo']);
+
+      (el.querySelectorAll('.badge__menu button')[1] as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect([changed, removed]).toEqual([0, 1]);
+      expect(el.querySelector('.badge__menu')).toBeNull();
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -7,10 +7,11 @@ import { FriendsService } from '../../core/api/friends.service';
 import { UsersService } from '../../core/api/users.service';
 import { PremiereHistoryService } from '../../core/api/premiere-history.service';
 import { apiError } from '../../core/api/http-error';
-import { FullProfileDto, PremiereHistoryEntryDto, ProfileDto, isFullProfile } from '../../core/models';
+import { FullProfileDto, PremiereHistoryEntryDto, ProfileDto, UserDto, isFullProfile } from '../../core/models';
 import { AccessCategory, accessCategoryFor, nextAccessCategory } from '../../core/util/access-category';
 import { IdBadgeComponent } from '../../shared/id-badge.component';
 import { EmblemTicketComponent } from '../../shared/emblem-ticket.component';
+import { AvatarCropDialogComponent } from '../../shared/avatar-crop-dialog.component';
 
 /** The badge's recent-activity strip shows the last four, per the design handoff (issue #59). */
 const RECENT_ACTIVITY_COUNT = 4;
@@ -18,7 +19,7 @@ const RECENT_ACTIVITY_COUNT = 4;
 @Component({
   selector: 'app-profile',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, IdBadgeComponent, EmblemTicketComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, IdBadgeComponent, EmblemTicketComponent, AvatarCropDialogComponent],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.css',
 })
@@ -35,6 +36,12 @@ export class ProfileComponent {
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
+
+  /** The photo being cropped (#63); the crop dialog is open while this is set. */
+  protected readonly cropFile = signal<File | null>(null);
+  /** An upload or removal is in flight — the dialog's Save stays disabled, so one click is one upload. */
+  protected readonly photoBusy = signal(false);
+  private readonly photoInput = viewChild<ElementRef<HTMLInputElement>>('photoInput');
 
   /** Draft bio, separate from the saved one so cancelling can put the original back. */
   protected bioDraft = '';
@@ -114,6 +121,52 @@ export class ProfileComponent {
   protected saveBio(): void {
     const bio = this.bioDraft.trim();
     this.patch({ bio: bio.length > 0 ? bio : null }, () => this.editing.set(false));
+  }
+
+  protected choosePhoto(): void {
+    this.photoInput()?.nativeElement.click();
+  }
+
+  protected onPhotoChosen(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Cleared so choosing the same file again still fires a change.
+    input.value = '';
+    if (file) this.cropFile.set(file);
+  }
+
+  protected uploadPhoto(photo: Blob): void {
+    if (this.photoBusy()) return;
+    this.photoBusy.set(true);
+    this.users.uploadAvatar(photo).subscribe({
+      next: (user) => this.photoSaved(user),
+      error: (err: unknown) => this.photoFailed(err, 'Could not save your photo.'),
+    });
+  }
+
+  protected removePhoto(): void {
+    if (this.photoBusy()) return;
+    this.photoBusy.set(true);
+    this.users.removeAvatar().subscribe({
+      next: (user) => this.photoSaved(user),
+      error: (err: unknown) => this.photoFailed(err, 'Could not remove your photo.'),
+    });
+  }
+
+  // The cached user carries avatarUrl, so this is what changes the topbar face straight away.
+  private photoSaved(user: UserDto): void {
+    this.auth.applyProfileUpdate(user);
+    this.photoBusy.set(false);
+    this.cropFile.set(null);
+    this.error.set(null);
+    this.load(this.username());
+  }
+
+  // The dialog closes so the message, shown at the top of the page, is not hidden behind it.
+  private photoFailed(err: unknown, fallback: string): void {
+    this.photoBusy.set(false);
+    this.cropFile.set(null);
+    this.error.set(apiError(err, fallback));
   }
 
   /**
