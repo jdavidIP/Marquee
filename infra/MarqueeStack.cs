@@ -190,6 +190,23 @@ public class MarqueeStack : Stack
             EnforceSSL = true,
         });
 
+        // Profile photos (#63). Private like the site bucket: only CloudFront reads it, through OAC.
+        // Retained, because the photos are user data the stack does not own.
+        var avatars = new Bucket(this, "Avatars", new BucketProps
+        {
+            BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
+            Encryption = BucketEncryption.S3_MANAGED,
+            EnforceSSL = true,
+            RemovalPolicy = RemovalPolicy.RETAIN,
+        });
+        // The API writes a new key for every photo and deletes the one it replaced; it never reads,
+        // lists or touches anything outside avatars/.
+        hostRole.AddToPrincipalPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "s3:PutObject", "s3:DeleteObject" },
+            Resources = new[] { avatars.ArnForObjects("avatars/*") },
+        }));
+
         // The API and the SignalR hub: never cached, every viewer header and query string forwarded
         // (Authorization, X-Anon-Session, and SignalR's access_token on WebSockets), plus the secret
         // header OriginVerification checks on the host.
@@ -239,6 +256,24 @@ public class MarqueeStack : Stack
             {
                 ["/api/*"] = app,
                 ["/hubs/*"] = app,
+                // The path is the object key, so /avatars/<user>/<id>.webp reads avatars/<user>/<id>.webp.
+                // Keys are never reused, so caching never shows a stale face; the 24-hour cap only bounds
+                // how long a deleted photo stays reachable at its old URL (#63).
+                ["/avatars/*"] = new BehaviorOptions
+                {
+                    Origin = S3BucketOrigin.WithOriginAccessControl(avatars),
+                    ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    AllowedMethods = AllowedMethods.ALLOW_GET_HEAD,
+                    CachePolicy = new CachePolicy(this, "AvatarCache", new CachePolicyProps
+                    {
+                        DefaultTtl = Duration.Hours(24),
+                        MaxTtl = Duration.Hours(24),
+                        MinTtl = Duration.Seconds(0),
+                        CookieBehavior = CacheCookieBehavior.None(),
+                        HeaderBehavior = CacheHeaderBehavior.None(),
+                        QueryStringBehavior = CacheQueryStringBehavior.None(),
+                    }),
+                },
             },
         });
 
@@ -281,6 +316,7 @@ public class MarqueeStack : Stack
         new CfnOutput(this, "HostPublicDns", new CfnOutputProps { Value = hostDns });
         new CfnOutput(this, "ArtifactsBucket", new CfnOutputProps { Value = artifacts.BucketName });
         new CfnOutput(this, "SiteBucket", new CfnOutputProps { Value = site.BucketName });
+        new CfnOutput(this, "AvatarsBucketName", new CfnOutputProps { Value = avatars.BucketName });
         new CfnOutput(this, "DistributionId", new CfnOutputProps { Value = distribution.DistributionId });
         new CfnOutput(this, "SiteUrl", new CfnOutputProps { Value = $"https://{distribution.DistributionDomainName}" });
     }

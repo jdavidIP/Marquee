@@ -177,3 +177,18 @@ the AMI's default, so the deploy changes no value; it makes the stack the source
   `i-025489e6f2ed90173` and its launch time unchanged (no restart); `describe-instances` reports
   `HttpPutResponseHopLimit` `2` and `HttpTokens` `required`; the site's API answered `200` through
   CloudFront afterwards. *(operator)*
+
+## 2e. Profile photos (#63)
+
+The `Avatars` bucket, its CloudFront behaviour at `/avatars/*` and the host role's two S3 actions are in
+`MarqueeStack`; `cdk diff` (2026-10-25, change set) showed only additions plus in-place updates to the
+host role's policy and the distribution, no replacement. Deploy the stack **before** merging the code:
+the workflow fails on a missing `AvatarsBucketName` output rather than deploy without it.
+
+- [ ] `cdk deploy MarqueeStack`: the `Avatars` bucket exists with all public access blocked, and the
+  stack has an `AvatarsBucketName` output. *(operator)*
+- [ ] Upload through the site: the badge shows the photo, served from `<SiteUrl>/avatars/...` with
+  `Cache-Control: public, max-age=86400`, and the object is a 640×640 WebP.
+- [ ] Replace: the previous object is gone from the bucket (`aws s3 ls s3://<AvatarsBucketName>/avatars/<user id>/`).
+- [ ] Remove: the monogram is back and the object is gone from the bucket.
+- [ ] The bucket refuses a direct request: `https://<AvatarsBucketName>.s3.ca-central-1.amazonaws.com/avatars/...` returns 403.
