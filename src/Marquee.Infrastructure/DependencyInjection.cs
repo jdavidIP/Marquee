@@ -1,5 +1,6 @@
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
+using Marquee.Infrastructure.Avatars;
 using Marquee.Infrastructure.Notifications;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
@@ -23,6 +24,7 @@ public static class DependencyInjection
         // Tunable domain rules (CLAUDE.md §7 — no magic numbers in code).
         services.Configure<MarqueeRulesOptions>(configuration.GetSection(MarqueeRulesOptions.SectionName));
         services.Configure<TmdbOptions>(configuration.GetSection(TmdbOptions.SectionName));
+        services.Configure<AvatarOptions>(configuration.GetSection(AvatarOptions.SectionName));
 
         // Randomness abstraction used by the formula "draw" layer and TMDB selection.
         services.AddSingleton<IRandomSource, SystemRandomSource>();

@@ -62,6 +62,14 @@
     <PackageReference Include="MassTransit" Version="8.*" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.*" />
     <PackageReference Include="MassTransit.EntityFrameworkCore" Version="8.*" />
+    <!--
+      Profile photos (#63): decode, turn upright, resize and re-encode every upload, which is what
+      strips its EXIF/GPS. SkiaSharp is MIT; ImageSharp was the first choice but its current releases
+      refuse Release builds without a paid licence key. The NoDependencies native build runs on the
+      Debian runtime images with nothing extra installed.
+    -->
+    <PackageReference Include="SkiaSharp" Version="4.*" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.*" />
   </ItemGroup>
 
   <PropertyGroup>
