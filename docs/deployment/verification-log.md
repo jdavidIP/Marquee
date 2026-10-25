@@ -172,6 +172,8 @@ read back from IAM with exactly the three actions on the pool ARN.
 Before deploying (2026-10-25) the live host already read hop limit `2`, `HttpTokens` `required`, from
 the AMI's default, so the deploy changes no value; it makes the stack the source of it.
 
-- [ ] `cdk deploy MarqueeStack` updates `Host` in place: the instance id is still
-  `i-025489e6f2ed90173`, and `describe-instances` reports `HttpPutResponseHopLimit` `2` and
-  `HttpTokens` `required`. *(operator)*
+- [x] **2026-10-25** — `cdk deploy MarqueeStack` updated `Host` in place (`UPDATE_COMPLETE` in 4s; the
+  Elastic IP association `HostIp` was re-applied in place too). The instance id is still
+  `i-025489e6f2ed90173` and its launch time unchanged (no restart); `describe-instances` reports
+  `HttpPutResponseHopLimit` `2` and `HttpTokens` `required`; the site's API answered `200` through
+  CloudFront afterwards. *(operator)*
