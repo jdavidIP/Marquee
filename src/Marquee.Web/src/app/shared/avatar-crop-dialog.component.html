@@ -1,0 +1,49 @@
+<!-- Escape cancels wherever focus sits inside the dialog. -->
+<div class="scrim" (keydown.escape)="onCancel()">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="crop-title" aria-describedby="crop-hint">
+    <h2 id="crop-title" class="dialog__title">Place your photo</h2>
+    <p id="crop-hint" class="crop__hint">Drag to move. The dashed circle is what small round versions show.</p>
+
+    @if (error(); as message) {
+      <p class="crop__error" role="alert">{{ message }}</p>
+    } @else {
+      <!-- The square is the badge photo; the dashed circle inside it is what the small round faces
+           keep. The circle exists only here, never in the saved image. -->
+      <div
+        class="crop__stage"
+        tabindex="0"
+        aria-label="Photo position. Drag it, or use the arrow keys."
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp($event)"
+        (pointercancel)="onPointerUp($event)"
+        (keydown)="onKey($event)"
+      >
+        <canvas #canvas class="crop__canvas"></canvas>
+        <div class="crop__frame">
+          <div class="crop__guide"></div>
+        </div>
+      </div>
+
+      <label class="crop__zoom">
+        <span>Zoom</span>
+        <input
+          type="range"
+          min="1"
+          [max]="maxZoom"
+          step="0.01"
+          [value]="zoom()"
+          (input)="onZoom($event)"
+          [disabled]="!bitmap()"
+        />
+      </label>
+    }
+
+    <div class="dialog__actions">
+      <button #cancelButton type="button" class="ghost" (click)="onCancel()" [disabled]="busy()">Cancel</button>
+      <button type="button" class="primary" (click)="onSave()" [disabled]="!bitmap() || busy() || encoding()">
+        Save photo
+      </button>
+    </div>
+  </div>
+</div>
