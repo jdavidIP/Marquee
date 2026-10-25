@@ -166,3 +166,12 @@ read back from IAM with exactly the three actions on the pool ARN.
   08:00:30 UTC reads `{"dryRun":false,"scanned":1,"selected":[{"username":"test_throw",…}],"deleted":1,"failed":[]}`.
   Read back on 2026-10-25: the pool lists only `admin` and `j_david_ip`, both `CONFIRMED`, and
   the runs on 10-23, 10-24 and 10-25 each logged `scanned: 0, deleted: 0`.
+
+## 2d. Metadata hop limit in the stack (#128)
+
+Before deploying (2026-10-25) the live host already read hop limit `2`, `HttpTokens` `required`, from
+the AMI's default, so the deploy changes no value; it makes the stack the source of it.
+
+- [ ] `cdk deploy MarqueeStack` updates `Host` in place: the instance id is still
+  `i-025489e6f2ed90173`, and `describe-instances` reports `HttpPutResponseHopLimit` `2` and
+  `HttpTokens` `required`. *(operator)*
