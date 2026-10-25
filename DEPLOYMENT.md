@@ -479,7 +479,7 @@ replaces the pool, which deletion protection and `RETAIN` exist to stop.
   options, and dropping `RequireImdsv2` for them drops the launch template, which `cdk diff` (2026-10-07)
   reported as **replacing the host**, the known-fragile operation. An instance's `MetadataOptions`
   update in place: the change-set `cdk diff` of 2026-10-25 shows only that property changing, with no
-  replacement. Until #128 is deployed the value still came from the pinned AMI's default.
+  replacement. Until #128 is deployed the value still comes from the pinned AMI's default.
 
 Recorded in the [verification log](docs/deployment/verification-log.md#2a-user-pool) (deployed and checked 2026-10-04).
 
