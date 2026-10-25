@@ -19,6 +19,8 @@ public sealed class AvatarOptions
     /// <summary>An S3-compatible endpoint (S3Mock locally and in tests). Empty means real S3.</summary>
     public string? ServiceUrl { get; set; }
 
+    public string Region { get; set; } = "ca-central-1";
+
     /// <summary>Side of the stored square, in pixels. The badge draws it at about 270 CSS px.</summary>
     public int Size { get; set; } = 640;
 
