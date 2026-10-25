@@ -59,7 +59,8 @@ if (builder.Environment.IsProduction())
     builder.Configuration.RequireKeys(
         "ConnectionStrings:Postgres", "Redis:ConnectionString", "Messaging:Host", "Messaging:Password",
         "Tmdb:ApiKey", "Admin:Password",
-        "Cognito:Issuer", "Cognito:ClientId", OriginVerification.SecretKey);
+        "Cognito:Issuer", "Cognito:ClientId", OriginVerification.SecretKey,
+        "Avatars:BucketName", "Avatars:PublicBaseUrl");
 
 // --- Infrastructure + API services ---
 builder.Services.AddMarqueeInfrastructure(builder.Configuration);

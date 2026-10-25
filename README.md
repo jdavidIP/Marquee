@@ -299,6 +299,8 @@ earns its place alongside the trace id.
 | GET | `/api/users?query=` | optional | Search users by username prefix; private accounts included |
 | GET | `/api/users/{username}` | optional | Profile, shaped by viewer (see below) |
 | PATCH | `/api/users/me` | user | Update your own bio / privacy |
+| PUT | `/api/users/me/avatar` | user | Set or replace your profile photo (multipart `file`; re-encoded to 640px WebP) |
+| DELETE | `/api/users/me/avatar` | user | Remove your profile photo |
 | GET | `/api/friends` | user | Accepted friends |
 | GET | `/api/friends/requests` | user | Pending requests, both directions |
 | POST | `/api/friends/requests` | user | Send a friend request by username |

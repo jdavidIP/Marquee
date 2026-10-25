@@ -1,8 +1,12 @@
 using Marquee.Api.Auth;
 using Marquee.Api.Dtos;
+using Marquee.Api.Security;
 using Marquee.Api.Services;
+using Marquee.Infrastructure.Avatars;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 
 namespace Marquee.Api.Controllers;
 
@@ -12,7 +16,9 @@ public class UsersController(
     IUserProfileService profiles,
     IFriendshipService friendships,
     ILibraryService library,
-    IPremiereHistoryService premiereHistory) : ControllerBase
+    IPremiereHistoryService premiereHistory,
+    IAvatarService avatars,
+    IOptions<AvatarOptions> avatarOptions) : ControllerBase
 {
     /// <summary>Matches the library's own default, since this walks the same page shape.</summary>
     private const int DefaultLibraryPageSize = 24;
@@ -21,6 +27,9 @@ public class UsersController(
     private const int DefaultHistoryPageSize = 20;
 
     private const int MaxSearchResults = 25;
+
+    /// <summary>Above <see cref="AvatarOptions.MaxUploadBytes"/>'s default, leaving room for the multipart framing.</summary>
+    private const long AvatarRequestLimitBytes = 5_250_000;
 
     /// <summary>
     /// Find users by username prefix. Open to anonymous callers, and private accounts appear in the
@@ -50,6 +59,52 @@ public class UsersController(
             return Unauthorized();
 
         var updated = await profiles.UpdateOwnProfileAsync(userId.Value, request, ct);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>
+    /// Set or replace your own profile photo (#63): a <c>file</c> field, already cropped square by the
+    /// client but re-encoded here regardless. Scoped to the caller like <see cref="UpdateMe"/>.
+    /// </summary>
+    [Authorize]
+    [HttpPut("me/avatar")]
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(RateLimitPolicies.AvatarUpload)]
+    [RequestSizeLimit(AvatarRequestLimitBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AvatarRequestLimitBytes)]
+    public async Task<ActionResult<UserDto>> UploadAvatar(IFormFile file, CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        // The configured limit is the real one; the attributes above only stop a far larger body
+        // before it is read, and cannot take a configured value.
+        if (file.Length > avatarOptions.Value.MaxUploadBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "That photo is too large." });
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var updated = await avatars.ReplaceAsync(userId.Value, stream, ct);
+            return updated is null ? NotFound() : Ok(updated);
+        }
+        catch (AvatarImageException e)
+        {
+            return BadRequest(new { error = e.Message });
+        }
+    }
+
+    /// <summary>Remove your own profile photo, back to the monogram. Succeeds when there is none.</summary>
+    [Authorize]
+    [HttpDelete("me/avatar")]
+    public async Task<ActionResult<UserDto>> RemoveAvatar(CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (userId is null)
+            return Unauthorized();
+
+        var updated = await avatars.RemoveAsync(userId.Value, ct);
         return updated is null ? NotFound() : Ok(updated);
     }
 
