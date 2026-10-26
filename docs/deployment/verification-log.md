@@ -188,10 +188,15 @@ the workflow fails on a missing `AvatarsBucketName` output rather than deploy wi
 - [x] **2026-10-25** — `cdk deploy MarqueeStack`: the bucket `marqueestack-avatars91192a3d-f7hrigpllmw4`
   exists with all four public-access blocks on, and the stack has its `AvatarsBucketName` output.
   The host was untouched (same instance id and launch time); `MarqueeAuthStack` had no changes. *(operator)*
-- [ ] Upload through the site: the badge shows the photo, served from `<SiteUrl>/avatars/...` with
-  `Cache-Control: public, max-age=86400`, and the object is a 640×640 WebP.
-- [ ] Replace: the previous object is gone from the bucket (`aws s3 ls s3://<AvatarsBucketName>/avatars/<user id>/`).
-- [ ] Remove: the monogram is back and the object is gone from the bucket.
+- [x] **2026-10-26** — Upload through the site (operator): the photo is served from
+  `<SiteUrl>/avatars/<user id>/<id>.webp` with `Content-Type: image/webp`,
+  `Cache-Control: public, max-age=86400` and `X-Cache: Hit from cloudfront`; the object is a 640×640
+  WebP with no EXIF or ICC profile. This is the path the final review's C1 fix corrected.
+- [x] **2026-10-26** — Replace (01:36:39 UTC): the API log shows `PUT` 200 and the previous object is
+  gone from the bucket.
+- [x] **2026-10-26** — Remove (01:36:47 UTC): `DELETE` 200, the monogram is back and the object is gone
+  from the bucket. No "could not delete" warning in `/marquee/prod`. (A photo added again at 01:36:56
+  is the one object left, kept on the operator's account.)
 - [x] **2026-10-25** — The bucket refuses a direct request: `https://<AvatarsBucketName>.s3.ca-central-1.amazonaws.com/avatars/x.webp`
   returns 403. (Through CloudFront a missing key also returns 403 — OAC without list access — so the
   served-photo item above is the one that proves the path.)
