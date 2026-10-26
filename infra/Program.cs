@@ -18,7 +18,8 @@ var env = new Amazon.CDK.Environment
 
 new MarqueeCiStack(app, "MarqueeCiStack", alertEmail, new StackProps { Env = env });
 var auth = new MarqueeAuthStack(app, "MarqueeAuthStack", new StackProps { Env = env, TerminationProtection = true });
-new MarqueeStack(app, "MarqueeStack", alertEmail, auth.UserPool, new StackProps { Env = env });
+var main = new MarqueeStack(app, "MarqueeStack", alertEmail, auth.UserPool, new StackProps { Env = env });
+new MarqueeDataStack(app, "MarqueeDataStack", main.Vpc, main.HostSecurityGroup, new StackProps { Env = env, TerminationProtection = true });
 new MarqueeCleanupStack(app, "MarqueeCleanupStack", alertEmail, auth.UserPool, new StackProps { Env = env });
 
 app.Synth();

@@ -60,11 +60,16 @@ public class MarqueeStack : Stack
         }
         """;
 
+    // Read by MarqueeDataStack, which puts the database in this VPC and admits only the host to it (#160).
+    // Passing them across creates exports: while that stack imports them, this one cannot replace either.
+    public Vpc Vpc { get; }
+    public SecurityGroup HostSecurityGroup { get; }
+
     public MarqueeStack(Construct scope, string id, string alertEmail, IUserPool userPool, IStackProps props)
         : base(scope, id, props)
     {
         // Public subnet only: a NAT gateway would cost ~$32/month idle for nothing the host needs.
-        var vpc = new Vpc(this, "Vpc", new VpcProps
+        var vpc = Vpc = new Vpc(this, "Vpc", new VpcProps
         {
             AvailabilityZones = new[] { Az },
             NatGateways = 0,
@@ -76,7 +81,7 @@ public class MarqueeStack : Stack
 
         // Its own group: the prefix list counts as one rule per entry (~55) against the group's rule quota.
         // Nothing else is admitted inbound — the forwarded-header trust in docker-compose.prod.yml relies on it.
-        var hostSg = new SecurityGroup(this, "HostSg", new SecurityGroupProps
+        var hostSg = HostSecurityGroup = new SecurityGroup(this, "HostSg", new SecurityGroupProps
         {
             Vpc = vpc,
             Description = "Marquee host: HTTP from CloudFront only",
