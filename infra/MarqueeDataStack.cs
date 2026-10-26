@@ -95,8 +95,11 @@ public class MarqueeDataStack : Stack
             StorageEncrypted = true,
             MultiAz = false,
             PubliclyAccessible = false,
+            // One day, not the seven the design wanted: on the Free Plan RDS refuses anything longer ("exceeds
+            // the maximum available to free tier customers", first deploy 2026-10-26). Still point-in-time
+            // recovery over the last 24 hours, plus the final snapshot on delete. Raise it on the Paid Plan.
             // 08:00 UTC is 03:00–04:00 in Toronto, the same quiet window as the host's EBS snapshots.
-            BackupRetention = Duration.Days(7),
+            BackupRetention = Duration.Days(1),
             PreferredBackupWindow = "08:00-08:30",
             PreferredMaintenanceWindow = "mon:08:30-mon:09:00",
             // Deleting is refused while protection is on; a delete that does go through takes a final
