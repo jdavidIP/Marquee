@@ -61,6 +61,18 @@ public class PremiereViewCacheTests(MarqueeAppFactory factory)
     }
 
     [Fact]
+    public async Task Background_database_traffic_is_not_counted_as_a_read()
+    {
+        // The outbox polls Postgres every second through the same DbContext. Counting it made the
+        // zero-command assertions below fail on CI whenever a poll landed inside the measured request.
+        factory.DbCommands.Reset();
+
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+
+        factory.DbCommands.Count.Should().Be(0, "nothing read Premiere data; only the outbox ran");
+    }
+
+    [Fact]
     public async Task A_warm_active_read_does_not_touch_the_database_but_its_count_stays_live()
     {
         var id = await CreateActiveAsync();
