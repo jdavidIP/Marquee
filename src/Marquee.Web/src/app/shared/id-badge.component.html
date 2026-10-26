@@ -23,13 +23,15 @@
 
     <!-- On your own badge the portrait is the way to your photo (#63): hover or focus says so, a
          click opens the choices. Nobody else's badge has any of this. -->
-    <div class="badge__portrait-frame" (keydown.escape)="menuOpen.set(false)">
+    <div class="badge__portrait-frame" (keydown.escape)="closeMenu()">
       @if (editable()) {
+        <!-- A disclosure, not an ARIA menu: plain buttons that Tab reaches, which needs no arrow-key
+             handling to be complete. -->
         <button
+          #portraitButton
           type="button"
           class="badge__portrait badge__portrait--editable"
           [attr.aria-label]="profile().avatarUrl ? 'Change your photo' : 'Add a photo'"
-          aria-haspopup="menu"
           [attr.aria-expanded]="menuOpen()"
           (click)="menuOpen.set(!menuOpen())"
         >
@@ -38,14 +40,14 @@
         </button>
 
         @if (menuOpen()) {
-          <div class="badge__menu" role="menu">
+          <div class="badge__menu">
             @if (profile().avatarUrl) {
-              <button type="button" role="menuitem" (click)="pick('change')">Change photo</button>
-              <button type="button" role="menuitem" class="badge__menu-remove" (click)="pick('remove')">
+              <button type="button" (click)="pick('change')">Change photo</button>
+              <button type="button" class="badge__menu-remove" (click)="pick('remove')">
                 Remove photo
               </button>
             } @else {
-              <button type="button" role="menuitem" (click)="pick('change')">Add photo</button>
+              <button type="button" (click)="pick('change')">Add photo</button>
             }
           </div>
         }

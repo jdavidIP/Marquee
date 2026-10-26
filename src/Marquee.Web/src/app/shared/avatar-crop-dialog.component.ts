@@ -124,11 +124,11 @@ export class AvatarCropDialogComponent {
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, EXPORT, EXPORT);
 
-      // A browser that cannot encode WebP hands back a PNG instead; JPEG is far smaller than that,
-      // and the API accepts either.
-      let blob = await toBlob(out, 'image/webp');
-      if (blob?.type !== 'image/webp') blob = await toBlob(out, 'image/jpeg');
+      // A browser that cannot encode WebP hands back a PNG instead. Kept as it is: re-encoding as
+      // JPEG would black out any transparency, and a 640px PNG is well inside the upload limit.
+      const blob = await toBlob(out, 'image/webp');
       if (blob) this.saved.emit(blob);
+      else this.error.set('Could not prepare your photo. Try another one.');
     } finally {
       this.encoding.set(false);
     }

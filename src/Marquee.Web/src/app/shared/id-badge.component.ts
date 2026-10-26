@@ -1,4 +1,4 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, input, output, signal, viewChild } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { initialsOf } from '../core/util/avatar';
 import { FullProfileDto, ProfileDto, isFullProfile } from '../core/models';
@@ -43,6 +43,7 @@ function barcodePatternFor(seed: string): string {
   imports: [DatePipe, NgTemplateOutlet],
   templateUrl: './id-badge.component.html',
   styleUrl: './id-badge.component.css',
+  host: { '(document:click)': 'onDocumentClick($event)' },
 })
 export class IdBadgeComponent {
   readonly profile = input.required<ProfileDto>();
@@ -53,6 +54,8 @@ export class IdBadgeComponent {
   readonly removePhoto = output<void>();
 
   protected readonly menuOpen = signal(false);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly portraitButton = viewChild<ElementRef<HTMLButtonElement>>('portraitButton');
 
   protected readonly passYear = new Date().getFullYear();
 
@@ -76,6 +79,17 @@ export class IdBadgeComponent {
   });
 
   protected readonly barcode = computed(() => barcodePatternFor(this.profile().username));
+
+  /** Escape: close, and put focus back where the menu was opened from rather than on the page. */
+  protected closeMenu(): void {
+    if (!this.menuOpen()) return;
+    this.menuOpen.set(false);
+    this.portraitButton()?.nativeElement.focus();
+  }
+
+  protected onDocumentClick(event: MouseEvent): void {
+    if (this.menuOpen() && !this.host.nativeElement.contains(event.target as Node)) this.menuOpen.set(false);
+  }
 
   protected pick(choice: 'change' | 'remove'): void {
     this.menuOpen.set(false);

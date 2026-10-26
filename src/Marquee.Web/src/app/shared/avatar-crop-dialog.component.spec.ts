@@ -80,6 +80,37 @@ describe('AvatarCropDialogComponent', () => {
     expect(b).toBeLessThan(60);
   });
 
+  it('keeps the PNG a browser without a WebP encoder hands back, so transparency survives', async () => {
+    // Safari-style: asked for WebP, the canvas answers with a PNG. JPEG would black out transparency.
+    const realToBlob = HTMLCanvasElement.prototype.toBlob;
+    spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+      type?: string,
+      quality?: number,
+    ) {
+      realToBlob.call(this, callback, type === 'image/webp' ? 'image/png' : type, quality);
+    });
+    open(await pngFile(400, 300, 'teal'));
+    await until(() => !saveButton().disabled);
+    const saved = new Promise<Blob>((resolve) => fixture.componentInstance.saved.subscribe(resolve));
+
+    saveButton().click();
+
+    expect((await saved).type).toBe('image/png');
+  });
+
+  it('says so when the browser cannot encode the photo at all', async () => {
+    open(await pngFile(400, 300, 'teal'));
+    await until(() => !saveButton().disabled);
+    spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake((callback: BlobCallback) => callback(null));
+
+    saveButton().click();
+    await until(() => errorText() !== null);
+
+    expect(errorText()).toBe('Could not prepare your photo. Try another one.');
+  });
+
   it('cancels on Escape', async () => {
     open(await pngFile(400, 300, 'teal'));
     await until(() => !saveButton().disabled);

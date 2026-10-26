@@ -134,5 +134,44 @@ describe('IdBadgeComponent', () => {
       expect([changed, removed]).toEqual([0, 1]);
       expect(el.querySelector('.badge__menu')).toBeNull();
     });
+
+    it('closes on Escape and hands focus back to the portrait', () => {
+      const fixture = editable(full({ avatarUrl: 'https://x.test/a.webp' }));
+      document.body.appendChild(fixture.nativeElement);
+      const el = fixture.nativeElement as HTMLElement;
+      const portrait = el.querySelector('button.badge__portrait') as HTMLButtonElement;
+      portrait.click();
+      fixture.detectChanges();
+      const first = el.querySelector('.badge__menu button') as HTMLButtonElement;
+      first.focus();
+
+      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(el.querySelector('.badge__menu')).toBeNull();
+      expect(document.activeElement).toBe(portrait);
+      fixture.nativeElement.remove();
+    });
+
+    it('closes when something outside it is clicked', () => {
+      const fixture = editable(full({ avatarUrl: null }));
+      const el = fixture.nativeElement as HTMLElement;
+      (el.querySelector('button.badge__portrait') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      document.body.click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.badge__menu')).toBeNull();
+    });
+
+    it('uses plain buttons, not the ARIA menu roles it has no arrow-key support for', () => {
+      const fixture = editable(full({ avatarUrl: null }));
+      const el = fixture.nativeElement as HTMLElement;
+      (el.querySelector('button.badge__portrait') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('[role="menu"], [role="menuitem"], [aria-haspopup]')).toBeNull();
+    });
   });
 });
