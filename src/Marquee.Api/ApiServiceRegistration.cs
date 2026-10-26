@@ -12,6 +12,7 @@ public static class ApiServiceRegistration
     public static IServiceCollection AddMarqueeApiServices(
         this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<IPremiereViewCache, PremiereViewCache>();
         services.AddScoped<IPremiereService, PremiereService>();
         services.AddScoped<IPremiereFactory, PremiereFactory>();
         services.AddScoped<IMovieCatalog, MovieCatalog>();

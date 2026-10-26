@@ -62,6 +62,7 @@ public sealed class PremiereService(
     IClapCounters counters,
     IClapGuards guards,
     IPremiereCache cache,
+    IPremiereViewCache views,
     IClapBroadcastQueue broadcasts,
     IClapRateTracker clapRate,
     IFriendshipService friendships,
@@ -102,20 +103,47 @@ public sealed class PremiereService(
             premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
     }
 
+    /// <summary>
+    /// The Active Premiere. What is the same for every visitor (the row and, once revealed, its film)
+    /// comes from the view cache (#94); the live count, the contributor count and the viewer's own
+    /// claps are read from the Redis counters on every request, so they are always exact.
+    /// </summary>
     public async Task<PremiereDto?> GetActiveAsync(Participant? viewer, CancellationToken ct)
+    {
+        var shared = await views.ActiveAsync(Scopes.Global, LoadActiveAsync, ct);
+        if (shared is null)
+            return null;
+
+        var total = (int)await counters.GetTotalAsync(shared.ScopeId, shared.Id, ct);
+        var contributors = (int)await counters.GetContributorCountAsync(shared.ScopeId, shared.Id, ct);
+        var mine = viewer is Participant p
+            ? (int)await counters.GetParticipantClapsAsync(shared.ScopeId, shared.Id, p, ct)
+            : 0;
+
+        return shared with
+        {
+            TotalClaps = total,
+            Contributors = contributors,
+            MyClaps = mine,
+            // Same rule as PremiereMapping.ToDto: an unidentified caller is shown the registered cap.
+            MyCap = viewer?.IsAnonymous == true ? shared.AnonymousClapCap : shared.RegisteredClapCap,
+            // Emblems are assigned once the Premiere opens (§4.3) — nothing to show while Active.
+            MyEmblemTier = null
+        };
+    }
+
+    // CancellationToken.None: this load is shared by every request waiting on the same key, so one
+    // caller hanging up must not fail the others.
+    private async Task<PremiereDto?> LoadActiveAsync()
     {
         var premiere = await db.Premieres
             .Include(p => p.Movie)
             .AsNoTracking()
             .Where(p => p.ScopeId == Scopes.Global && p.Status == PremiereStatus.Active)
             .OrderByDescending(p => p.OpensAt)
-            .FirstOrDefaultAsync(ct);
-        if (premiere is null)
-            return null;
+            .FirstOrDefaultAsync(CancellationToken.None);
 
-        var counts = await LiveCountsAsync(premiere, viewer, ct);
-        return premiere.ToDto(
-            premiere.Movie, counts.Total, counts.Contributors, counts.MyClaps, _tmdb, viewer, counts.MyEmblemTier);
+        return premiere?.ToDto(premiere.Movie, totalClaps: 0, contributors: 0, myClaps: 0, _tmdb);
     }
 
     /// <summary>
@@ -144,6 +172,27 @@ public sealed class PremiereService(
         string scopeId, Participant? viewer, CancellationToken ct)
     {
         var localDate = DateOnly.FromDateTime(DateTime.Now);
+        var shared = (await views.TodayAsync(scopeId, localDate, () => LoadTodayAsync(scopeId, localDate), ct))!;
+
+        // Only opened slots carry anything personal, and all of it comes from one query.
+        var openedIds = shared.Slots.Where(IsOpened).Select(s => s.Id).ToList();
+        if (viewer is not Participant p || openedIds.Count == 0)
+            return shared;
+
+        var mine = await MyContributionsAsync(openedIds, p, ct);
+        var slots = shared.Slots
+            .Select(s => mine.TryGetValue(s.Id, out var m) ? s with { MyClaps = m.ClapCount, MyEmblemTier = m.EmblemTier } : s)
+            .ToList();
+        return shared with { Slots = slots };
+    }
+
+    private static bool IsOpened(TodayScheduleSlotDto slot) =>
+        slot.Status == nameof(PremiereStatus.Opened) || slot.Status == nameof(PremiereStatus.AutoOpened);
+
+    // The part of today's programme every visitor sees alike, viewer fields left empty. Cancellation
+    // is not passed through for the reason given on LoadActiveAsync.
+    private async Task<TodayScheduleDto?> LoadTodayAsync(string scopeId, DateOnly localDate)
+    {
         var (dayStartUtc, dayEndUtc) = LocalDay.BoundsUtc(localDate);
 
         var premieres = await db.Premieres
@@ -153,24 +202,20 @@ public sealed class PremiereService(
                         && (p.OpensAt ?? p.ScheduledFor) >= dayStartUtc
                         && (p.OpensAt ?? p.ScheduledFor) < dayEndUtc)
             .OrderBy(p => p.OpensAt ?? p.ScheduledFor)
-            .ToListAsync(ct);
+            .ToListAsync(CancellationToken.None);
 
         var slots = new List<TodayScheduleSlotDto>(premieres.Count);
         foreach (var premiere in premieres)
         {
             var opened = premiere.Status is PremiereStatus.Opened or PremiereStatus.AutoOpened;
-            var (myClaps, myEmblemTier) = opened
-                ? await MyContributionAsync(premiere.Id, viewer, ct)
-                : (0, null);
-
             slots.Add(new TodayScheduleSlotDto(
                 premiere.Id,
                 premiere.ScheduledFor,
                 premiere.Status.ToString(),
                 opened ? MovieDtoFactory.Create(premiere.Movie, _tmdb) : null,
                 opened ? premiere.TotalClaps : null,
-                myClaps,
-                myEmblemTier));
+                MyClaps: 0,
+                MyEmblemTier: null));
         }
 
         return new TodayScheduleDto(scopeId, slots);
@@ -511,6 +556,24 @@ public sealed class PremiereService(
 
         var row = await query.Select(c => new { c.ClapCount, c.EmblemTier }).FirstOrDefaultAsync(ct);
         return row is null ? (0, null) : (row.ClapCount, row.EmblemTier);
+    }
+
+    /// <summary>
+    /// <see cref="MyContributionAsync"/> for several Premieres at once. (PremiereId, UserId) and
+    /// (PremiereId, AnonymousSessionId) are unique, so each Premiere has at most one row.
+    /// </summary>
+    private async Task<Dictionary<Guid, (int ClapCount, int? EmblemTier)>> MyContributionsAsync(
+        IReadOnlyList<Guid> premiereIds, Participant p, CancellationToken ct)
+    {
+        var query = db.Contributions.Where(c => premiereIds.Contains(c.PremiereId));
+        query = p.IsAnonymous
+            ? query.Where(c => c.AnonymousSessionId == p.AnonymousSessionId)
+            : query.Where(c => c.UserId == p.UserId);
+
+        var rows = await query
+            .Select(c => new { c.PremiereId, c.ClapCount, c.EmblemTier })
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.PremiereId, r => (r.ClapCount, r.EmblemTier));
     }
 
     private async Task<ClapResponse> BuildClapResponseAsync(

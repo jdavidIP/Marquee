@@ -13,6 +13,8 @@ using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 
+using Marquee.Infrastructure.Persistence;
+
 namespace Marquee.IntegrationTests;
 
 /// <summary>
@@ -181,6 +183,11 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<INotificationDispatcher>();
             services.AddSingleton<RecordingNotificationDispatcher>();
             services.AddSingleton<INotificationDispatcher>(sp => sp.GetRequiredService<RecordingNotificationDispatcher>());
+
+            // Count the commands EF sends to Postgres, for tests that assert a read never reached it (#94).
+            var commands = new DbCommandCounter();
+            services.AddSingleton(commands);
+            services.ConfigureDbContext<MarqueeDbContext>(options => options.AddInterceptors(commands));
         });
     }
 
@@ -189,6 +196,9 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
     /// <summary>The TMDB double, so a test can make it start or stop failing.</summary>
     public ControllableTmdbClient Tmdb => Services.GetRequiredService<ControllableTmdbClient>();
+
+    /// <summary>How many commands EF has sent to Postgres, for asserting that a read did not.</summary>
+    public DbCommandCounter DbCommands => Services.GetRequiredService<DbCommandCounter>();
 
     /// <summary>What has been announced over the hub, for asserting that something was.</summary>
     public RecordingBroadcaster Broadcasts => Services.GetRequiredService<RecordingBroadcaster>();

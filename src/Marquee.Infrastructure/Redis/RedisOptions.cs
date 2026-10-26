@@ -27,6 +27,13 @@ public sealed class RedisOptions
     public int AccessTtlSeconds { get; set; } = 30;
 
     /// <summary>
+    /// How long the shared parts of the `/active` and `/today` reads stay cached (#94). Changes
+    /// invalidate them explicitly, so this is only the backstop for a missed invalidation or a load
+    /// that read the database just before a change. Zero or less turns the cache off.
+    /// </summary>
+    public int ReadCacheTtlSeconds { get; set; } = 30;
+
+    /// <summary>
     /// Window the dashboard's clap rate is averaged over (Iteration 6). Short enough that a burst is
     /// still visible as a burst rather than smoothed into the surrounding minute.
     /// </summary>
