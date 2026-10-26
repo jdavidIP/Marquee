@@ -161,6 +161,7 @@ public class AvatarImageTests
     [Theory]
     [InlineData(SKEncodedImageFormat.Jpeg)]
     [InlineData(SKEncodedImageFormat.Png)]
+    [InlineData(SKEncodedImageFormat.Webp)]
     public async Task Truncated_files_are_refused(SKEncodedImageFormat format)
     {
         using var source = new SKBitmap(400, 400);

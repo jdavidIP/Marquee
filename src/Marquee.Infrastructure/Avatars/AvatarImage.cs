@@ -33,7 +33,9 @@ public static class AvatarImage
             throw new AvatarImageException("That image is too large.");
 
         // Decoded by hand rather than with SKBitmap.Decode, which also returns a bitmap for a file cut
-        // off part-way (IncompleteInput), its missing rows filled in. Only a complete decode is a photo.
+        // off part-way (IncompleteInput), its missing rows filled in. That refuses truncated PNG, WebP
+        // and baseline JPEG; a truncated progressive JPEG still decodes, degraded, because libjpeg fills
+        // in the missing passes and reports success. The client only ever sends WebP or PNG.
         var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
         using var decoded = new SKBitmap(info);
         if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success)
