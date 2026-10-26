@@ -185,10 +185,13 @@ The `Avatars` bucket, its CloudFront behaviour at `/avatars/*` and the host role
 host role's policy and the distribution, no replacement. Deploy the stack **before** merging the code:
 the workflow fails on a missing `AvatarsBucketName` output rather than deploy without it.
 
-- [ ] `cdk deploy MarqueeStack`: the `Avatars` bucket exists with all public access blocked, and the
-  stack has an `AvatarsBucketName` output. *(operator)*
+- [x] **2026-10-25** — `cdk deploy MarqueeStack`: the bucket `marqueestack-avatars91192a3d-f7hrigpllmw4`
+  exists with all four public-access blocks on, and the stack has its `AvatarsBucketName` output.
+  The host was untouched (same instance id and launch time); `MarqueeAuthStack` had no changes. *(operator)*
 - [ ] Upload through the site: the badge shows the photo, served from `<SiteUrl>/avatars/...` with
   `Cache-Control: public, max-age=86400`, and the object is a 640×640 WebP.
 - [ ] Replace: the previous object is gone from the bucket (`aws s3 ls s3://<AvatarsBucketName>/avatars/<user id>/`).
 - [ ] Remove: the monogram is back and the object is gone from the bucket.
-- [ ] The bucket refuses a direct request: `https://<AvatarsBucketName>.s3.ca-central-1.amazonaws.com/avatars/...` returns 403.
+- [x] **2026-10-25** — The bucket refuses a direct request: `https://<AvatarsBucketName>.s3.ca-central-1.amazonaws.com/avatars/x.webp`
+  returns 403. (Through CloudFront a missing key also returns 403 — OAC without list access — so the
+  served-photo item above is the one that proves the path.)
