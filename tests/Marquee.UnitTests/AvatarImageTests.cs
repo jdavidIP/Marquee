@@ -154,6 +154,27 @@ public class AvatarImageTests
         await act.Should().ThrowAsync<AvatarImageException>().WithMessage("That image is too large.");
     }
 
+    /// <summary>
+    /// A body cut off after a valid header still decodes as far as it goes; Skia fills in the rest.
+    /// That is not the photo anyone chose, so it is refused rather than stored half grey.
+    /// </summary>
+    [Theory]
+    [InlineData(SKEncodedImageFormat.Jpeg)]
+    [InlineData(SKEncodedImageFormat.Png)]
+    public async Task Truncated_files_are_refused(SKEncodedImageFormat format)
+    {
+        using var source = new SKBitmap(400, 400);
+        for (var y = 0; y < 400; y++)
+            for (var x = 0; x < 400; x++)
+                source.SetPixel(x, y, new SKColor((byte)x, (byte)y, (byte)(x ^ y)));
+        var whole = Encode(source, format);
+
+        var act = () => Process(whole[..(whole.Length / 2)]);
+
+        await act.Should().ThrowAsync<AvatarImageException>()
+            .WithMessage("That file type isn't supported. Use a JPEG, PNG or WebP.");
+    }
+
     [Fact]
     public async Task Huge_dimensions_are_refused()
     {
