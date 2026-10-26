@@ -61,6 +61,18 @@ public sealed class RedisJsonCache(IConnectionMultiplexer redis, IOptions<RedisO
     private async Task<Envelope<T>?> TryGetAsync<T>(string key)
     {
         var raw = await _db.StringGetAsync(key);
-        return raw.IsNullOrEmpty ? null : JsonSerializer.Deserialize<Envelope<T>>((string)raw!, Json);
+        if (raw.IsNullOrEmpty)
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<Envelope<T>>((string)raw!, Json);
+        }
+        catch (JsonException)
+        {
+            // Written before a deploy that changed the cached type. It is only a cache: reading it as
+            // a miss rebuilds it from Postgres, where throwing would fail requests until it expired.
+            return null;
+        }
     }
 }

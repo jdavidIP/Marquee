@@ -616,7 +616,11 @@ against the `t3.small` running all five containers, host sampled every ~10 s (`d
   caches the shared part of `/today` and `/active` in Redis (`premiere:{scopeId}:view:*`, 30 s TTL as a
   backstop behind explicit invalidation at every Premiere state change). Live counts and each
   viewer's own claps are still read per request. Re-measure with the same `reads` profile and record
-  it here; the baseline to beat is Postgres ~29% CPU and load average 3.85.
+  it here; the baseline to beat is Postgres ~29% CPU and load average 3.85. Accepted limit: a read that
+  loads just before a state change and stores just after its invalidation keeps the old answer for up
+  to 30 s. It needs the cache to expire within milliseconds of the change; at an opening, a fresh page
+  load could briefly see the Premiere still Active with no film. Claps and the live "opened"
+  announcement are unaffected.
 - **Clap throughput at scale cannot be measured in production yet.** With one confirmed user, §4.1
   puts the threshold at its 30–50 floor, so a Premiere opens after a few dozen claps. Iteration 2's
   local numbers (`docs/concurrency-findings.md`) remain the reference for the counter path; the Redis

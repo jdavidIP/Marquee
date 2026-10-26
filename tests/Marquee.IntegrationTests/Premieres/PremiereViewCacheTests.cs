@@ -8,6 +8,7 @@ using Marquee.Domain.Enums;
 using Marquee.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace Marquee.IntegrationTests;
 
@@ -20,7 +21,7 @@ namespace Marquee.IntegrationTests;
 public class PremiereViewCacheTests(MarqueeAppFactory factory)
 {
     private sealed record ActiveBody(Guid Id, string Status, int TotalClaps, int Contributors, int MyClaps);
-    private sealed record Slot(Guid Id, string Status, MovieBody? Movie, int MyClaps, int? MyEmblemTier);
+    private sealed record Slot(Guid Id, DateTime ScheduledFor, string Status, MovieBody? Movie, int MyClaps, int? MyEmblemTier);
     private sealed record MovieBody(string Title);
     private sealed record Schedule(List<Slot> Slots);
 
@@ -42,16 +43,21 @@ public class PremiereViewCacheTests(MarqueeAppFactory factory)
     /// </summary>
     private async Task<Guid> CreateActiveAsync()
     {
+        await CloseActiveAsync();
         factory.Tmdb.IsDown = false;
+        using var scope = factory.Services.CreateScope();
+        var premiere = await scope.ServiceProvider.GetRequiredService<IPremiereFactory>()
+            .CreateAsync(DateTime.UtcNow, activateNow: true, TimeSpan.FromMinutes(60), default);
+        return premiere.Id;
+    }
+
+    private async Task CloseActiveAsync()
+    {
         using var scope = factory.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<MarqueeDbContext>().Premieres
             .Where(p => p.Status == PremiereStatus.Active)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, PremiereStatus.AutoOpened), default);
         await scope.ServiceProvider.GetRequiredService<IPremiereViewCache>().InvalidateAsync(Scopes.Global, default);
-
-        var premiere = await scope.ServiceProvider.GetRequiredService<IPremiereFactory>()
-            .CreateAsync(DateTime.UtcNow, activateNow: true, TimeSpan.FromMinutes(60), default);
-        return premiere.Id;
     }
 
     [Fact]
@@ -165,6 +171,8 @@ public class PremiereViewCacheTests(MarqueeAppFactory factory)
         var mine = await GetTodayAsync(viewer);
 
         factory.DbCommands.Count.Should().Be(1, "three opened slots, one batched query for the viewer's own claps");
+        mine.Slots.Single(s => s.Id == ids[0]).ScheduledFor.Should().BeCloseTo(
+            noon.AddHours(-3), TimeSpan.FromMilliseconds(1), "dates keep their UTC kind through the cache");
         mine.Slots.Single(s => s.Id == ids[0]).Movie!.Title.Should().Be("Cached -3", "the film survives the trip through the cache");
         mine.Slots.Single(s => s.Id == ids[0]).MyClaps.Should().Be(4);
         mine.Slots.Single(s => s.Id == ids[0]).MyEmblemTier.Should().Be(3);
@@ -174,5 +182,86 @@ public class PremiereViewCacheTests(MarqueeAppFactory factory)
         var theirs = await GetTodayAsync(stranger);
         theirs.Slots.Where(s => ids.Contains(s.Id)).Should().OnlyContain(
             s => s.MyClaps == 0 && s.MyEmblemTier == null, "one viewer's claps never leak into the shared copy");
+    }
+
+    [Fact]
+    public async Task A_cached_none_running_answer_is_served_without_the_database()
+    {
+        await CloseActiveAsync();
+        var anonymous = factory.CreateClient();
+        (await GetActiveAsync(anonymous)).Should().BeNull(); // fills the cache with "nothing running"
+
+        factory.DbCommands.Reset();
+        var again = await GetActiveAsync(anonymous);
+
+        again.Should().BeNull();
+        factory.DbCommands.Count.Should().Be(0, "\"nothing is running\" is an answer the cache keeps too");
+    }
+
+    [Fact]
+    public async Task An_unreadable_cached_entry_is_read_as_a_miss_not_an_error()
+    {
+        var id = await CreateActiveAsync();
+        // What an entry written before a deploy that changed the cached type can look like.
+        await factory.Services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()
+            .StringSetAsync($"premiere:{Scopes.Global}:view:active", "{ this is not json", TimeSpan.FromSeconds(30));
+
+        var body = await GetActiveAsync(factory.CreateClient());
+
+        body!.Id.Should().Be(id, "the bad entry is rebuilt from Postgres instead of failing the request");
+    }
+
+    [Fact]
+    public async Task An_anonymous_visitors_own_claps_are_overlaid_on_the_cached_programme()
+    {
+        var noon = LocalDay.BoundsUtc(DateOnly.FromDateTime(DateTime.Now)).StartUtc.AddHours(12);
+        var anonymous = factory.CreateClient();
+        var created = await anonymous.PostAsJsonAsync("/api/sessions/anonymous", new { });
+        created.EnsureSuccessStatusCode();
+        var session = (await created.Content.ReadFromJsonAsync<Dictionary<string, string>>())!;
+        anonymous.DefaultRequestHeaders.Add("X-Anon-Session", session["token"]);
+        Guid id;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MarqueeDbContext>();
+            var premiere = new Premiere
+            {
+                ScopeId = Scopes.Global,
+                ScheduledFor = noon.AddHours(-5),
+                OpensAt = noon.AddHours(-5),
+                ExpiresAt = noon.AddHours(-5).AddMinutes(60),
+                OpenedAt = noon.AddHours(-5).AddMinutes(1),
+                Threshold = 10,
+                RegisteredClapCap = 5,
+                AnonymousClapCap = 2,
+                Status = PremiereStatus.Opened,
+                TotalClaps = 12,
+                Movie = new Movie
+                {
+                    TmdbId = Random.Shared.Next(1_000_000, 9_999_999),
+                    Title = "Anonymous overlay",
+                    PosterPath = "/p.jpg",
+                    ReleaseYear = 2001,
+                    Overview = "Seeded by PremiereViewCacheTests.",
+                    VoteAverage = 7.0,
+                    VoteCount = 1000,
+                    CachedAt = DateTime.UtcNow,
+                },
+            };
+            db.Premieres.Add(premiere);
+            await db.SaveChangesAsync();
+            id = premiere.Id;
+            db.Contributions.Add(new Contribution { PremiereId = id, AnonymousSessionId = session["sessionId"], ClapCount = 2 });
+            await db.SaveChangesAsync();
+        }
+
+        await factory.Services.GetRequiredService<IPremiereViewCache>().InvalidateAsync(Scopes.Global, default);
+        await GetTodayAsync(factory.CreateClient()); // a different visitor fills the cache
+
+        var mine = (await GetTodayAsync(anonymous)).Slots.Single(s => s.Id == id);
+
+        mine.MyClaps.Should().Be(2);
+        mine.MyEmblemTier.Should().BeNull("an anonymous participant never earns a tier");
     }
 }

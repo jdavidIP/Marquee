@@ -11,6 +11,12 @@ namespace Marquee.Api.Services;
 /// Anything that changes what these show — a Premiere created, activated, opened, missed,
 /// rescheduled, retuned or given a different film — must call <see cref="InvalidateAsync"/>. The TTL
 /// (<see cref="RedisOptions.ReadCacheTtlSeconds"/>) is the backstop, not the mechanism.
+///
+/// Known limit, accepted: a load that reads Postgres just before a change and finishes just after
+/// the invalidation stores the old answer for up to the TTL. A load only runs while the key is empty,
+/// so this needs the cache to expire in the few milliseconds around a change. At an opening it means
+/// `/active` briefly shows a Premiere that has already opened (no film, zero counts) to a fresh page
+/// load; clapping and the live announcement are unaffected, since they do not use this cache.
 /// </summary>
 public interface IPremiereViewCache
 {
