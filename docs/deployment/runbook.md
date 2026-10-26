@@ -157,3 +157,37 @@ aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations
 
 It must print `2`. At `1`, every AWS call from the container fails: the admin seeder logs it in
 `/marquee/prod` and the API starts with no admin.
+
+## Rotate the database password
+
+`MarqueeDataStack` reads `/marquee/prod/POSTGRES_PASSWORD` at a pinned version, so changing the parameter alone
+changes nothing on the database. But every deploy rewrites the host's `.env` from SSM, and every merge to
+`main` deploys: the moment the new parameter version exists, the next deploy hands the app the new password.
+So the database must change in the same sitting, with no deploy in between. Existing database sessions
+survive a password change; only new connections in the gap would fail.
+
+Generate the value, never type it: it goes unquoted into the Npgsql connection string in
+`docker-compose.prod.yml` and into compose's `.env`, where `;`, `$`, `#` and quotes break things that RDS's own
+rules (8–128 printable characters, no `/`, `"`, `@` or space) still allow. Hex meets every rule by construction.
+
+**Before #161 (the app still uses the Postgres container):**
+
+1. `MSYS_NO_PATHCONV=1 aws ssm put-parameter --name /marquee/prod/POSTGRES_PASSWORD --type SecureString --overwrite --value "$(openssl rand -hex 32)"`
+   and note the `Version` it prints.
+2. Straight away, change the container's password to the same value: on the host (Session Manager), read it
+   back with `aws ssm get-parameter ... --with-decryption` into a variable and run
+   `docker exec marquee-postgres-1 psql -U marquee -c "ALTER USER marquee PASSWORD '<value>'"` (container name:
+   `docker ps`).
+3. Redeploy the running tag so `.env` picks the value up: `gh workflow run deploy.yml -f tag=<running tag>`
+   (the running tag is in `/opt/marquee/last-healthy-tag`).
+4. Bring RDS along too, so the two stay identical until #161: set `PasswordParameterVersion` in
+   `infra/MarqueeDataStack.cs` to the new version, run `cdk diff` (only the instance's master password should
+   change), and deploy `MarqueeDataStack` from the branch before merging that change.
+
+**After #161 (the app uses RDS):**
+
+1. `put-parameter` as above, and note the version.
+2. On a branch: set `PasswordParameterVersion` to it, `cdk diff`, and deploy `MarqueeDataStack` from the branch.
+   RDS applies the new master password straight away.
+3. Redeploy the running tag (as above) so the app picks it up. Do 2 and 3 back to back, and merge the version
+   bump afterwards: merging first would deploy the app with the new password before RDS has it.
