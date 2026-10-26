@@ -66,7 +66,7 @@ describe('ChangePasswordComponent', () => {
   });
 
   const refusals: [string, string][] = [
-    ['NotAuthorizedException', 'Your current password is not right.'],
+    ['NotAuthorizedException', 'Your current password is not right, or your session has expired.'],
     ['InvalidPasswordException', 'Use at least 10 characters, including a number.'],
     ['LimitExceededException', 'Too many attempts. Wait a few minutes and try again.'],
     ['NetworkError', 'Cannot reach the sign-in service. Check your connection.'],

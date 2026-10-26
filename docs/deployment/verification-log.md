@@ -204,6 +204,8 @@ the workflow fails on a missing `AvatarsBucketName` output rather than deploy wi
 ## Change password (#130)
 
 - [ ] Against the real pool, signed in, from Profile → Password → Change password: a wrong current password
-  shows "Your current password is not right."; a new password under 10 characters or with no number shows
+  shows "Your current password is not right, or your session has expired."; a new password under 10 characters or with no number shows
   the policy message; a valid change shows "Password changed."; signing out and in with the old password is
-  refused, the new one works. *(operator)*
+  refused, the new one works. Also confirm the access token carries the scope `ChangePassword` needs
+  (`aws.cognito.signin.user.admin`), and that a request with an expired token gives the same message.
+  *(operator)*

@@ -82,10 +82,14 @@ export class ChangePasswordComponent {
     });
   }
 
-  /** The pool's wrong-old-password refusal reads "username or password" elsewhere; here there is no username to get wrong. */
+  /**
+   * The pool's wrong-old-password refusal reads "username or password" elsewhere; here there is no
+   * username to get wrong. It is also what an expired or revoked access token looks like, which the
+   * page cannot tell apart from the type alone, so the message names both.
+   */
   private message(err: unknown): string {
     if (err instanceof CognitoError && err.type === 'NotAuthorizedException') {
-      return 'Your current password is not right.';
+      return 'Your current password is not right, or your session has expired. Sign in again and retry.';
     }
     return authError(err, 'Could not change your password. Please try again.');
   }
