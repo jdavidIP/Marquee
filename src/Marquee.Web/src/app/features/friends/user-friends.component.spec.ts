@@ -20,9 +20,10 @@ describe('UserFriendsComponent', () => {
   let removeSpy: jasmine.Spy;
   let sendRequestSpy: jasmine.Spy;
   let profileSpy: jasmine.Spy;
+  let root: HTMLElement;
 
   function friend(username: string, id = username): FriendDto {
-    return { userId: id, username, bio: null, isPrivate: false, friendsSince: '2026-01-01T00:00:00Z' };
+    return { userId: id, username, bio: null, isPrivate: false, avatarUrl: null, friendsSince: '2026-01-01T00:00:00Z' };
   }
 
   function limitedProfile(overrides: Partial<LimitedProfileDto> = {}): LimitedProfileDto {
@@ -69,6 +70,7 @@ describe('UserFriendsComponent', () => {
     const fixture = TestBed.createComponent(UserFriendsComponent);
     fixture.componentRef.setInput('username', 'ana');
     fixture.detectChanges();
+    root = fixture.nativeElement;
     return fixture.componentInstance as unknown as Record<string, any>;
   }
 
@@ -115,6 +117,13 @@ describe('UserFriendsComponent', () => {
 
     expect(c['forbidden']()).toBe(false);
     expect(c['error']()).not.toBeNull();
+  });
+
+  it('draws a friend as a photo when set and as a monogram when not', () => {
+    make([{ ...friend('bob'), avatarUrl: '/avatars/b/x.webp' }, friend('carol')]);
+
+    expect(root.querySelector('img.avatar--photo')?.getAttribute('src')).toBe('/avatars/b/x.webp');
+    expect(root.querySelectorAll('span.avatar').length).toBe(1);
   });
 
   it('lists the friends returned for an entitled viewer', () => {

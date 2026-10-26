@@ -114,9 +114,13 @@
         <ul class="list">
           @for (friend of friends(); track friend.userId) {
             <li class="row" [class.row--asking]="askingId() === friend.userId">
-              <span class="avatar" [style.background]="monogramColor(friend.userId)">
-                {{ initialsOf(friend.username) }}
-              </span>
+              @if (friend.avatarUrl; as photo) {
+                <img class="avatar avatar--photo" [src]="photo" alt="" />
+              } @else {
+                <span class="avatar" [style.background]="monogramColor(friend.userId)">
+                  {{ initialsOf(friend.username) }}
+                </span>
+              }
               <div class="row__who">
                 <a class="row__name" [routerLink]="['/u', friend.username]">{{ friend.username }}</a>
                 @if (friend.bio) {

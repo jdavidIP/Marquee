@@ -68,9 +68,9 @@ public sealed record LimitedProfileDto(
 
 /// <summary>
 /// A search hit. Deliberately identical for public and private users — private profiles stay
-/// discoverable (MARQUEE_PLAN.md), and these are the same two fields a stranger may see anyway.
+/// discoverable (MARQUEE_PLAN.md), and these are the same fields a stranger may see anyway (photos are always public, #63).
 /// </summary>
-public sealed record UserSearchResultDto(Guid Id, string Username, string? Bio, bool IsPrivate);
+public sealed record UserSearchResultDto(Guid Id, string Username, string? Bio, bool IsPrivate, string? AvatarUrl);
 
 /// <summary>
 /// Partial update of the signed-in user's own profile. Both fields are optional so a client can
@@ -84,12 +84,13 @@ public sealed record FriendRequestDto(
     Guid Id,
     Guid UserId,
     string Username,
+    string? AvatarUrl,
     string Status,
     /// <summary>True when the signed-in user sent this request rather than received it.</summary>
     bool Outgoing,
     DateTime CreatedAt);
 
-public sealed record FriendDto(Guid UserId, string Username, string? Bio, bool IsPrivate, DateTime FriendsSince);
+public sealed record FriendDto(Guid UserId, string Username, string? Bio, bool IsPrivate, string? AvatarUrl, DateTime FriendsSince);
 
 /// <summary>
 /// Which of the viewer's friends clapped for a Premiere. Answered per request, per viewer, and
