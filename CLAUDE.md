@@ -114,6 +114,8 @@ premiere:{scopeId}:{premiereId}:user:{userId}  per-user clap count (INCR, enforc
 premiere:{scopeId}:{premiereId}:anon:{sessionId}
 premiere:{scopeId}:{premiereId}:contributors   SET of userIds (for friend intersection)
 premiere:{scopeId}:{premiereId}:lock           distributed lock for exactly-once open
+premiere:{scopeId}:view:active                 cached shared part of GET /active (JSON, short TTL, #94)
+premiere:{scopeId}:view:today:{yyyy-MM-dd}     cached shared part of GET /today (JSON, short TTL, #94)
 user:{userId}:friends                          SET of accepted friend userIds
 movie:tmdb:{tmdbId}                            cached TMDB metadata
 ```

@@ -209,3 +209,12 @@ the workflow fails on a missing `AvatarsBucketName` output rather than deploy wi
   refused, the new one works. Also confirm the access token carries the scope `ChangePassword` needs
   (`aws.cognito.signin.user.admin`), and that a request with an expired token gives the same message.
   *(operator)*
+
+## Cached Premiere reads (#94)
+
+- [ ] After the deploy, re-run the `reads` profile of `tests/Marquee.LoadTests/capacity.js` through CloudFront
+  at the same rate as 2026-09-29 (200 page loads/s, ~400 req/s), in the same `RateLimiting__Enabled=false`
+  window, sampling the host the same way. Postgres CPU is near zero and the load average is below the
+  3.85 baseline; no failed requests. Then check a state change shows at once: an admin starting a Premiere
+  appears on `/active` without waiting out the 30 s TTL. Record the numbers in DEPLOYMENT.md "Measured
+  capacity". *(operator)*

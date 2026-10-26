@@ -612,8 +612,11 @@ against the `t3.small` running all five containers, host sampled every ~10 s (`d
 - **CPU strains first, not memory.** At ~400 req/s the box was past its two cores while latency was
   still good — the next step up is where latency would climb. Memory would give out only around
   **8,000–9,000** held connections at the measured cost.
-- **Every page-load read hits Postgres** (~30% CPU at peak): the obvious first optimisation is caching
-  the shared part of `/today` and `/active` in Redis — #94, a follow-up rather than done here.
+- **Every page-load read hit Postgres** (~30% CPU at peak) — the measurement above predates #94, which
+  caches the shared part of `/today` and `/active` in Redis (`premiere:{scopeId}:view:*`, 30 s TTL as a
+  backstop behind explicit invalidation at every Premiere state change). Live counts and each
+  viewer's own claps are still read per request. Re-measure with the same `reads` profile and record
+  it here; the baseline to beat is Postgres ~29% CPU and load average 3.85.
 - **Clap throughput at scale cannot be measured in production yet.** With one confirmed user, §4.1
   puts the threshold at its 30–50 floor, so a Premiere opens after a few dozen claps. Iteration 2's
   local numbers (`docs/concurrency-findings.md`) remain the reference for the counter path; the Redis
