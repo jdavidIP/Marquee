@@ -27,6 +27,16 @@ export const routes: Routes = [
       ),
   },
   {
+    // Signed-in only: it needs the access token to change a password you know (#130). Someone who
+    // has lost theirs uses reset-password above.
+    path: 'change-password',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/change-password/change-password.component').then(
+        (m) => m.ChangePasswordComponent,
+      ),
+  },
+  {
     // No authGuard: the backend already resolves either a JWT user or an anonymous session
     // (§4.2), so a signed-out visitor is meant to reach this screen and clap, not be redirected
     // away from the one place that mechanism was built for (issue #57).
