@@ -123,6 +123,8 @@ from the host's. It is also a deliberate AWS learning goal (DEPLOYMENT.md § Pha
 - This creates CloudFormation exports from `MarqueeStack`. While the data stack imports them,
   `MarqueeStack` cannot replace or remove that VPC or that security group. That is wanted for a database,
   but it is a new constraint on future `MarqueeStack` changes, worth one line in DEPLOYMENT.md.
+- **Superseded during the build (Task 1 ruling):** CDK used plain outputs read with `Fn::GetStackOutput`, not
+  exports, so there is no such lock. DEPLOYMENT.md §3a says what a replacement would actually do.
 
 **Outputs**
 

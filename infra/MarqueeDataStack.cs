@@ -8,8 +8,9 @@ namespace Marquee.Cdk;
 // The database (DEPLOYMENT.md § Phase 3, #160): RDS for PostgreSQL in the host's VPC, reachable from the
 // host and nothing else. Design: docs/superpowers/specs/2026-10-26-rds-stack-design.md.
 //
-// Its own stack for the same reason as MarqueeAuthStack: it holds data the other stacks do not own, so
-// MarqueeStack can be torn down and rebuilt without touching it.
+// Its own stack so the database's lifecycle (deletion, snapshots, protection) is separate from the host's.
+// Its network is not: it lives in MarqueeStack's VPC and admits only MarqueeStack's host security group,
+// so that VPC and that group must outlive it (DEPLOYMENT.md §3a).
 public class MarqueeDataStack : Stack
 {
     // The password the Postgres container already uses, so moving the app across (#161) changes only the
@@ -59,6 +60,8 @@ public class MarqueeDataStack : Stack
         });
         dbSg.AddIngressRule(hostSecurityGroup, Port.Tcp(5432), "Marquee app host");
 
+        // 16.15 at creation. Minor upgrades are automatic, so the live instance moves ahead of this value
+        // (template drift). Change it only to match what RDS already runs, never to force an upgrade.
         var engine = DatabaseInstanceEngine.Postgres(new PostgresInstanceEngineProps
         {
             Version = PostgresEngineVersion.Of("16.15", "16"),

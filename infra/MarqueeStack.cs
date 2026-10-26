@@ -61,7 +61,9 @@ public class MarqueeStack : Stack
         """;
 
     // Read by MarqueeDataStack, which puts the database in this VPC and admits only the host to it (#160).
-    // Passing them across creates exports: while that stack imports them, this one cannot replace either.
+    // CDK passes them as plain outputs read with Fn::GetStackOutput, not exports, so nothing stops a change
+    // here from replacing either. Don't: a new host group cuts the host off from the database until
+    // MarqueeDataStack is redeployed, and a new VPC strands the database in the old one (DEPLOYMENT.md §3a).
     public Vpc Vpc { get; }
     public SecurityGroup HostSecurityGroup { get; }
 

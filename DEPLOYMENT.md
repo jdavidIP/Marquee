@@ -575,7 +575,8 @@ Recorded in the [verification log](docs/deployment/verification-log.md#2c-unconf
 `MarqueeDataStack` (`infra/MarqueeDataStack.cs`; design `docs/superpowers/specs/2026-10-26-rds-stack-design.md`).
 The app still uses the Postgres container until #161 moves it across.
 
-- **Instance:** PostgreSQL 16.15, `db.t4g.micro`, single-AZ, not publicly accessible, encrypted, 20 GB gp3
+- **Instance:** PostgreSQL 16 (16.15 at creation; minor upgrades are automatic, so the live version moves
+  ahead of the template's), `db.t4g.micro`, single-AZ, not publicly accessible, encrypted, 20 GB gp3
   growing to 40 GB, automatic minor upgrades. User and database `marquee`. Endpoint, port and security
   group id are the stack's outputs `DbEndpoint`, `DbPort`, `DbSecurityGroupId`.
 - **Network:** two isolated subnets, `10.0.100.0/24` (`ca-central-1a`) and `10.0.101.0/24` (`ca-central-1b`),
@@ -587,21 +588,32 @@ The app still uses the Postgres container until #161 moves it across.
   file. Rotating it: see the runbook.
 - **Backups — 1 day, not the 7 the design wanted.** On the Free Plan RDS refuses anything longer: the first
   deploy failed with "The specified backup retention period exceeds the maximum available to free tier
-  customers". With 1 day there is a daily automated snapshot plus point-in-time recovery to any second in
-  the last 24 hours. A restore always creates a **new** instance (RDS → the instance → Actions → Restore to
-  point in time), which the app is then pointed at. Raise the retention once on the Paid Plan.
+  customers". With 1 day there is a daily automated snapshot plus point-in-time recovery to any point in
+  the last 24 hours, up to the latest restorable time (usually about 5 minutes behind). A restore always
+  creates a **new** instance outside the stack (RDS → the instance → Actions → Restore to point in time).
+  In that dialog choose the stack's subnet group (`dbsubnets…`), its security group (`DbSg`) and its parameter
+  group (`DbParameters`): the defaults put it in the default VPC security group, which the host cannot reach,
+  with UTC instead of `America/Toronto`. Then point the app at the new endpoint. Raise the retention once on
+  the Paid Plan.
 - **Protection:** termination protection on the stack, deletion protection on the instance, and removal
   policy `SNAPSHOT`: a delete that does go through takes a final snapshot first.
 - **Cost:** about $14–15 a month (instance ~$12, storage ~$2; estimate, check the pricing calculator), paid
   from the Free Plan credits — there is no separate RDS allowance for accounts created after 15 July 2025.
   RDS restarts a stopped instance after 7 days, so unlike the host it effectively bills around the clock.
-  On 2026-10-26, with $141.19 of credits left and the plan ending 2027-03-24: everything always on (~$37 a
-  month) runs out around mid-February; with the host stopped when idle the credits last to expiry.
+  On 2026-10-26, with $141.19 of credits left and the plan ending 2027-03-24: everything always on is ~$37 a
+  month (the host's measured ~$22.50 for 1–21 October plus RDS) and runs out around mid-February; at the
+  estimate table's $25–30 for the host it is ~$40–45 and early February. With the host stopped when idle
+  the credits last to expiry.
 - **Cross-stack wiring, and what it does not protect.** `MarqueeStack` passes its VPC and host security group
   to this stack as two plain outputs (`PublishOutput…`, read with `Fn::GetStackOutput`), not CloudFormation
-  exports. So nothing stops a `MarqueeStack` change from replacing that VPC or security group. If one ever
-  does, the database's rule still names the old group and the host loses the database until
-  `MarqueeDataStack` is redeployed — deploy it straight after any `MarqueeStack` change that touches either.
+  exports. So nothing stops a `MarqueeStack` change from replacing that VPC or security group, and neither
+  may be replaced:
+  - **Host security group replaced:** the database's rule still names the old group, so the host loses the
+    database until `MarqueeDataStack` is redeployed (which also leaves the old group orphaned).
+  - **VPC replaced:** redeploying would put the subnet group in the new VPC, which replaces the instance with a
+    new, empty one. Recovery is a snapshot restore into the new VPC, not a redeploy.
+  - **So, in every `cdk diff` of `MarqueeStack`:** any `[-/+]` (replacement) on a `Vpc…` or `HostSg…` resource
+    means stop.
 - **Connecting by hand (from the host, Session Manager):**
   `docker run --rm -e PGPASSWORD=... postgres:16 psql "host=<DbEndpoint> dbname=marquee user=marquee sslmode=require"`.
   Nothing outside the VPC can reach it, by design.
