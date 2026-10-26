@@ -85,6 +85,15 @@ jobs:
             echo "cognito-issuer=$(out MarqueeAuthStack Issuer)"
             echo "cognito-client-id=$(out MarqueeAuthStack UserPoolClientId)"
           } >> "$GITHUB_OUTPUT"
+          # An output the stack does not have yet reads as the literal "None", which would sail past
+          # compose's empty-value check and leave the API writing photos to a bucket called None. The
+          # stack is deployed by hand, so code needing a new output can land first: fail here instead.
+          avatars=$(out MarqueeStack AvatarsBucketName)
+          if [ -z "$avatars" ] || [ "$avatars" = None ]; then
+            echo "MarqueeStack has no AvatarsBucketName output: deploy the stack before this code (#63)" >&2
+            exit 1
+          fi
+          echo "avatars-bucket=$avatars" >> "$GITHUB_OUTPUT"
 
       - name: Sign in to ECR
         id: ecr
@@ -118,12 +127,13 @@ jobs:
           INSTANCE: ${{ steps.stack.outputs.instance-id }}
           COGNITO_ISSUER: ${{ steps.stack.outputs.cognito-issuer }}
           COGNITO_CLIENT_ID: ${{ steps.stack.outputs.cognito-client-id }}
+          AVATARS_BUCKET: ${{ steps.stack.outputs.avatars-bucket }}
         run: |
           jq -n --arg tag "$TAG" --arg registry "$REGISTRY" --arg bucket "$BUCKET" \
-            --arg issuer "$COGNITO_ISSUER" --arg client "$COGNITO_CLIENT_ID" '{
+            --arg issuer "$COGNITO_ISSUER" --arg client "$COGNITO_CLIENT_ID" --arg avatars "$AVATARS_BUCKET" '{
             commands: [
               "aws s3 cp s3://\($bucket)/\($tag)/deploy.sh /opt/marquee/deploy.sh --only-show-errors",
-              "bash /opt/marquee/deploy.sh \($tag) \($registry) \($bucket) \($issuer) \($client)"
+              "bash /opt/marquee/deploy.sh \($tag) \($registry) \($bucket) \($issuer) \($client) \($avatars)"
             ],
             executionTimeout: ["900"]
           }' > params.json

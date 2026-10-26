@@ -28,6 +28,10 @@ x-app: &app
     # deploy workflow (DEPLOYMENT.md §2a). Not secrets — the client id ships in the frontend anyway.
     Cognito__Issuer: ${COGNITO_ISSUER:?}
     Cognito__ClientId: ${COGNITO_CLIENT_ID:?}
+    # Profile photos (#63): MarqueeStack's private bucket, written with the instance role and served by
+    # CloudFront at /avatars/*, so the stored URLs stay relative and survive a change of domain.
+    Avatars__BucketName: ${AVATARS_BUCKET_NAME:?}
+    Avatars__PublicBaseUrl: /avatars
     # No trace collector runs in this stack; exporting would retry against nothing.
     Tracing__Enabled: "false"
     # The API sits behind CloudFront: the EC2 security group admits only CloudFront, and the API refuses

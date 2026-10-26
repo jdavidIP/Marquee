@@ -38,6 +38,21 @@ export class UsersService {
   }
 
   /**
+   * Set or replace your own profile photo (#63) with the square the crop dialog saved. The API
+   * re-encodes it whatever it is. Returns the updated user, for AuthService, like updateMe.
+   */
+  uploadAvatar(photo: Blob): Observable<UserDto> {
+    const form = new FormData();
+    form.append('file', photo, 'photo');
+    return this.http.put<UserDto>(`${this.base}/me/avatar`, form);
+  }
+
+  /** Back to the monogram. Succeeds when there is no photo. */
+  removeAvatar(): Observable<UserDto> {
+    return this.http.delete<UserDto>(`${this.base}/me/avatar`);
+  }
+
+  /**
    * Someone else's friend list, visible to the same audience as the rest of their profile. Unlike
    * `profile()`, a denied viewer gets a 403 here rather than a smaller 200 — see the API's own doc
    * comment on why a reduced-but-200 response would be indistinguishable from "genuinely no friends".

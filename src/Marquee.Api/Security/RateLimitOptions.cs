@@ -8,6 +8,9 @@ public static class RateLimitPolicies
 
     /// <summary>Issuing anonymous sessions. Partitioned by IP, because the caller has no identity yet.</summary>
     public const string SessionIssue = "session-issue";
+
+    /// <summary>Profile photo uploads (#63): each one is a decode, an encode and an S3 write.</summary>
+    public const string AvatarUpload = "avatar-upload";
 }
 
 /// <summary>
@@ -53,4 +56,10 @@ public sealed class RateLimitOptions
 
     /// <summary>Anonymous sessions per IP per window — the Sybil brake on anonymous participation.</summary>
     public RateLimitRule SessionIssue { get; set; } = new() { PermitLimit = 10, WindowSeconds = 300 };
+
+    /// <summary>
+    /// Photo uploads per account per window. Generous for someone trying a few crops, and a ceiling on
+    /// how much image work and S3 traffic one account can cause.
+    /// </summary>
+    public RateLimitRule AvatarUpload { get; set; } = new() { PermitLimit = 10, WindowSeconds = 600 };
 }

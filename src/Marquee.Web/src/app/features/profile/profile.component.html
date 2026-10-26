@@ -7,7 +7,29 @@
 } @else if (profile(); as p) {
   <div class="page">
     <div class="profile-row">
-      <app-id-badge [profile]="p" />
+      <app-id-badge
+        [profile]="p"
+        [editable]="isSelf()"
+        (changePhoto)="choosePhoto()"
+        (removePhoto)="removePhoto()"
+      />
+      @if (isSelf()) {
+        <input
+          #photoInput
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          hidden
+          (change)="onPhotoChosen($event)"
+        />
+        @if (cropFile(); as file) {
+          <app-avatar-crop-dialog
+            [file]="file"
+            [busy]="photoBusy()"
+            (saved)="uploadPhoto($event)"
+            (cancelled)="cropFile.set(null)"
+          />
+        }
+      }
 
       <div class="profile-main">
         <header class="head">

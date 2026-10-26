@@ -56,8 +56,8 @@ unavailable or a step needs doing by hand. From `infra/` with the CLI signed in:
 aws cloudformation describe-stacks --stack-name MarqueeStack --query 'Stacks[0].Outputs'
 ```
 
-gives `HostInstanceId`, `HostPublicDns`, `ArtifactsBucket`, `SiteUrl`, `SiteBucket` and
-`DistributionId`. Then, from the repository root:
+gives `HostInstanceId`, `HostPublicDns`, `ArtifactsBucket`, `SiteUrl`, `SiteBucket`,
+`DistributionId` and `AvatarsBucketName`. Then, from the repository root:
 
 ```
 TAG=$(git rev-parse --short HEAD)
@@ -83,6 +83,7 @@ echo "REGISTRY=$REGISTRY" >> .env
 echo "IMAGE_TAG=$TAG" >> .env
 echo "COGNITO_ISSUER=<MarqueeAuthStack Issuer>" >> .env
 echo "COGNITO_CLIENT_ID=<MarqueeAuthStack UserPoolClientId>" >> .env
+echo "AVATARS_BUCKET_NAME=<MarqueeStack AvatarsBucketName>" >> .env
 chmod 600 .env
 aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $REGISTRY
 docker compose -f docker-compose.prod.yml pull

@@ -92,13 +92,14 @@ those rows and is idempotent, so a restart simply picks up on the next tick.
 
 ## Running it
 
-**1. Start Postgres + Redis + RabbitMQ + Jaeger + cognito-local**
+**1. Start Postgres + Redis + RabbitMQ + Jaeger + cognito-local + S3Mock**
 
 ```bash
 docker compose up -d
 # RabbitMQ management UI: http://localhost:15672  (marquee / marquee)
 # Jaeger (traces):        http://localhost:16686
 # cognito-local:          http://localhost:9229  (pool local_marquee, client marquee-local-web)
+# S3Mock (photos):        http://localhost:9090/marquee-avatars
 ```
 
 `cognito-local` stands in for the Cognito user pool: the frontend signs up, confirms, signs in and
@@ -118,6 +119,11 @@ Users persist in the `marquee-cognitodata` volume. To reset them — or to pick 
 pool or client in `docker/cognito-local/db`, which an existing volume never sees — stop the service and
 run `docker volume rm marquee_marquee-cognitodata` (`docker compose down -v` also works, but resets
 every volume).
+
+`S3Mock` stands in for the profile-photo bucket: the API stores photos in `marquee-avatars` through the
+same AWS SDK calls it makes against S3, and the browser loads them straight from
+`http://localhost:9090/marquee-avatars/…`. It checks no credentials. Photos persist in the
+`marquee-s3data` volume.
 
 **2. Run the API** (applies EF migrations and seeds an admin on startup)
 
@@ -293,6 +299,8 @@ earns its place alongside the trace id.
 | GET | `/api/users?query=` | optional | Search users by username prefix; private accounts included |
 | GET | `/api/users/{username}` | optional | Profile, shaped by viewer (see below) |
 | PATCH | `/api/users/me` | user | Update your own bio / privacy |
+| PUT | `/api/users/me/avatar` | user | Set or replace your profile photo (multipart `file`; re-encoded to 640px WebP) |
+| DELETE | `/api/users/me/avatar` | user | Remove your profile photo |
 | GET | `/api/friends` | user | Accepted friends |
 | GET | `/api/friends/requests` | user | Pending requests, both directions |
 | POST | `/api/friends/requests` | user | Send a friend request by username |

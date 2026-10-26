@@ -56,4 +56,23 @@ describe('UsersService', () => {
     expect(req.request.body).toEqual({ bio: 'hello' });
     req.flush({});
   });
+
+  it('uploads the cropped photo as the multipart field "file"', () => {
+    const blob = new Blob(['x'], { type: 'image/webp' });
+    service.uploadAvatar(blob).subscribe();
+
+    const req = http.expectOne(`${base}/me/avatar`);
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body instanceof FormData).toBeTrue();
+    expect((req.request.body as FormData).get('file')).toBeInstanceOf(Blob);
+    req.flush({});
+  });
+
+  it('removes the photo with a DELETE on the same address', () => {
+    service.removeAvatar().subscribe();
+
+    const req = http.expectOne(`${base}/me/avatar`);
+    expect(req.request.method).toBe('DELETE');
+    req.flush({});
+  });
 });

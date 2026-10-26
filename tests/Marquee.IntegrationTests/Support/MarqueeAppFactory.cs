@@ -61,12 +61,15 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     /// <summary>The user pool stand-in Cognito access tokens come from.</summary>
     public CognitoLocal Cognito { get; } = new();
 
+    /// <summary>The profile-photo bucket stand-in (#63).</summary>
+    public S3MockContainer S3 { get; } = new();
+
     public async Task InitializeAsync()
     {
         // Postgres and Redis must be listening before the host is built: Program.cs migrates on
         // startup, and the Redis multiplexer is constructed from configuration read at registration
-        // time. cognito-local starts alongside because its port is part of that configuration.
-        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), Cognito.StartAsync());
+        // time. cognito-local and S3Mock start alongside because their ports are part of that configuration.
+        await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), Cognito.StartAsync(), S3.StartAsync());
 
         // Settings go in as environment variables rather than through ConfigureAppConfiguration,
         // and the distinction is not cosmetic.
@@ -135,6 +138,10 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
         // Empty key selects the offline stub, so tests never reach the network.
         yield return ("Tmdb__ApiKey", "");
 
+        yield return ("Avatars__ServiceUrl", S3.Endpoint);
+        yield return ("Avatars__BucketName", S3MockContainer.Bucket);
+        yield return ("Avatars__PublicBaseUrl", $"{S3.PublicBaseUrl}/avatars");
+
         yield return ("Admin__Username", AdminUsername);
         yield return ("Admin__Password", AdminPassword);
     }
@@ -142,7 +149,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
-        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask(), Cognito.DisposeAsync().AsTask());
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask(), Cognito.DisposeAsync().AsTask(), S3.DisposeAsync().AsTask());
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

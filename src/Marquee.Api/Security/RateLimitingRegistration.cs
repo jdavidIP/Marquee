@@ -31,6 +31,9 @@ public static class RateLimitingRegistration
             limiter.AddPolicy(RateLimitPolicies.SessionIssue, context =>
                 IpPartition(context, RateLimitPolicies.SessionIssue, options.SessionIssue, options.Enabled));
 
+            limiter.AddPolicy(RateLimitPolicies.AvatarUpload, context =>
+                Partition(context, RateLimitPolicies.AvatarUpload, options.AvatarUpload, options.Enabled));
+
             limiter.OnRejected = async (context, ct) =>
             {
                 // Tell the caller when to come back. Without this a well-behaved client has no basis

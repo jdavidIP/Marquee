@@ -40,6 +40,7 @@ public static class ApiServiceRegistration
         services.AddScoped<IParticipantResolver, ParticipantResolver>();
         services.AddScoped<IFriendshipService, FriendshipService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IAvatarService, AvatarService>();
         services.AddScoped<IAdminService, AdminService>();
 
         // --- Dashboard metrics (Iteration 6) ---

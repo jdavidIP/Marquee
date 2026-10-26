@@ -1,5 +1,9 @@
+using Amazon;
+using Amazon.Runtime;
+using Amazon.S3;
 using Marquee.Domain.Options;
 using Marquee.Domain.Rules;
+using Marquee.Infrastructure.Avatars;
 using Marquee.Infrastructure.Notifications;
 using Marquee.Infrastructure.Persistence;
 using Marquee.Infrastructure.Redis;
@@ -23,6 +27,7 @@ public static class DependencyInjection
         // Tunable domain rules (CLAUDE.md §7 — no magic numbers in code).
         services.Configure<MarqueeRulesOptions>(configuration.GetSection(MarqueeRulesOptions.SectionName));
         services.Configure<TmdbOptions>(configuration.GetSection(TmdbOptions.SectionName));
+        services.Configure<AvatarOptions>(configuration.GetSection(AvatarOptions.SectionName));
 
         // Randomness abstraction used by the formula "draw" layer and TMDB selection.
         services.AddSingleton<IRandomSource, SystemRandomSource>();
@@ -97,6 +102,25 @@ public static class DependencyInjection
                 pipeline.AddTimeout(TimeSpan.FromSeconds(resilience.AttemptTimeoutSeconds));
             });
         }
+
+        // --- Profile photos (#63). Real S3 signs with the EC2 instance role from the SDK's default
+        // credential chain; an emulator endpoint (S3Mock) checks no signature, so it gets placeholder
+        // credentials rather than whatever happens to be on the developer's machine. ---
+        var avatarOpts = configuration.GetSection(AvatarOptions.SectionName).Get<AvatarOptions>() ?? new AvatarOptions();
+        services.AddSingleton<IAmazonS3>(_ =>
+        {
+            var region = RegionEndpoint.GetBySystemName(avatarOpts.Region);
+            if (string.IsNullOrWhiteSpace(avatarOpts.ServiceUrl))
+                return new AmazonS3Client(region);
+
+            return new AmazonS3Client(new BasicAWSCredentials("local", "local"), new AmazonS3Config
+            {
+                ServiceURL = avatarOpts.ServiceUrl,
+                AuthenticationRegion = avatarOpts.Region,
+                ForcePathStyle = true,
+            });
+        });
+        services.AddSingleton<IAvatarStore, S3AvatarStore>();
 
         // --- Notifications (CLAUDE.md §6): the single in-app implementation; a real channel is additive. ---
         services.AddSingleton<INotificationDispatcher, DevNotificationDispatcher>();
