@@ -39,6 +39,7 @@ public sealed class PremiereScheduleService(
     IPremiereFactory factory,
     IPremiereOpener opener,
     IPremiereCache cache,
+    IPremiereViewCache views,
     IPremiereBroadcaster broadcaster,
     IRandomSource rng,
     IOptions<MarqueeScheduleOptions> schedule,
@@ -224,6 +225,7 @@ public sealed class PremiereScheduleService(
 
             // Refresh the hot-path cache before anyone can clap, then tell the scope it is live.
             await cache.SetAsync(premiere.ToMeta(), ct);
+            await views.InvalidateAsync(premiere.ScopeId, ct);
             await SafeBroadcastAsync(
                 () => broadcaster.PremiereActivatedAsync(
                     premiere.ScopeId,
@@ -291,6 +293,7 @@ public sealed class PremiereScheduleService(
         // Drop the cached meta's Scheduled status so a stray clap is refused from cache rather than
         // counted against a Premiere that will never open.
         await cache.SetStatusAsync(premiere.Id, PremiereStatus.Missed, ct);
+        await views.InvalidateAsync(premiere.ScopeId, ct);
 
         logger.LogWarning(
             "Premiere {PremiereId} was due at {ScheduledFor:u} but is {Late:0} minutes late; marking " +

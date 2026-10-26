@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Marquee.Api.Services;
 using Marquee.Domain;
 using Marquee.Domain.Entities;
 using Marquee.Domain.Enums;
@@ -76,6 +77,11 @@ public class TodayScheduleTests(MarqueeAppFactory factory)
 
     private async Task<Schedule> GetTodayAsync(HttpClient client, string? scopeId = null)
     {
+        // These tests seed rows straight into Postgres, which the view cache cannot see. In
+        // production every write goes through a service that invalidates it (#94).
+        await factory.Services.GetRequiredService<IPremiereViewCache>()
+            .InvalidateAsync(scopeId ?? Scopes.Global, default);
+
         var url = scopeId is null ? "/api/premieres/today" : $"/api/premieres/today?scopeId={scopeId}";
         var response = await client.GetAsync(url);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);

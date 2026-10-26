@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConfig));
         services.AddSingleton<IClapCounters, RedisClapCounters>();
         services.AddSingleton<IPremiereCache, RedisPremiereCache>();
+        services.AddSingleton<IJsonCache, RedisJsonCache>();
 
         // --- Anti-abuse and social caches (Iteration 5). Singletons for the same reason as the
         // counters: they hold no per-request state, only a multiplexed Redis connection. ---

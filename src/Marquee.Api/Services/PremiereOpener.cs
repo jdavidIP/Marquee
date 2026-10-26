@@ -22,6 +22,7 @@ public sealed class PremiereOpener(
     MarqueeDbContext db,
     IClapCounters counters,
     IPremiereCache cache,
+    IPremiereViewCache views,
     IPublishEndpoint publishEndpoint,
     IOptions<RedisOptions> redisOptions,
     ILogger<PremiereOpener> logger) : IPremiereOpener
@@ -129,6 +130,7 @@ public sealed class PremiereOpener(
             // do before the fan-out has run: the snapshot travels inside the event, so the worker
             // never reads Redis (see the PremiereOpened doc comment).
             await cache.SetStatusAsync(meta.PremiereId, openStatus, ct);
+            await views.InvalidateAsync(meta.ScopeId, ct);
             await counters.CleanupAsync(meta.ScopeId, meta.PremiereId, ct);
 
             logger.LogInformation(

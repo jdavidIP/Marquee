@@ -79,6 +79,7 @@ public sealed class AdminService(
     ITmdbClient tmdb,
     IMovieCatalog movies,
     IPremiereCache cache,
+    IPremiereViewCache views,
     IPremiereBroadcaster broadcaster,
     IUserAccessCache accessCache,
     IOptions<MarqueeScheduleOptions> schedule,
@@ -217,9 +218,10 @@ public sealed class AdminService(
 
         premiere.ScheduledFor = proposedUtc;
 
-        // No cache write on purpose: PremiereMeta carries threshold, caps, status, movie and expiry
-        // — not ScheduledFor — so nothing the clap path reads has changed. The activation job picks
-        // the new time up from Postgres.
+        // No PremiereMeta write on purpose: it carries threshold, caps, status, movie and expiry — not
+        // ScheduledFor — so nothing the clap path reads has changed. The activation job picks the new
+        // time up from Postgres. Today's programme does show ScheduledFor, so that view is dropped.
+        await views.InvalidateAsync(premiere.ScopeId, ct);
 
         logger.LogInformation(
             "Premiere {PremiereId} rescheduled to {ScheduledFor:u}.", premiere.Id, premiere.ScheduledFor);
@@ -277,6 +279,7 @@ public sealed class AdminService(
         // Mandatory here, unlike the reschedule above: the cached meta carries all three of these and
         // the clap path reads them from Redis, so a stale entry would keep enforcing the old numbers.
         await cache.SetAsync(premiere.ToMeta(), ct);
+        await views.InvalidateAsync(premiere.ScopeId, ct);
 
         logger.LogInformation(
             "Premiere {PremiereId} threshold set to {Threshold}; caps recomputed to {RegCap}/{AnonCap} " +
@@ -551,6 +554,7 @@ public sealed class AdminService(
         // The cached meta carries MovieId, which the reveal reads — a stale one would announce the
         // previous film.
         await cache.SetAsync(premiere.ToMeta(), ct);
+        await views.InvalidateAsync(premiere.ScopeId, ct);
 
         logger.LogInformation(
             "Premiere {PremiereId} movie regenerated to {Title} (tmdb {TmdbId}).",
@@ -642,6 +646,7 @@ public sealed class AdminService(
         // is *down*, so every healthy connection would sit on "check back soon" until it happened
         // to reload, which is precisely what starting one on demand is supposed to avoid.
         await cache.SetAsync(premiere.ToMeta(), ct);
+        await views.InvalidateAsync(premiere.ScopeId, ct);
         await SafeBroadcastAsync(
             () => broadcaster.PremiereActivatedAsync(
                 premiere.ScopeId,

@@ -28,6 +28,7 @@ public sealed class PremiereFactory(
     ITmdbClient tmdb,
     IMovieCatalog movies,
     IPremiereCache cache,
+    IPremiereViewCache views,
     IRandomSource rng,
     IOptions<MarqueeRulesOptions> rules,
     ILogger<PremiereFactory> logger) : IPremiereFactory
@@ -76,6 +77,7 @@ public sealed class PremiereFactory(
 
         // Warm the hot-path cache so the first clap never has to read Postgres for the rules.
         await cache.SetAsync(premiere.ToMeta(), ct);
+        await views.InvalidateAsync(premiere.ScopeId, ct);
 
         logger.LogInformation(
             "Created Premiere {PremiereId} ({Status}) for {ScheduledFor:u}: threshold {Threshold}, " +
