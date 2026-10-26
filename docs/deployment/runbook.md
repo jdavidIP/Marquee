@@ -157,3 +157,20 @@ aws ec2 describe-instances --instance-ids <HostInstanceId> --query 'Reservations
 
 It must print `2`. At `1`, every AWS call from the container fails: the admin seeder logs it in
 `/marquee/prod` and the API starts with no admin.
+
+## Rotate the database password
+
+`MarqueeDataStack` reads `/marquee/prod/POSTGRES_PASSWORD` at a pinned version, so changing the parameter
+alone changes nothing on the database. In order:
+
+1. Write the new value as a new version (RDS needs 8–128 printable characters, no `/`, `"`, `@` or space):
+   `aws ssm put-parameter --name /marquee/prod/POSTGRES_PASSWORD --type SecureString --overwrite --value <new>`
+   (Git Bash: prefix `MSYS_NO_PATHCONV=1`). Note the `Version` it prints.
+2. Set `PasswordParameterVersion` in `infra/MarqueeDataStack.cs` to that version, commit, and deploy
+   `MarqueeDataStack` (`cdk diff` first: only the instance's master password should change). RDS applies a
+   new master password straight away.
+3. Redeploy the app so the host's `.env` picks the new value up. Until then the app holds the old password,
+   so do steps 2 and 3 back to back.
+
+While the app still runs on the Postgres container (before #161), the container's own password is a separate
+copy: change it there too (`ALTER USER marquee PASSWORD ...` inside the container) in the same window.

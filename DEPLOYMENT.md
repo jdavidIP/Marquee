@@ -570,6 +570,42 @@ Recorded in the [verification log](docs/deployment/verification-log.md#2c-unconf
   switch Cognito's email sending to SES.
 - **Origin TLS**: with a real domain the CloudFront → EC2 hop can move to HTTPS.
 
+### 3a. RDS for PostgreSQL (#160 — deployed 2026-10-26, not yet used by the app)
+
+`MarqueeDataStack` (`infra/MarqueeDataStack.cs`; design `docs/superpowers/specs/2026-10-26-rds-stack-design.md`).
+The app still uses the Postgres container until #161 moves it across.
+
+- **Instance:** PostgreSQL 16.15, `db.t4g.micro`, single-AZ, not publicly accessible, encrypted, 20 GB gp3
+  growing to 40 GB, automatic minor upgrades. User and database `marquee`. Endpoint, port and security
+  group id are the stack's outputs `DbEndpoint`, `DbPort`, `DbSecurityGroupId`.
+- **Network:** two isolated subnets, `10.0.100.0/24` (`ca-central-1a`) and `10.0.101.0/24` (`ca-central-1b`),
+  each with a route table holding only the local route. The database's security group admits TCP 5432 from
+  the host's security group only and allows no outbound traffic.
+- **Parameter group:** `rds.force_ssl = 1` (a connection without SSL is refused), `timezone = America/Toronto`
+  (matches the container).
+- **Password:** the existing `/marquee/prod/POSTGRES_PASSWORD`, pinned to parameter version 1 in the stack
+  file. Rotating it: see the runbook.
+- **Backups — 1 day, not the 7 the design wanted.** On the Free Plan RDS refuses anything longer: the first
+  deploy failed with "The specified backup retention period exceeds the maximum available to free tier
+  customers". With 1 day there is a daily automated snapshot plus point-in-time recovery to any second in
+  the last 24 hours. A restore always creates a **new** instance (RDS → the instance → Actions → Restore to
+  point in time), which the app is then pointed at. Raise the retention once on the Paid Plan.
+- **Protection:** termination protection on the stack, deletion protection on the instance, and removal
+  policy `SNAPSHOT`: a delete that does go through takes a final snapshot first.
+- **Cost:** about $14–15 a month (instance ~$12, storage ~$2; estimate, check the pricing calculator), paid
+  from the Free Plan credits — there is no separate RDS allowance for accounts created after 15 July 2025.
+  RDS restarts a stopped instance after 7 days, so unlike the host it effectively bills around the clock.
+  On 2026-10-26, with $141.19 of credits left and the plan ending 2027-03-24: everything always on (~$37 a
+  month) runs out around mid-February; with the host stopped when idle the credits last to expiry.
+- **Cross-stack wiring, and what it does not protect.** `MarqueeStack` passes its VPC and host security group
+  to this stack as two plain outputs (`PublishOutput…`, read with `Fn::GetStackOutput`), not CloudFormation
+  exports. So nothing stops a `MarqueeStack` change from replacing that VPC or security group. If one ever
+  does, the database's rule still names the old group and the host loses the database until
+  `MarqueeDataStack` is redeployed — deploy it straight after any `MarqueeStack` change that touches either.
+- **Connecting by hand (from the host, Session Manager):**
+  `docker run --rm -e PGPASSWORD=... postgres:16 psql "host=<DbEndpoint> dbname=marquee user=marquee sslmode=require"`.
+  Nothing outside the VPC can reach it, by design.
+
 ---
 
 ## Deliberately not used

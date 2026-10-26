@@ -218,3 +218,24 @@ the workflow fails on a missing `AvatarsBucketName` output rather than deploy wi
   3.85 baseline; no failed requests. Then check a state change shows at once: an admin starting a Premiere
   appears on `/active` without waiting out the 30 s TTL. Record the numbers in DEPLOYMENT.md "Measured
   capacity". *(operator)*
+
+## RDS stack (#160)
+
+- [x] **2026-10-26** — `cdk diff MarqueeStack MarqueeDataStack`: `MarqueeStack` showed only two new outputs
+  (the VPC id and the host security group id, `PublishOutput…`), no resource changed or replaced;
+  `MarqueeAuthStack` no differences; `MarqueeDataStack` only new resources.
+- [x] **2026-10-26** — The existing `POSTGRES_PASSWORD` meets RDS's rules (64 characters, checked without
+  printing it). *(operator)*
+- [x] **2026-10-26** — `cdk deploy MarqueeStack`: `UPDATE_COMPLETE`; same host `i-025489e6f2ed90173`, still
+  running, same security group `sg-0ebd299ca3eb996f7`. *(operator)*
+- [x] **2026-10-26** — First `cdk deploy MarqueeDataStack` refused by RDS: "The specified backup retention
+  period exceeds the maximum available to free tier customers" (7 days). The create rolled back fully; the
+  empty stack was deleted (termination protection turned off for it) and the stack redeployed with 1 day:
+  `CREATE_COMPLETE`, instance `available`, 16.15, `db.t4g.micro`, retention 1, not public, deletion
+  protection on, encrypted, max storage 40. *(operator)*
+- [x] **2026-10-26** — From the host (Session Manager, `postgres:16` container): with `sslmode=require` it
+  connects and shows `timezone` `America/Toronto` and `ssl` `on`; with `sslmode=disable` it is refused
+  (`no pg_hba.conf entry for host "10.0.0.35" ... no encryption`). The endpoint resolved to `10.0.100.114`.
+  *(operator)*
+- [x] **2026-10-26** — From outside the VPC (operator's laptop, over a VPN): the endpoint resolves to the
+  private `10.0.100.114` and `Test-NetConnection -Port 5432` fails (`TcpTestSucceeded : False`). *(operator)*
