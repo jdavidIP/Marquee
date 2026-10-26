@@ -198,6 +198,21 @@ export class AuthService {
       .pipe(map(() => undefined));
   }
 
+  /**
+   * Changes the signed-in person's password (#130). The pool checks the old one against the access
+   * token, so the API never sees either. Other sessions are left alone: the API checks tokens
+   * against the pool's signing keys, not for revocation, so signing out everywhere would end nothing.
+   */
+  changePassword(oldPassword: string, newPassword: string): Observable<void> {
+    return this.cognito
+      .call('ChangePassword', {
+        AccessToken: this.token,
+        PreviousPassword: oldPassword,
+        ProposedPassword: newPassword,
+      })
+      .pipe(map(() => undefined));
+  }
+
   /** Signs out and says why, for the sign-in page to show. */
   endSession(reason: string): void {
     this.logout();

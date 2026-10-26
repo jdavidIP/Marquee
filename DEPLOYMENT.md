@@ -519,6 +519,10 @@ on signing in unconfirmed; `CodeMismatchException` on a wrong code; `ConfirmSign
 - **Confirming an already-confirmed account is `ExpiredCodeException`**, where the real pool says
   `NotAuthorizedException` — which the frontend treats as "already confirmed, carry on" (#111). Locally
   the person sees "code expired" instead; harmless, and only reachable by confirming twice.
+- **A wrong current password in `ChangePassword` is `InvalidPasswordException`**, not the real pool's
+  `NotAuthorizedException` (#130). It is also the type of a genuine policy refusal, so the frontend cannot
+  tell them apart here: locally a wrong current password reads as the policy message. The real-pool check
+  covers the right wording.
 - **Accepts an email-shaped username.** The real pool refuses one (`InvalidParameterException`), since
   email is a sign-in alias; the register form stops it before any request either way (#111).
 

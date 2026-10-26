@@ -133,6 +133,32 @@ describe('AuthService', () => {
     expect(error!.type).toBe('NotAuthorizedException');
   });
 
+  it('changes the password with the access token, never through the API', () => {
+    localStorage.setItem('marquee.token', 'access');
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()],
+    });
+    const signedIn = TestBed.inject(AuthService);
+    const ctrl = TestBed.inject(HttpTestingController);
+    let done = false;
+
+    signedIn.changePassword('old-password-1', 'new-password-2').subscribe(() => (done = true));
+
+    const req = ctrl.expectOne(environment.cognito.endpoint);
+    expect(req.request.headers.get('X-Amz-Target')).toBe('AWSCognitoIdentityProviderService.ChangePassword');
+    expect(req.request.body).toEqual(
+      jasmine.objectContaining({
+        AccessToken: 'access',
+        PreviousPassword: 'old-password-1',
+        ProposedPassword: 'new-password-2',
+      }),
+    );
+    req.flush({});
+    expect(done).toBeTrue();
+    ctrl.verify();
+  });
+
   it('reads a namespaced error type by its last part', () => {
     let error: CognitoError | undefined;
     auth.resendCode('ana').subscribe({ error: (e) => (error = e) });
