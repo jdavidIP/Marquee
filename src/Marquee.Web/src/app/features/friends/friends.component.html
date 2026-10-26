@@ -67,9 +67,13 @@
       <ul class="list">
         @for (row of searchRows(); track row.user.id) {
           <li class="row">
-            <span class="avatar" [style.background]="monogramColor(row.user.id)">
-              {{ initialsOf(row.user.username) }}
-            </span>
+            @if (row.user.avatarUrl; as photo) {
+              <img class="avatar avatar--photo" [src]="photo" alt="" />
+            } @else {
+              <span class="avatar" [style.background]="monogramColor(row.user.id)">
+                {{ initialsOf(row.user.username) }}
+              </span>
+            }
             <div class="row__who">
               <a class="row__name" [routerLink]="['/u', row.user.username]">{{
                 row.user.username
@@ -130,9 +134,13 @@
           @for (request of incoming(); track request.id) {
             <li class="row">
               <span class="row__dot"></span>
-              <span class="avatar" [style.background]="monogramColor(request.userId)">
-                {{ initialsOf(request.username) }}
-              </span>
+              @if (request.avatarUrl; as photo) {
+                <img class="avatar avatar--photo" [src]="photo" alt="" />
+              } @else {
+                <span class="avatar" [style.background]="monogramColor(request.userId)">
+                  {{ initialsOf(request.username) }}
+                </span>
+              }
               <div class="row__who">
                 <a class="row__name" [routerLink]="['/u', request.username]">{{
                   request.username

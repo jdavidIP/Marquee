@@ -54,7 +54,7 @@ public sealed class FriendshipService(
         var name = username.Trim();
         var addressee = await db.Users
             .Where(u => u.Username == name)
-            .Select(u => new { u.Id, u.Username })
+            .Select(u => new { u.Id, u.Username, u.AvatarUrl })
             .FirstOrDefaultAsync(ct);
 
         if (addressee is null)
@@ -114,7 +114,7 @@ public sealed class FriendshipService(
                     existing.UpdatedAt = reopenedAt;
 
                     return new FriendActionResult(
-                        FriendActionOutcome.Ok, ToRequestDto(existing, addressee.Username, outgoing: true));
+                        FriendActionOutcome.Ok, ToRequestDto(existing, addressee.Username, addressee.AvatarUrl, outgoing: true));
                 }
             }
         }
@@ -138,7 +138,7 @@ public sealed class FriendshipService(
         }
 
         return new FriendActionResult(
-            FriendActionOutcome.Ok, ToRequestDto(friendship, addressee.Username, outgoing: true));
+            FriendActionOutcome.Ok, ToRequestDto(friendship, addressee.Username, addressee.AvatarUrl, outgoing: true));
     }
 
     public async Task<FriendActionResult> AcceptAsync(Guid userId, Guid requestId, CancellationToken ct)
@@ -186,11 +186,11 @@ public sealed class FriendshipService(
         // rebuild eventually correct; the reverse order could show a friendship that does not exist.
         await friendGraph.LinkAsync(friendship.RequesterId, friendship.AddresseeId, ct);
 
-        var otherName = await UsernameAsync(friendship.RequesterId, ct);
+        var (otherName, otherAvatar) = await OtherPartyAsync(friendship.RequesterId, ct);
         logger.LogInformation(
             "Friendship accepted between {UserA} and {UserB}.", friendship.RequesterId, friendship.AddresseeId);
 
-        return new FriendActionResult(FriendActionOutcome.Ok, ToRequestDto(friendship, otherName, outgoing: false));
+        return new FriendActionResult(FriendActionOutcome.Ok, ToRequestDto(friendship, otherName, otherAvatar, outgoing: false));
     }
 
     public async Task<FriendActionResult> RejectAsync(Guid userId, Guid requestId, CancellationToken ct)
@@ -217,8 +217,8 @@ public sealed class FriendshipService(
         friendship.Status = FriendshipStatus.Rejected;
         friendship.UpdatedAt = now;
 
-        var otherName = await UsernameAsync(friendship.RequesterId, ct);
-        return new FriendActionResult(FriendActionOutcome.Ok, ToRequestDto(friendship, otherName, outgoing: false));
+        var (otherName, otherAvatar) = await OtherPartyAsync(friendship.RequesterId, ct);
+        return new FriendActionResult(FriendActionOutcome.Ok, ToRequestDto(friendship, otherName, otherAvatar, outgoing: false));
     }
 
     public async Task<FriendActionResult> RemoveFriendAsync(Guid userId, Guid otherUserId, CancellationToken ct)
@@ -268,8 +268,8 @@ public sealed class FriendshipService(
 
         var friends = await query
             .Select(f => f.RequesterId == userId
-                ? new FriendDto(f.Addressee.Id, f.Addressee.Username, f.Addressee.Bio, f.Addressee.IsPrivate, f.UpdatedAt)
-                : new FriendDto(f.Requester.Id, f.Requester.Username, f.Requester.Bio, f.Requester.IsPrivate, f.UpdatedAt))
+                ? new FriendDto(f.Addressee.Id, f.Addressee.Username, f.Addressee.Bio, f.Addressee.IsPrivate, f.Addressee.AvatarUrl, f.UpdatedAt)
+                : new FriendDto(f.Requester.Id, f.Requester.Username, f.Requester.Bio, f.Requester.IsPrivate, f.Requester.AvatarUrl, f.UpdatedAt))
             .ToListAsync(ct);
 
         // Sorted here rather than in SQL: the sort key lives inside a conditional projection, which
@@ -287,8 +287,8 @@ public sealed class FriendshipService(
                         && (f.RequesterId == userId || f.AddresseeId == userId))
             .OrderByDescending(f => f.CreatedAt)
             .Select(f => f.AddresseeId == userId
-                ? new FriendRequestDto(f.Id, f.Requester.Id, f.Requester.Username, "Pending", false, f.CreatedAt)
-                : new FriendRequestDto(f.Id, f.Addressee.Id, f.Addressee.Username, "Pending", true, f.CreatedAt))
+                ? new FriendRequestDto(f.Id, f.Requester.Id, f.Requester.Username, f.Requester.AvatarUrl, "Pending", false, f.CreatedAt)
+                : new FriendRequestDto(f.Id, f.Addressee.Id, f.Addressee.Username, f.Addressee.AvatarUrl, "Pending", true, f.CreatedAt))
             .ToListAsync(ct);
     }
 
@@ -319,13 +319,19 @@ public sealed class FriendshipService(
         logger.LogDebug("Rebuilt friend graph cache for {UserId} with {Count} friends.", userId, friendIds.Count);
     }
 
-    private async Task<string> UsernameAsync(Guid userId, CancellationToken ct) =>
-        await db.Users.Where(u => u.Id == userId).Select(u => u.Username).FirstOrDefaultAsync(ct) ?? "";
+    private async Task<(string Username, string? AvatarUrl)> OtherPartyAsync(Guid userId, CancellationToken ct)
+    {
+        var u = await db.Users.Where(x => x.Id == userId)
+            .Select(x => new { x.Username, x.AvatarUrl })
+            .FirstOrDefaultAsync(ct);
+        return (u?.Username ?? "", u?.AvatarUrl);
+    }
 
-    private static FriendRequestDto ToRequestDto(Friendship f, string otherUsername, bool outgoing) =>
+    private static FriendRequestDto ToRequestDto(Friendship f, string otherUsername, string? otherAvatarUrl, bool outgoing) =>
         new(f.Id,
             outgoing ? f.AddresseeId : f.RequesterId,
             otherUsername,
+            otherAvatarUrl,
             f.Status.ToString(),
             outgoing,
             f.CreatedAt);

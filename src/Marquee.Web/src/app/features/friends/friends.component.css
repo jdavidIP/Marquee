@@ -187,7 +187,7 @@
 }
 
 /* Monogram chip — same font/shape as the profile ID badge's portrait, per-user tinted like the
-   Premiere lobby's crowd strip (avatarUrl isn't in these DTOs, so it's always initials here). */
+   Premiere lobby's crowd strip (initials only when the person has no photo). */
 .avatar {
   width: 42px;
   height: 42px;
@@ -201,6 +201,13 @@
   font-size: 19px;
   line-height: 1;
   color: var(--chrome-2);
+}
+
+/* A photo fills the same 42px frame as the monogram, cropped round like the topbar face. */
+.avatar--photo {
+  display: block;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .row__who {

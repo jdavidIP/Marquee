@@ -130,6 +130,7 @@ export interface UserSearchResultDto {
   username: string;
   bio: string | null;
   isPrivate: boolean;
+  avatarUrl: string | null;
 }
 
 /** A profile as seen by someone entitled to all of it: the owner, an admin, a friend, or anyone
@@ -204,6 +205,7 @@ export interface FriendRequestDto {
   /** The other party — the addressee on an outgoing request, the requester on an incoming one. */
   userId: string;
   username: string;
+  avatarUrl: string | null;
   status: string;
   /** True when the signed-in user sent this request rather than received it. */
   outgoing: boolean;
@@ -215,6 +217,7 @@ export interface FriendDto {
   username: string;
   bio: string | null;
   isPrivate: boolean;
+  avatarUrl: string | null;
   friendsSince: string;
 }
 

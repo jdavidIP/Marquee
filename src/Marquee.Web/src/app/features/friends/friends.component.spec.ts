@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
@@ -18,6 +18,8 @@ import { FriendDto, FriendRequestDto, UserSearchResultDto } from '../../core/mod
  */
 describe('FriendsComponent search relations', () => {
   const me = 'me-id';
+  let root: HTMLElement;
+  let fixture: ComponentFixture<FriendsComponent>;
 
   function make(options: {
     friends?: FriendDto[];
@@ -40,16 +42,18 @@ describe('FriendsComponent search relations', () => {
       ],
     });
 
-    const fixture = TestBed.createComponent(FriendsComponent);
+    fixture = TestBed.createComponent(FriendsComponent);
     fixture.detectChanges(); // runs ngOnInit, loading friends and requests
+    root = fixture.nativeElement;
 
     const component = fixture.componentInstance as unknown as Record<string, any>;
     component['results'].set(options.results ?? []);
+    fixture.detectChanges();
     return component;
   }
 
   function hit(id: string, username: string): UserSearchResultDto {
-    return { id, username, bio: null, isPrivate: false };
+    return { id, username, bio: null, isPrivate: false, avatarUrl: null };
   }
 
   it('marks the signed-in user as themselves rather than offering to add them', () => {
@@ -60,7 +64,7 @@ describe('FriendsComponent search relations', () => {
 
   it('marks an existing friend rather than offering to add them again', () => {
     const c = make({
-      friends: [{ userId: 'u1', username: 'ana', bio: null, isPrivate: false, friendsSince: '' }],
+      friends: [{ userId: 'u1', username: 'ana', bio: null, isPrivate: false, avatarUrl: null, friendsSince: '' }],
       results: [hit('u1', 'ana')],
     });
 
@@ -70,7 +74,7 @@ describe('FriendsComponent search relations', () => {
   it('marks someone already asked, so the button does not invite a duplicate request', () => {
     const c = make({
       requests: [
-        { id: 'r1', userId: 'u2', username: 'bo', status: 'Pending', outgoing: true, createdAt: '' },
+        { id: 'r1', userId: 'u2', username: 'bo', avatarUrl: null, status: 'Pending', outgoing: true, createdAt: '' },
       ],
       results: [hit('u2', 'bo')],
     });
@@ -83,7 +87,7 @@ describe('FriendsComponent search relations', () => {
     // theirs — but showing "Accept" says what is actually happening.
     const c = make({
       requests: [
-        { id: 'r9', userId: 'u3', username: 'cy', status: 'Pending', outgoing: false, createdAt: '' },
+        { id: 'r9', userId: 'u3', username: 'cy', avatarUrl: null, status: 'Pending', outgoing: false, createdAt: '' },
       ],
       results: [hit('u3', 'cy')],
     });
@@ -104,11 +108,31 @@ describe('FriendsComponent search relations', () => {
   it('picks out only the incoming half of pending requests', () => {
     const c = make({
       requests: [
-        { id: 'r1', userId: 'u1', username: 'ana', status: 'Pending', outgoing: true, createdAt: '' },
-        { id: 'r2', userId: 'u2', username: 'bo', status: 'Pending', outgoing: false, createdAt: '' },
+        { id: 'r1', userId: 'u1', username: 'ana', avatarUrl: null, status: 'Pending', outgoing: true, createdAt: '' },
+        { id: 'r2', userId: 'u2', username: 'bo', avatarUrl: null, status: 'Pending', outgoing: false, createdAt: '' },
       ],
     });
 
     expect(c['incoming']().map((r: FriendRequestDto) => r.id)).toEqual(['r2']);
+  });
+
+  it('draws search hits and incoming requests as a photo when set and as a monogram when not', () => {
+    const c = make({
+      requests: [
+        { id: 'r1', userId: 'u2', username: 'bo', avatarUrl: '/avatars/u2/b.webp', status: 'Pending', outgoing: false, createdAt: '' },
+        { id: 'r2', userId: 'u3', username: 'cy', avatarUrl: null, status: 'Pending', outgoing: false, createdAt: '' },
+      ],
+      results: [
+        { id: 'u4', username: 'di', bio: null, isPrivate: false, avatarUrl: '/avatars/u4/d.webp' },
+        hit('u5', 'ed'),
+      ],
+    });
+    c['query'].set('x');
+    c['searched'].set(true);
+    fixture.detectChanges();
+
+    const photos = Array.from(root.querySelectorAll('img.avatar--photo')).map((i) => i.getAttribute('src'));
+    expect(photos.sort()).toEqual(['/avatars/u2/b.webp', '/avatars/u4/d.webp']);
+    expect(root.querySelectorAll('span.avatar').length).toBe(2);
   });
 });

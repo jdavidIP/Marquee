@@ -123,6 +123,49 @@ public class AvatarEndpointTests(MarqueeAppFactory factory)
         profile!.AvatarUrl.Should().Be(url, "a photo is public, like a username (#63)");
     }
 
+    private sealed record PersonBody(string Username, string? AvatarUrl);
+
+    [Fact]
+    public async Task Photo_reaches_search_requests_and_friend_lists_and_null_stays_null()
+    {
+        var (viewer, viewerName, _) = await TestAuth.NewUserAsync(factory, "av_fv");
+        var (withPhoto, photoName, _) = await TestAuth.NewUserAsync(factory, "av_fp");
+        var (noPhoto, noPhotoName, _) = await TestAuth.NewUserAsync(factory, "av_fn");
+        var url = await UploadAsync(withPhoto);
+
+        // Search: the same payload for a stranger, photo or not.
+        var hits = await viewer.GetFromJsonAsync<List<PersonBody>>($"/api/users?query=av_f");
+        hits!.Single(h => h.Username == photoName).AvatarUrl.Should().Be(url);
+        hits!.Single(h => h.Username == noPhotoName).AvatarUrl.Should().BeNull();
+
+        // Requests: the other party's photo, on the send response and on the pending list.
+        foreach (var (client, name) in new[] { (withPhoto, photoName), (noPhoto, noPhotoName) })
+            (await client.PostAsJsonAsync("/api/friends/requests", new { username = viewerName }))
+                .EnsureSuccessStatusCode();
+        var pending = await viewer.GetFromJsonAsync<List<PersonBody>>("/api/friends/requests");
+        pending!.Single(r => r.Username == photoName).AvatarUrl.Should().Be(url);
+        pending!.Single(r => r.Username == noPhotoName).AvatarUrl.Should().BeNull();
+
+        // Accepting answers with the requester's photo too.
+        var requests = await viewer.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/friends/requests");
+        foreach (var r in requests!)
+        {
+            var accepted = await viewer.PostAsJsonAsync($"/api/friends/requests/{r.GetProperty("id").GetGuid()}/accept", new { });
+            accepted.EnsureSuccessStatusCode();
+            var body = await accepted.Content.ReadFromJsonAsync<PersonBody>();
+            body!.AvatarUrl.Should().Be(body.Username == photoName ? url : null);
+        }
+
+        // Friend lists: yours, and a stranger's view of yours.
+        var own = await viewer.GetFromJsonAsync<List<PersonBody>>("/api/friends");
+        own!.Single(f => f.Username == photoName).AvatarUrl.Should().Be(url);
+        own!.Single(f => f.Username == noPhotoName).AvatarUrl.Should().BeNull();
+
+        var (stranger, _, _) = await TestAuth.NewUserAsync(factory, "av_fs");
+        var theirs = await stranger.GetFromJsonAsync<List<PersonBody>>($"/api/users/{viewerName}/friends");
+        theirs!.Single(f => f.Username == photoName).AvatarUrl.Should().Be(url);
+    }
+
     private static async Task<string> UploadAsync(HttpClient client)
     {
         var response = await client.PutAsync(Route, Photo(Jpeg(300, 300)));

@@ -209,6 +209,13 @@
   color: var(--chrome-2);
 }
 
+/* A photo fills the same 42px frame as the monogram, cropped round like the topbar face. */
+.avatar--photo {
+  display: block;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 .row__who {
   flex: 1;
   min-width: 0;

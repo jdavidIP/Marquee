@@ -175,7 +175,7 @@ public sealed class UserProfileService(MarqueeDbContext db, IFriendshipService f
             .Where(u => !u.IsBlocked && EF.Functions.ILike(u.Username, term + "%"))
             .OrderBy(u => u.Username)
             .Take(limit)
-            .Select(u => new UserSearchResultDto(u.Id, u.Username, u.Bio, u.IsPrivate))
+            .Select(u => new UserSearchResultDto(u.Id, u.Username, u.Bio, u.IsPrivate, u.AvatarUrl))
             .ToListAsync(ct);
     }
 
