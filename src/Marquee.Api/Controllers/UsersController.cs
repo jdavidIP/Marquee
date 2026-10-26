@@ -28,7 +28,11 @@ public class UsersController(
 
     private const int MaxSearchResults = 25;
 
-    /// <summary>Above <see cref="AvatarOptions.MaxUploadBytes"/>'s default, leaving room for the multipart framing.</summary>
+    /// <summary>
+    /// Above <see cref="AvatarOptions.MaxUploadBytes"/>'s default, leaving room for the multipart framing.
+    /// Keep it above whatever that option is set to: a body over this is refused by the framework before
+    /// the action runs, as a bare 413 without the usual <c>{ error }</c> message.
+    /// </summary>
     private const long AvatarRequestLimitBytes = 5_250_000;
 
     /// <summary>

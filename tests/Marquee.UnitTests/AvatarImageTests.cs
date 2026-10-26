@@ -62,12 +62,17 @@ public class AvatarImageTests
 
     /// <summary>
     /// Stored pixels: left half red, right half blue. The EXIF orientation says how to turn them
-    /// upright — the ones phones actually write: 1 as stored, 3 upside down, 6 and 8 sideways.
+    /// upright: 1 as stored, 3 upside down, 6 and 8 sideways — the ones phones write — and the
+    /// mirrored 2, 4, 5 and 7, which they almost never do but which share the same matrix table.
     /// </summary>
     [Theory]
     [InlineData(1, true, true, false)]
+    [InlineData(2, false, false, true)]
     [InlineData(3, false, false, true)]
+    [InlineData(4, true, true, false)]
+    [InlineData(5, true, false, true)]
     [InlineData(6, true, false, true)]
+    [InlineData(7, false, true, false)]
     [InlineData(8, false, true, false)]
     public async Task Exif_orientation_is_applied(ushort orientation, bool topLeftRed, bool bottomLeftRed, bool topRightRed)
     {
@@ -82,7 +87,26 @@ public class AvatarImageTests
         IsRed(image.GetPixel(5, 5)).Should().Be(topLeftRed, "top left");
         IsRed(image.GetPixel(5, 634)).Should().Be(bottomLeftRed, "bottom left");
         IsRed(image.GetPixel(634, 5)).Should().Be(topRightRed, "top right");
+        // Each corner is one colour or the other, never neither (a wrong transform leaves it empty).
         IsBlue(image.GetPixel(5, 5)).Should().Be(!topLeftRed, "top left");
+        IsBlue(image.GetPixel(5, 634)).Should().Be(!bottomLeftRed, "bottom left");
+        IsBlue(image.GetPixel(634, 5)).Should().Be(!topRightRed, "top right");
+    }
+
+    /// <summary>The theory's fixture is the same top to bottom, so a vertical flip (4) needs its own.</summary>
+    [Fact]
+    public async Task Exif_orientation_4_flips_vertically()
+    {
+        using var source = new SKBitmap(200, 200);
+        for (var y = 0; y < 200; y++)
+            for (var x = 0; x < 200; x++)
+                source.SetPixel(x, y, y < 100 ? Red : Blue);
+
+        var output = await Process(WithExif(Encode(source, SKEncodedImageFormat.Jpeg), orientation: 4));
+
+        using var image = SKBitmap.Decode(output);
+        IsBlue(image.GetPixel(320, 10)).Should().BeTrue("the stored bottom is the upright top");
+        IsRed(image.GetPixel(320, 630)).Should().BeTrue("the stored top is the upright bottom");
     }
 
     [Fact]
@@ -116,6 +140,18 @@ public class AvatarImageTests
 
         await act.Should().ThrowAsync<AvatarImageException>()
             .WithMessage("That file type isn't supported. Use a JPEG, PNG or WebP.");
+    }
+
+    /// <summary>
+    /// The client only ever sends its 640px crop, so 2048 leaves headroom while keeping one decode to
+    /// 16 MB of pixels — on a 2 GB host shared with the database, 8000 (256 MB) was an OOM away.
+    /// </summary>
+    [Fact]
+    public async Task Sources_over_2048_px_are_refused()
+    {
+        var act = () => Process(Encode(Solid(2049, 10, SKColors.Green), SKEncodedImageFormat.Png));
+
+        await act.Should().ThrowAsync<AvatarImageException>().WithMessage("That image is too large.");
     }
 
     [Fact]

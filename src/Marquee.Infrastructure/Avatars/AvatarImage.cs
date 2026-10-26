@@ -20,8 +20,9 @@ public static class AvatarImage
     {
         var buffer = new MemoryStream();
         await source.CopyToAsync(buffer, ct);
+        buffer.Position = 0;
 
-        using var data = SKData.CreateCopy(buffer.ToArray());
+        using var data = SKData.Create(buffer);
         using var codec = SKCodec.Create(data);
         if (codec is null || !Accepted.Contains(codec.EncodedFormat))
             throw Unsupported();
@@ -32,7 +33,10 @@ public static class AvatarImage
             throw new AvatarImageException("That image is too large.");
 
         using var decoded = SKBitmap.Decode(codec) ?? throw Unsupported();
-        using var upright = Upright(decoded, codec.EncodedOrigin);
+        // Immutable, so wrapping it in an SKImage shares its pixels instead of copying them.
+        decoded.SetImmutable();
+        using var turned = Upright(decoded, codec.EncodedOrigin);
+        var upright = turned ?? decoded;
 
         var side = Math.Min(upright.Width, upright.Height);
         var crop = SKRect.Create((upright.Width - side) / 2f, (upright.Height - side) / 2f, side, side);
@@ -50,11 +54,15 @@ public static class AvatarImage
     }
 
     /// <summary>
-    /// The bitmap as the camera meant it to be seen. Skia decodes the stored pixels and only reports
-    /// the EXIF orientation, so each of the eight origins is mapped to the transform that undoes it.
+    /// The bitmap as the camera meant it to be seen, or null when it already is. Skia decodes the
+    /// stored pixels and only reports the EXIF orientation, so each of the eight origins is mapped to
+    /// the transform that undoes it.
     /// </summary>
-    private static SKBitmap Upright(SKBitmap bitmap, SKEncodedOrigin origin)
+    private static SKBitmap? Upright(SKBitmap bitmap, SKEncodedOrigin origin)
     {
+        if (origin == SKEncodedOrigin.TopLeft)
+            return null;
+
         float w = bitmap.Width, h = bitmap.Height;
         var swaps = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop
             or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
@@ -80,6 +88,7 @@ public static class AvatarImage
         // Quarter turns and flips land every pixel exactly on another, so nothing needs resampling.
         using var image = SKImage.FromBitmap(bitmap);
         canvas.DrawImage(image, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest));
+        result.SetImmutable();
         return result;
     }
 

@@ -98,9 +98,12 @@ proceeding on the AMI default.
   per user, applied to the upload endpoint.
 - **Auth:** upload and remove require a signed-in account; anonymous sessions get 401.
 - **What `AvatarUrl` stores:** the full public URL built at upload time from a configured base
-  (`Avatars:PublicBaseUrl` or similar) plus the key. In production the base is the relative
-  `/avatars`, so stored values survive a future custom domain; locally it is S3Mock's bucket URL.
-  The old object's key on replace/remove is derived from the stored value by stripping the base.
+  (`Avatars:PublicBaseUrl`) plus the key *after* its `avatars/` prefix: the base is where that prefix
+  is served. In production the base is the relative `/avatars` (CloudFront's `/avatars/*` behaviour,
+  which reads path as key), so stored values survive a future custom domain; locally it is
+  S3Mock's `…/marquee-avatars/avatars`. *(Corrected in the final review: base plus the whole key
+  would have doubled the prefix and broken every photo in production.)*
+  The old object's key on replace/remove is `avatars/` plus the stored value with the base stripped.
   A stored value that does not start with the configured base is never deleted from S3 (only the
   row is cleared).
 - **Production config:** the bucket name reaches the API the same way existing deploy-time config

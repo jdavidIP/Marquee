@@ -11,8 +11,10 @@ public sealed class AvatarOptions
     public string BucketName { get; set; } = "";
 
     /// <summary>
-    /// Prefix of every stored <c>AvatarUrl</c>. Production uses the relative <c>/avatars</c>, served by
-    /// CloudFront from the bucket, so stored values survive a change of domain.
+    /// Where the bucket's <c>avatars/</c> prefix is served, and so the start of every stored
+    /// <c>AvatarUrl</c>. Production uses the relative <c>/avatars</c>, CloudFront's behaviour for that
+    /// prefix, so stored values survive a change of domain; S3Mock serves it at
+    /// <c>…/marquee-avatars/avatars</c>.
     /// </summary>
     public string PublicBaseUrl { get; set; } = "";
 
@@ -29,9 +31,11 @@ public sealed class AvatarOptions
 
     /// <summary>
     /// Largest width or height a source may declare. A few kilobytes of PNG can claim a bitmap big
-    /// enough to exhaust memory once decoded, so this is read from the header before decoding.
+    /// enough to exhaust memory once decoded, so this is read from the header before decoding. 2048
+    /// keeps one decode to 16 MB of pixels on a 2 GB host shared with the database; the client only
+    /// ever sends its 640px crop, so nothing real comes near it.
     /// </summary>
-    public int MaxSourceDimension { get; set; } = 8000;
+    public int MaxSourceDimension { get; set; } = 2048;
 
     public int Quality { get; set; } = 80;
 }

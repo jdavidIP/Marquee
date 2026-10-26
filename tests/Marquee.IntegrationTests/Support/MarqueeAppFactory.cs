@@ -140,7 +140,7 @@ public sealed class MarqueeAppFactory : WebApplicationFactory<Program>, IAsyncLi
 
         yield return ("Avatars__ServiceUrl", S3.Endpoint);
         yield return ("Avatars__BucketName", S3MockContainer.Bucket);
-        yield return ("Avatars__PublicBaseUrl", S3.PublicBaseUrl);
+        yield return ("Avatars__PublicBaseUrl", $"{S3.PublicBaseUrl}/avatars");
 
         yield return ("Admin__Username", AdminUsername);
         yield return ("Admin__Password", AdminPassword);

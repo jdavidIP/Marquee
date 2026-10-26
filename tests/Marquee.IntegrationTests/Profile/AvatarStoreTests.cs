@@ -1,6 +1,8 @@
+using Amazon.S3;
 using FluentAssertions;
 using Marquee.Infrastructure.Avatars;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Marquee.IntegrationTests;
 
@@ -49,6 +51,29 @@ public class AvatarStoreTests(MarqueeAppFactory factory)
         await Store.DeleteAsync(url, CancellationToken.None);
 
         (await factory.S3.ExistsAsync(url)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Production's base is the relative "/avatars" that CloudFront's /avatars/* behaviour serves
+    /// straight from the bucket, path for key. So a URL's path must be exactly its object's key — the
+    /// shape the S3Mock base (the bucket root) cannot show, since there the two never differ.
+    /// </summary>
+    [Fact]
+    public async Task Production_shaped_base_puts_the_key_at_the_url_path()
+    {
+        var store = new S3AvatarStore(
+            factory.Services.GetRequiredService<IAmazonS3>(),
+            Options.Create(new AvatarOptions { BucketName = S3MockContainer.Bucket, PublicBaseUrl = "/avatars" }));
+        var userId = Guid.NewGuid();
+
+        var url = await store.PutAsync(userId, Webp, CancellationToken.None);
+
+        url.Should().StartWith($"/avatars/{userId}/").And.NotContain("/avatars/avatars/");
+        // The bucket root plus the URL's path is the object, exactly as CloudFront will ask for it.
+        (await factory.S3.ExistsAsync($"{factory.S3.PublicBaseUrl}{url}")).Should().BeTrue();
+
+        await store.DeleteAsync(url, CancellationToken.None);
+        (await factory.S3.ExistsAsync($"{factory.S3.PublicBaseUrl}{url}")).Should().BeFalse();
     }
 
     [Fact]
